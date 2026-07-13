@@ -1,0 +1,3 @@
+// Embeds the multi-size app icon into GameHQ.exe so Explorer, the taskbar,
+// and shortcuts show it. Regenerate gamehq.ico via the recipe in icongen.cpp.
+IDI_ICON1 ICON "gamehq.ico"

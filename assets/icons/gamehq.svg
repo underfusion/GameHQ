@@ -1,0 +1,43 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1d2547"/>
+      <stop offset="0.55" stop-color="#131a33"/>
+      <stop offset="1" stop-color="#0b0f20"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8b6bff"/>
+      <stop offset="1" stop-color="#3fa9ff"/>
+    </linearGradient>
+    <linearGradient id="frame" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#aebdf5" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#7f92d9" stop-opacity="0.85"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.48" r="0.55">
+      <stop offset="0" stop-color="#6d8dff" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#6d8dff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Tile -->
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bg)"/>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#glow)"/>
+  <!-- subtle inner rim -->
+  <rect x="22" y="22" width="468" height="468" rx="106" fill="none" stroke="#ffffff" stroke-opacity="0.06" stroke-width="4"/>
+
+  <!-- Viewfinder corner brackets (capture frame) -->
+  <g stroke="url(#frame)" stroke-width="26" stroke-linecap="round" fill="none">
+    <path d="M136 186 v-32 q0 -18 18 -18 h32"/>
+    <path d="M376 186 v-32 q0 -18 -18 -18 h-32"/>
+    <path d="M136 326 v32 q0 18 18 18 h32"/>
+    <path d="M376 326 v32 q0 18 -18 18 h-32"/>
+  </g>
+
+  <!-- Play mark (clips) -->
+  <path d="M213 176 L342 250 q10 6 0 12 L213 336 q-11 6 -11 -7 V183 q0 -13 11 -7 Z"
+        fill="url(#accent)" stroke="url(#accent)" stroke-width="14" stroke-linejoin="round"/>
+
+  <!-- Record dot (replay buffer) -->
+  <circle cx="366" cy="146" r="17" fill="#ff5d73"/>
+  <circle cx="366" cy="146" r="17" fill="none" stroke="#ffffff" stroke-opacity="0.25" stroke-width="4"/>
+</svg>

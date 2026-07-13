@@ -1,0 +1,56 @@
+# Replay Buffer
+
+> Milestone 0.5. PlayStation-style "save the last 5 minutes" without storing raw frames in RAM.
+
+## Design
+
+Continuously encode **5-second segments** to `gamehq-data/replay-cache/<Game>/video/` or `gamehq-data/replay-cache/<Game>/audio/` (fragmented MP4, depending on whether audio is active). Buffer length is `replay.length_seconds`; ring size = `ceil(length_seconds / replay.segment_seconds)` - e.g. a 5-minute buffer = 60 x 5 s segments. The writer deletes the oldest as it rolls. Segment filenames include milliseconds so a save-time close/reopen cannot reuse the same path.
+
+```txt
+Share held 2 s -> freeze ring -> snapshot the last N segments
+-> remux-concat into final MP4 (no re-encode)
+-> write to <ClipsRoot>/<Game>/Clips/ -> DB insert -> thumbnail
+-> replay_saved sound -> notification -> gallery refresh
+```
+
+## Why segments
+
+Low RAM, crash-resistant fMP4 segments, trivial cleanup, replay length equals segment count, export is fast remux.
+
+## Config
+
+- `replay.length_seconds` - buffer length; allowed set `{30, 60, 180, 300, 600, 900}` (30 s / 1 m / 3 m / 5 m / 10 m / 15 m), default `300`. Exposed as the **REPLAY** dropdown in Settings.
+- `replay.segment_seconds` - internal ring granularity, default `5` (not in the UI).
+- `replay.fps` - target frame rate, `30` (default) or `60`. Exposed as the **Frame rate** dropdown in Settings.
+- `replay.resolution` - encode cap, `1280x720` / `1920x1080` (default) / `3840x2160`. Exposed as the **Resolution** dropdown in Settings (720p / 1080p / 4K). Captured frames are fed to Media Foundation with the full source size and this cap as the output size, so conversion/scaling is handled by the sink-writer pipeline instead of a manual CPU loop.
+- `replay.bitrate_mbps` (`14`, not in the UI).
+- Changing a recording-parameter `replay.*` key from Settings re-arms a running buffer immediately (`AppController::replaySettingsChanged` → `FramePumpService::restartBuffer`); otherwise the new values apply on the next auto-arm. `replay.clip_sound` and `replay.clip_notify` are feedback-only and never re-arm the buffer.
+- `FramePumpService::recordingStateChanged(active, gameName)` drives `AppController::replayBufferActive`/`replayBufferGame`, shown as a live "Buffer state" row in Replay Settings.
+- `audio.enabled` controls replay AAC capture. When enabled, WASAPI desktop loopback is attached and segments are written under the per-game `audio` cache folder. Audio samples are re-expressed on the video clock (shared QPC epoch) before encoding so the AAC track stays aligned with the frames.
+
+## Timing model
+
+- **Video PTS**: schedule-anchored throttle on the capture clock; each segment's first frame is rebased to exactly t=0 (IDR), export concat advances the timeline by each segment's max sample end.
+- **Audio PTS**: a continuous **sample-count clock** — anchored on the first packet after the first video frame, advanced by `numFrames/rate` per packet, re-anchored only on >0.5 s wall-clock drift. Never derived from poll timestamps: after any pump stall the drained packet burst carries near-identical poll times, which previously caused ~350 ms audio holes at every segment boundary (clips visibly "pausing" every 5 s).
+- **Segment rolls**: the next segment's sink writer is pre-built on a side thread and adopted at roll time (`segment roll took N ms (pre-built)` in the log; ~30 ms vs ~300 ms inline). Diagnose clips with `python tools/analyze_mp4_timing.py <clip.mp4> [gap_ms]`.
+
+## Performance model
+
+- **GPU downscale**: when `replay.resolution` is below the source size, a D3D11 VideoProcessor scales each frame on the GPU before readback, so the CPU path (staging copy, row memcpy, MF color convert) runs at encode size — ~4× cheaper for 4K→1080p. Automatic fallback to full-size readback when the video processor is unavailable (`SegmentRecorder: GPU downscale active`/`CPU scaling` in the log).
+- **Async export**: Share-hold saves snapshot + pin the segment ring, then remux + final thumbnail run on a dedicated thread — recording never pauses during a save. The ring is unpinned (and trimmed) when the export finishes; only one export runs at a time.
+- **Stale-cache sweep (Step 9)**: on worker start, `replay-cache/` is swept for `*_clip.mp4` older than 10 minutes (matching the ring-restore threshold) and emptied per-game folders are pruned.
+
+## Status
+
+Implemented: rolling H.264 ring in per-game `replay-cache/<Game>/video/` or `replay-cache/<Game>/audio/` folders (`SegmentRecorder`, Step 5 deletion by `length_seconds`); **Share-hold / Ctrl+Shift+E** save -> `ReplayExporter` remux-concat (no re-encode) -> one MP4 in the current `<ClipsRoot>/<Game>/Clips/` + video thumbnail + DB (`type="video"`) + sound + notification (Steps 6/8). `CaptureLocations` resolves the separate clip root at each save, so Settings changes do not require re-arming the ring. dev.79 re-enables audio when `audio.enabled=true` and resets audio timestamps on segment roll/snapshot. dev.76 also makes export all-or-nothing: unreadable/skipped segments or writer failures produce an explicit failed-save notification instead of a partial short clip.
+
+Debugging: every save attempt writes a correlated `ReplaySave[...]` block to `gamehq.log`, including ring snapshot paths/sizes, thumbnail timings, remux segment media metadata, per-segment video/audio sample counts, output bytes, and final success/failure timing.
+
+Still needs real game/audio verification before Step 7 is marked complete. Not yet done: stale-cache cleanup on start/shutdown (Step 9).
+
+## Rules
+
+- Buffer runs only per capture mode ("only in games" default); paused means tray status shows why.
+- Segment ring is temp data. Recent per-game segments may be restored after focus churn so a brief disarm does not erase the replay window; stale cleanup remains Step 9.
+- A save must never trigger the screenshot action (tap/hold exclusivity; see [controller-input.md](controller-input.md)).
+- Defaults: 1080p30, H.264 12-16 Mbps, audio controlled by `audio.enabled`, 5 min.

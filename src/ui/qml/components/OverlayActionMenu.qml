@@ -1,0 +1,80 @@
+import QtQuick
+import GameHQ
+
+Item {
+    id: root
+
+    property bool open: false
+    property int currentIndex: 0
+
+    signal closeRequested()
+    signal itemHovered(int index)
+    signal itemConfirmed(int index)
+
+    anchors.fill: parent
+    visible: root.open
+
+    Rectangle {
+        anchors.fill: parent
+        color: Theme.scrim
+        MouseArea {
+            anchors.fill: parent
+            onClicked: root.closeRequested()
+        }
+    }
+
+    Rectangle {
+        anchors.centerIn: parent
+        width: 320
+        height: menuColumn.implicitHeight + Theme.s24 * 2
+        radius: Theme.radiusL
+        color: Theme.surface
+        border.width: 1
+        border.color: Theme.stroke
+
+        MouseArea { anchors.fill: parent }
+
+        Column {
+            id: menuColumn
+            x: Theme.s24
+            y: Theme.s24
+            width: parent.width - Theme.s24 * 2
+            spacing: Theme.s8
+
+            Text {
+                text: "Capture actions"
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontH3
+                font.weight: Font.DemiBold
+            }
+
+            Repeater {
+                model: ["Show in folder", "Delete"]
+                delegate: Rectangle {
+                    width: menuColumn.width
+                    height: 40
+                    radius: Theme.radiusS
+                    color: root.currentIndex === index ? Theme.surfaceAlt : "transparent"
+
+                    Text {
+                        anchors.left: parent.left
+                        anchors.leftMargin: Theme.s12
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: modelData
+                        color: root.currentIndex === index ? Theme.text : Theme.textMuted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBody
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onEntered: root.itemHovered(index)
+                        onClicked: root.itemConfirmed(index)
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,57 @@
+# Build
+build/
+out/
+*.user
+CMakeUserPresets.json
+
+# IDE
+.vs/
+.vscode/
+.idea/
+
+# Runtime data (portable mode)
+gamehq-data/
+Captures/
+Screenshots/
+Clips/
+**/gamehq-data/
+**/playhq-data/
+**/saveplay-data/
+**/[Cc]aptures/
+**/[Ss]creenshots/
+**/[Cc]lips/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.webm
+*.mp4.partial
+
+# Qt
+*.qmlc
+*.jsc
+.qmlls.ini
+
+# Misc
+*.log
+Thumbs.db
+
+# Local planning and diagnostic scratch space
+.tmp/
+/*diff*.txt
+/launch_*.txt
+/head_*.qml
+
+# Local build diagnostics
+build_log*.txt
+spike/**/*.exe
+
+# Local toolchain + build
+tools/
+
+# Assembled dist packages (packaging/make-dist.ps1)
+dist/

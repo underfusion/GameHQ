@@ -1,0 +1,7 @@
+#pragma once
+
+namespace Brand
+{
+inline constexpr char Name[] = "@GAMEHQ_BRAND_NAME@";
+inline constexpr char Slug[] = "@GAMEHQ_BRAND_SLUG@";
+}
