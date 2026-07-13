@@ -4,7 +4,7 @@
 
 # GameHQ
 
-**Controller-first screenshots, replay clips, and an in-game capture gallery for Windows.**
+**Save the moments that already happened — screenshots, recent-gameplay video clips, and an in-game capture gallery for Windows.**
 
 [![Release](https://img.shields.io/github/v/release/underfusion/GameHQ?display_name=tag&style=flat-square)](https://github.com/underfusion/GameHQ/releases/latest)
 [![Windows](https://img.shields.io/badge/Windows-10%201903%2B-3578e5?style=flat-square)](#requirements)
@@ -14,15 +14,20 @@
 
 ![GameHQ gallery](docs/assets/gamehq-gallery.png)
 
-GameHQ brings console-style capture controls to PC gaming. Take a screenshot,
-save the last few minutes as a clip, and browse everything in a controller-friendly
-gallery without leaving your game.
+GameHQ brings console-style capture controls to PC gaming. While you play, it
+continuously keeps the most recent gameplay in a rolling buffer. When something
+worth saving happens, press one button **after the moment** to turn the previous
+configurable minutes into a normal MP4 video clip — there is no need to start
+recording beforehand. You can also take instant screenshots and browse everything
+in a controller-friendly gallery without leaving your game.
 
 ## Highlights
 
 - **Instant screenshots** in PNG or JPEG, organized automatically by game.
-- **Rolling replay buffer** with configurable duration, quality, frame rate,
-  resolution, system audio, and safe MP4 export.
+- **Record recent gameplay after it happens**: GameHQ continuously buffers the
+  previous configurable minutes, then saves them as an MP4 video with system
+  audio when you press the replay button. Duration, quality, frame rate, and
+  resolution are configurable.
 - **In-game overlay** for browsing, playing, favoriting, revealing, and deleting
   captures without alt-tabbing.
 - **Controller-first controls** with DualSense, XInput, WinMM, keyboard, and safe
