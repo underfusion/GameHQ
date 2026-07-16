@@ -25,7 +25,9 @@ GameHQ is a Qt/QML Windows app with a native C++ service layer:
   duplicate-row repair live in `GameIconCache`, `GameMetadataBackfill`, and
   `GameRowRepair`.
 - `GameDetector` resolves the foreground window, process path, likely game title,
-  fullscreen heuristic, and capture gate.
+  fullscreen heuristic, and capture gate. The disk-backed title sources (Steam
+  `.acf` scan, version-resource reads) are memoized per foreground process, keyed
+  by pid and path; the window caption stays live per tick.
 - `ScreenshotService` handles one-shot GDI screenshots and async PNG writes.
 - `FramePumpService` handles always-on WGC replay capture on a dedicated MTA
   worker thread, rolling H.264/AAC segments, and replay export.
@@ -153,6 +155,8 @@ the verification their acceptance requires, so they are held rather than claimed
 | Table-driven `InputEngine::dispatchAction` | 0.5.66 | Keyboard + pad smoke: screenshot, overlay toggle, replay save, D-pad/L1/R1 hold-to-repeat |
 | Theme tokens and literal sweep | 0.5.67 | Visual spot-check of gallery, overlay, settings, toasts |
 | Unified sidebar filter-select | 0.5.69 | Mandatory pad check - sits on the hand-verified DualSense path |
+| Cached `GameDetector` title resolution | 0.5.73 | Live game: Steam title path, codename/exe fallback path, a game switch, and auto-arm still catching a fullscreen game |
+| `BulkSelection.qml` state-machine extraction | 0.5.74 | Bulk mode: shift-click a range, then shift-click back over it — it must undo, not leave a trail; plus the pad flow |
 
 ### Deliberately Out of Scope for This Wave
 
@@ -161,11 +165,6 @@ common thread: each needs a live re-verification session that a code-only pass
 cannot provide, so each should ride along with feature work that already forces
 that testing.
 
-- **Cache `GameDetector` title resolution.** Memoizing `resolveTitle()`'s
-  version-info reads and Steam `.acf` scan would remove recurring synchronous
-  disk I/O from the 1.5 s GUI-thread `autoTick`. Deferred: cache invalidation
-  feeds both current-game detection and replay auto-arm, so it needs live-game
-  verification.
 - **Split the capture god-functions** (`startPump`, `saveReplayOnWorker`,
   `remuxConcatImpl`, `buildWriter`; 120-265 lines each). Deferred: this exact
   bring-up/remux sequence was tuned against real games and needs multi-title live
@@ -174,11 +173,26 @@ that testing.
   155 lines of hand-tuned USB/BT/DS4/DSX quirks; unifying deadzones changes nav
   feel on XInput/WinMM pads. Deferred: needs a real-hardware matrix (DualSense,
   DSX virtual, XInput pad).
-- **Shared `MediaStage.qml` for Lightbox/OverlayPreview.** Real duplication, but
-  it touches video playback/seek correctness on two verified surfaces.
-- **Extract the `Main.qml` bulk-selection state machine.** About 150 lines worth
-  extracting, but the pad bulk-select flow (Cross/Triangle/Square/Circle) is
-  hand-verified and the grid `host` coupling includes pad nav-lock timing.
+- **Decouple `DesktopGalleryGrid` from its `host`.** The remaining half of the
+  bulk-selection item (0.5.74 landed the state-machine extraction). Deferred: the
+  coupling carries pad nav-lock timing that needs a DualSense in hand.
+
+### Reassessed and no longer recommended
+
+- **Shared `MediaStage.qml` for Lightbox/OverlayPreview.** Examined 2026-07-16:
+  the premise does not survive reading both files. They share a widget tree, not
+  behavior. On the video path they do opposite things — Lightbox leaves the Image
+  layer empty and lets `VideoOutput` cover the stage, while `OverlayPreview` paints
+  the clip's *thumbnail* there until `videoFocused` flips. `OverlayPreview` also
+  tracks a committed-vs-requested frame index, carries a `_modelRevision`
+  dependency, and clears state on an empty source; Lightbox commits eagerly in
+  `openAt()` and has no equivalent. Diffing the one block that looks shared (the
+  `MediaPlayer`/`VideoOutput` config) leaves ~30 lines, and even those differ in
+  three places. Unifying them means parameterizing the target-URL rule, the index
+  tracking, the revision dependency and the clear-on-empty behavior — a
+  switch-driven component standing in for ~30 lines of real overlap, which reads
+  worse at both call sites. Either narrow this to "extract the shared
+  `MediaPlayer`/`EndOfMedia` handler" or drop it; do not build it as specified.
 
 ## Prior Wave (2026-07-09)
 
@@ -198,7 +212,7 @@ The earlier audit's four phases all landed and are no longer open items:
 
 The documentation drift that audit recorded (`database.md`, `storage.md`,
 `capture-engine.md`, `architecture.md` describing classes that never existed) was
-corrected at the time. `Main.qml` is now 806 lines, down from about 1,391;
+corrected at the time. `Main.qml` is now 726 lines, down from about 1,391;
 `OverlayWindow.qml` is 406, down from about 911.
 
 ## Direction
@@ -209,7 +223,7 @@ them is the real constraint, not the code.
 
 Concretely:
 
-1. Close the five verification gates above; they are cheap and they unblock
+1. Close the seven verification gates above; they are cheap and they unblock
    nothing else, but they are honest debt.
 2. Keep every `config.json` key in `ConfigKeys.h`, folder-safe names in
    `GameIdentity`, sidebar category rules in `SidebarCategories.js`, and visual

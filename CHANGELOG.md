@@ -4,6 +4,19 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.75] - 2026-07-16
+
+### Changed
+
+- Developer documentation now matches the last two changes, and records a
+  conclusion rather than a plan: the long-standing idea of merging the two video
+  players into one shared piece was examined and dropped. They looked like
+  duplicates but behave oppositely -- the full-screen viewer hides its still
+  image behind the video, the overlay keeps showing the clip's thumbnail until
+  you focus it -- so merging them would have meant one component full of
+  switches standing in for about thirty genuinely shared lines. Writing down why
+  it is not worth doing saves the next person from rediscovering it.
+
 ## [0.5.74] - 2026-07-16
 
 ### Changed

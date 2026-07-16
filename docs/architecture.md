@@ -13,7 +13,7 @@ GameHQ.exe
 |-- core/         Shared cross-module helpers such as GameIdentity
 |-- sound/        SoundEngine for UI sounds
 |-- input/        InputEngine, DualSenseDevice, XInputDevice, WinMMDevice, HotkeyManager
-|-- games/        GameDetector: foreground process, title resolution, fullscreen heuristic
+|-- games/        GameDetector: foreground process, title resolution (cached per process), fullscreen heuristic
 |-- storage/      CaptureDatabase, CaptureQueries, CaptureScanner, ThumbnailService, GameIconCache, GameMetadataBackfill, GameRowRepair
 |-- config/       ConfigManager, ConfigKeys, SettingsCategories, CaptureLocations, LegacyMigration, and Paths
 |-- tray/         TrayIcon and menu
@@ -88,6 +88,7 @@ The desktop gallery entry point remains `src/ui/qml/Main.qml`, but presentationa
 - `SettingsView.qml` owns the settings category rail while focused page files under `ui/qml/settings/` own General, Capture, Replay, Input, Library, Feedback, and Advanced content.
 - Shared settings page, section, row, toggle, category, and combo controls live under `ui/qml/components/` and update from `AppController::configChanged`.
 - `helpers/SidebarCategories.js` owns shared desktop/overlay category definitions (`categories()`) and the key→filter mapping behind them (`resolveFilter()`). Every sidebar — desktop mouse click, desktop pad nav, overlay pad nav — resolves a row through it and then applies the result on its own surface: the desktop via `AppController::setGameCategory`, the overlay via its gallery's `setFilter`. Both land on `GalleryModel::setFilter` with the same pair. Do not re-implement the `game` / `game_favorites` special cases in a sidebar.
+- `components/BulkSelection.qml` owns the bulk-selection state machine: the picked-path set, the range anchor, and the base snapshot a shift-extend replays against so dragging back over a range undoes it. It is deliberately pure — model queries and state, no sounds, focus moves, or dialogs. `Main.qml` instantiates it as `bulkSelection` and keeps the `window.bulkX()` API every caller already binds to, delegating and playing sounds around the call; `toggle()` and `selectAll()` return a bool so the caller picks the sound. Callers (grid, header, pad handlers) never touch it directly.
 
 `Main.qml` still owns top-level desktop state, dialogs, and navigation helper functions; `DesktopGalleryGrid.qml` keeps the existing grid API exposed back to that owner.
 
