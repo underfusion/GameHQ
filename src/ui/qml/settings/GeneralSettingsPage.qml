@@ -12,8 +12,8 @@ SettingsPage {
             SettingsToggle { configKey: "startup.enabled"; defaultValue: false }
         }
         SettingsRow {
-            label: "Start minimized"
-            description: "Open directly in the tray on the next launch."
+            label: "Launch minimized"
+            description: "Launch directly in the system tray without opening the main window."
             SettingsToggle { configKey: "startup.minimized"; defaultValue: false }
         }
     }

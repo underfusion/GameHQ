@@ -4,6 +4,13 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.56] - 2026-07-15
+
+### Changed
+
+- Settings → General: the "Start minimized" toggle is now labeled
+  "Launch minimized" with a clearer description.
+
 ## [0.5.55] - 2026-07-13
 
 First public release.
