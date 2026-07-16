@@ -114,6 +114,39 @@ private:
     ActionCatalog::Scope fallbackScope() const;
     void dispatchAction(const QString& actionId, const QString& triggerCode = {});
 
+    // Dispatch table handlers — one per entry in the static table inside
+    // InputEngine.cpp. Each is a thin wrapper around the signal emission +
+    // nav-repeat booking that the old if/else chain performed inline.
+    using Self = InputEngine;
+    void handleScreenshot(const QString&)             { emit screenshotRequested(); }
+    void handleSaveReplay(const QString&)             { emit replayRequested(); }
+    void handleToggleBuffer(const QString&)           { emit bufferToggleRequested(); }
+    void handleToggleOverlay(const QString&)          { emit overlayToggleRequested(); }
+    void handleOverlayNavigateLeft(const QString& tc)  { startNavRepeat(tc, -1, [this](int d) { emit overlayNavigate(d); }); }
+    void handleOverlayNavigateRight(const QString& tc) { startNavRepeat(tc,  1, [this](int d) { emit overlayNavigate(d); }); }
+    void handleOverlayNavigateUp(const QString& tc)    { startNavRepeat(tc, -1, [this](int d) { emit overlayNavigateVertical(d); }); }
+    void handleOverlayNavigateDown(const QString& tc)  { startNavRepeat(tc,  1, [this](int d) { emit overlayNavigateVertical(d); }); }
+    void handleOverlayConfirm(const QString&)          { emit overlayConfirm(); }
+    void handleOverlayBack(const QString&)             { emit overlayHideRequested(); }
+    void handleOverlayFavorite(const QString&)         { emit overlayFavorite(); }
+    void handleOverlayMenu(const QString&)             { emit overlayMenu(); }
+    void handleOverlaySidebarToggle(const QString&)    { emit overlaySidebarToggle(); }
+    void handleOverlayGamePrev(const QString& tc)      { startNavRepeat(tc, -1, [this](int d) { emit overlayGameStep(d); }); }
+    void handleOverlayGameNext(const QString& tc)      { startNavRepeat(tc,  1, [this](int d) { emit overlayGameStep(d); }); }
+    void handleDesktopNavigateLeft(const QString& tc)  { startNavRepeat(tc, -1, [this](int d) { emit desktopNavigate(d); }); }
+    void handleDesktopNavigateRight(const QString& tc) { startNavRepeat(tc,  1, [this](int d) { emit desktopNavigate(d); }); }
+    void handleDesktopNavigateUp(const QString& tc)    { startNavRepeat(tc, -1, [this](int d) { emit desktopNavigateVertical(d); }); }
+    void handleDesktopNavigateDown(const QString& tc)  { startNavRepeat(tc,  1, [this](int d) { emit desktopNavigateVertical(d); }); }
+    void handleDesktopConfirm(const QString&)          { emit desktopConfirm(); }
+    void handleDesktopBack(const QString&)             { emit desktopBack(); }
+    void handleDesktopFavorite(const QString&)         { emit desktopFavorite(); }
+    void handleDesktopMenu(const QString&)             { emit desktopMenu(); }
+    void handleDesktopTabPrev(const QString&)          { emit desktopTabStep(-1); }
+    void handleDesktopTabNext(const QString&)          { emit desktopTabStep(1); }
+    void handlePlaybackPlayPause(const QString&)       { emit playbackPlayPause(); }
+    void handlePlaybackSeekBack(const QString& tc)     { startNavRepeat(tc, -1, [this](int d) { emit playbackSeek(d); }); }
+    void handlePlaybackSeekForward(const QString& tc)  { startNavRepeat(tc,  1, [this](int d) { emit playbackSeek(d); }); }
+
     // Hold-to-repeat for navigation buttons (D-pad ↑↓←→, L1, R1). The pad
     // only delivers press edges to QML, so the repeat lives here: the signal
     // fires once on press, then — if the button stays held — again 220 ms

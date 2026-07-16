@@ -379,62 +379,57 @@ void InputEngine::dispatchAction(const QString& actionId, const QString& trigger
     if (const auto* action = ActionCatalog::find(actionId))
         setLastInput(action->label);
 
-    if (actionId == QLatin1String("global.screenshot"))
-        emit screenshotRequested();
-    else if (actionId == QLatin1String("global.save_replay"))
-        emit replayRequested();
-    else if (actionId == QLatin1String("global.toggle_buffer"))
-        emit bufferToggleRequested();
-    else if (actionId == QLatin1String("global.toggle_overlay"))
-        emit overlayToggleRequested();
-    else if (actionId == QLatin1String("overlay.navigate_left"))
-        startNavRepeat(triggerCode, -1, [this](int d) { emit overlayNavigate(d); });
-    else if (actionId == QLatin1String("overlay.navigate_right"))
-        startNavRepeat(triggerCode, 1, [this](int d) { emit overlayNavigate(d); });
-    else if (actionId == QLatin1String("overlay.navigate_up"))
-        startNavRepeat(triggerCode, -1, [this](int d) { emit overlayNavigateVertical(d); });
-    else if (actionId == QLatin1String("overlay.navigate_down"))
-        startNavRepeat(triggerCode, 1, [this](int d) { emit overlayNavigateVertical(d); });
-    else if (actionId == QLatin1String("overlay.confirm"))
-        emit overlayConfirm();
-    else if (actionId == QLatin1String("overlay.back"))
-        emit overlayHideRequested();
-    else if (actionId == QLatin1String("overlay.favorite"))
-        emit overlayFavorite();
-    else if (actionId == QLatin1String("overlay.menu"))
-        emit overlayMenu();
-    else if (actionId == QLatin1String("overlay.sidebar_toggle"))
-        emit overlaySidebarToggle();
-    else if (actionId == QLatin1String("overlay.game_prev"))
-        startNavRepeat(triggerCode, -1, [this](int d) { emit overlayGameStep(d); });
-    else if (actionId == QLatin1String("overlay.game_next"))
-        startNavRepeat(triggerCode, 1, [this](int d) { emit overlayGameStep(d); });
-    else if (actionId == QLatin1String("desktop.navigate_left"))
-        startNavRepeat(triggerCode, -1, [this](int d) { emit desktopNavigate(d); });
-    else if (actionId == QLatin1String("desktop.navigate_right"))
-        startNavRepeat(triggerCode, 1, [this](int d) { emit desktopNavigate(d); });
-    else if (actionId == QLatin1String("desktop.navigate_up"))
-        startNavRepeat(triggerCode, -1, [this](int d) { emit desktopNavigateVertical(d); });
-    else if (actionId == QLatin1String("desktop.navigate_down"))
-        startNavRepeat(triggerCode, 1, [this](int d) { emit desktopNavigateVertical(d); });
-    else if (actionId == QLatin1String("desktop.confirm"))
-        emit desktopConfirm();
-    else if (actionId == QLatin1String("desktop.back"))
-        emit desktopBack();
-    else if (actionId == QLatin1String("desktop.favorite"))
-        emit desktopFavorite();
-    else if (actionId == QLatin1String("desktop.menu"))
-        emit desktopMenu();
-    else if (actionId == QLatin1String("desktop.tab_prev"))
-        emit desktopTabStep(-1);
-    else if (actionId == QLatin1String("desktop.tab_next"))
-        emit desktopTabStep(1);
-    else if (actionId == QLatin1String("playback.play_pause"))
-        emit playbackPlayPause();
-    else if (actionId == QLatin1String("playback.seek_back"))
-        startNavRepeat(triggerCode, -1, [this](int d) { emit playbackSeek(d); });
-    else if (actionId == QLatin1String("playback.seek_forward"))
-        startNavRepeat(triggerCode, 1, [this](int d) { emit playbackSeek(d); });
+    // Dispatch table: every bindable action maps to a handler. When a new action
+    // is added to ActionCatalog, a matching entry must appear below — a missing
+    // entry compiles and runs but is a silent no-op (caught by the qWarning at
+    // the end).  The table is local-static: built once, never rebuilt.
+    using Handler = void (InputEngine::*)(const QString& triggerCode);
+    struct Entry { const char* actionId; Handler handler; };
+    static const Entry table[] = {
+        // Global
+        { "global.screenshot",     &Self::handleScreenshot },
+        { "global.save_replay",    &Self::handleSaveReplay },
+        { "global.toggle_buffer",  &Self::handleToggleBuffer },
+        { "global.toggle_overlay", &Self::handleToggleOverlay },
+        // Overlay
+        { "overlay.navigate_left",  &Self::handleOverlayNavigateLeft },
+        { "overlay.navigate_right", &Self::handleOverlayNavigateRight },
+        { "overlay.navigate_up",    &Self::handleOverlayNavigateUp },
+        { "overlay.navigate_down",  &Self::handleOverlayNavigateDown },
+        { "overlay.confirm",        &Self::handleOverlayConfirm },
+        { "overlay.back",           &Self::handleOverlayBack },
+        { "overlay.favorite",       &Self::handleOverlayFavorite },
+        { "overlay.menu",           &Self::handleOverlayMenu },
+        { "overlay.sidebar_toggle", &Self::handleOverlaySidebarToggle },
+        { "overlay.game_prev",      &Self::handleOverlayGamePrev },
+        { "overlay.game_next",      &Self::handleOverlayGameNext },
+        // Desktop
+        { "desktop.navigate_left",  &Self::handleDesktopNavigateLeft },
+        { "desktop.navigate_right", &Self::handleDesktopNavigateRight },
+        { "desktop.navigate_up",    &Self::handleDesktopNavigateUp },
+        { "desktop.navigate_down",  &Self::handleDesktopNavigateDown },
+        { "desktop.confirm",        &Self::handleDesktopConfirm },
+        { "desktop.back",           &Self::handleDesktopBack },
+        { "desktop.favorite",       &Self::handleDesktopFavorite },
+        { "desktop.menu",           &Self::handleDesktopMenu },
+        { "desktop.tab_prev",       &Self::handleDesktopTabPrev },
+        { "desktop.tab_next",       &Self::handleDesktopTabNext },
+        // Playback
+        { "playback.play_pause",    &Self::handlePlaybackPlayPause },
+        { "playback.seek_back",     &Self::handlePlaybackSeekBack },
+        { "playback.seek_forward",  &Self::handlePlaybackSeekForward },
+    };
+
+    for (const auto& entry : table) {
+        if (actionId == QLatin1String(entry.actionId)) {
+            (this->*entry.handler)(triggerCode);
+            return;
+        }
+    }
+
+    qWarning().noquote()
+        << QStringLiteral("Input: unknown action %1 — missing dispatch table entry?")
+               .arg(actionId);
 }
 
 void InputEngine::setLastInput(const QString& text)

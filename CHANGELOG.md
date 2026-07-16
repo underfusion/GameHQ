@@ -4,6 +4,16 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.66] - 2026-07-16
+
+### Changed
+
+- Controller and keyboard actions are now looked up in one dispatch table
+  instead of a 28-branch chain of string comparisons, keeping the list of
+  actions next to the `ActionCatalog` it mirrors. An action that is ever left
+  out of the table now logs a warning instead of failing silently. No shortcut,
+  binding, or hold-to-repeat behavior changes.
+
 ## [0.5.65] - 2026-07-16
 
 ### Changed
