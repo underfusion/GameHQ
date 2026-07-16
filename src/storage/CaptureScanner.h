@@ -1,8 +1,10 @@
 #pragma once
+#include "storage/CaptureDatabase.h"
+
+#include <QHash>
 #include <QObject>
 #include <QString>
 
-class CaptureDatabase;
 class CaptureLocations;
 
 // Scans the managed captures root + watched folders for media files and
@@ -25,7 +27,10 @@ signals:
     void scanFinished(int added);
 
 private:
-    int scanFolder(const QString& root, const QString& source);
+    // index is the whole-table snapshot taken by scanAll(); scanFolder reads it
+    // instead of querying per file and keeps it current as it inserts.
+    int scanFolder(const QString& root, const QString& source,
+                   QHash<QString, CaptureIndexEntry>& index);
     QString inferGameName(const QString& root, const QString& filePath) const;
 
     CaptureDatabase* m_db;

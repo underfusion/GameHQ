@@ -70,6 +70,30 @@ bool CaptureQueries::hasCapture(const QSqlDatabase& db, const QString& filePath)
     return q.exec() && q.next();
 }
 
+QHash<QString, CaptureIndexEntry> CaptureQueries::captureIndex(const QSqlDatabase& db)
+{
+    QHash<QString, CaptureIndexEntry> out;
+    // Live rows are read last so that, if a path exists both tombstoned and live,
+    // the live row wins the key — the same row thumbnailForCapture() would pick.
+    QSqlQuery q(QStringLiteral(
+        "SELECT file_path, thumbnail_path, deleted_at FROM captures "
+        "ORDER BY (deleted_at IS NULL) ASC"), db);
+    if (!q.exec()) {
+        qWarning() << "DB: captureIndex failed:" << q.lastError().text();
+        return out;
+    }
+    while (q.next()) {
+        CaptureIndexEntry e;
+        e.deleted = !q.value(2).isNull();
+        // Keys stay exactly as stored: hasCapture() compares the raw column
+        // against toStoredPath(path), so repairing here would break lookups.
+        if (!e.deleted)
+            e.thumbnailPath = Paths::repairMovedPath(q.value(1).toString());
+        out.insert(q.value(0).toString(), e);
+    }
+    return out;
+}
+
 bool CaptureQueries::hasCapturesForGame(const QSqlDatabase& db, int gameId)
 {
     if (gameId < 0)

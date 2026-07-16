@@ -4,6 +4,16 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.62] - 2026-07-16
+
+### Changed
+
+- Library scans now read the capture index once instead of querying the
+  database twice per file on disk. A scan of a library with N media files
+  previously issued up to 2N queries during the directory walk; it now issues
+  a single up-front `SELECT` and diffs in memory. Registered captures, their
+  game assignment, and thumbnail backfill are unchanged.
+
 ## [0.5.61] - 2026-07-16
 
 ### Changed

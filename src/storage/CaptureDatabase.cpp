@@ -198,6 +198,16 @@ bool CaptureDatabase::hasCapture(const QString& filePath) const
     return CaptureQueries::hasCapture(m_db, filePath);
 }
 
+QHash<QString, CaptureIndexEntry> CaptureDatabase::captureIndex() const
+{
+    return CaptureQueries::captureIndex(m_db);
+}
+
+QString CaptureDatabase::storedPathKey(const QString& filePath)
+{
+    return Paths::toStoredPath(filePath);
+}
+
 bool CaptureDatabase::hasCapturesForGame(int gameId) const
 {
     return CaptureQueries::hasCapturesForGame(m_db, gameId);
