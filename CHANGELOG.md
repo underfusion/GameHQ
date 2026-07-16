@@ -4,6 +4,19 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.74] - 2026-07-16
+
+### Changed
+
+- The logic behind selecting several captures at once -- which ones are ticked,
+  where a shift-extend measures from, how "select all" flips to "deselect all"
+  -- now lives in a file of its own instead of being spread through the main
+  window. It was about eighty lines tangled up with window code it had nothing
+  to do with, which made the one genuinely fiddly part (dragging a shift-range
+  back over itself to undo it) hard to follow. Nothing about selecting works
+  differently; the sounds, the controller buttons and the delete confirmation
+  are all untouched.
+
 ## [0.5.73] - 2026-07-16
 
 ### Changed

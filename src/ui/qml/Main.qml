@@ -36,6 +36,11 @@ ApplicationWindow {
         onTriggered: window.doPersistGeometry()
     }
 
+    BulkSelection {
+        id: bulkSelection
+        galleryModel: app.gallery
+    }
+
     onWidthChanged: window.persistGeometry()
     onHeightChanged: window.persistGeometry()
     onXChanged: window.persistGeometry()
@@ -58,11 +63,6 @@ ApplicationWindow {
     property bool menuOpen: false
     property int menuIndex: 0
     property bool bulkMode: false
-    property var bulkSelected: ({})
-    property int bulkAnchorIndex: -1
-    property bool bulkRangeActive: false
-    property bool bulkRangeSelecting: true
-    property var bulkRangeBase: ({})
     // Tracks which input source was used last so the footer hint bar can
     // render matching labels (keyboard glyphs vs DualSense button names).
     // Flipped to true on any pad input, false on any key press.
@@ -177,85 +177,27 @@ ApplicationWindow {
         return idx >= 0 ? idx : 0
     }
 
+    // The selection algebra lives in BulkSelection.qml; these stay as the window
+    // API every caller (grid, header, pad handlers) already binds to.
     function bulkCount() {
-        var n = 0
-        for (var path in window.bulkSelected)
-            if (window.bulkSelected[path])
-                ++n
-        return n
+        return bulkSelection.count()
     }
 
     function bulkIsChecked(path) {
-        return !!window.bulkSelected[path]
+        return bulkSelection.isChecked(path)
     }
 
     function bulkAllSelected() {
-        return app.gallery.rowCount() > 0 && window.bulkCount() === app.gallery.rowCount()
+        return bulkSelection.allSelected()
     }
 
     function bulkToggle(index, extendRange) {
-        if (index < 0 || index >= app.gallery.rowCount())
-            return
-
-        var record = app.gallery.get(index)
-        var path = record.filePath
-        if (!path)
-            return
-
-        if (extendRange && window.bulkAnchorIndex >= 0
-                && window.bulkAnchorIndex < app.gallery.rowCount()) {
-            if (!window.bulkRangeActive) {
-                var base = {}
-                for (var basePath in window.bulkSelected)
-                    if (window.bulkSelected[basePath])
-                        base[basePath] = true
-                window.bulkRangeBase = base
-                window.bulkRangeSelecting = !window.bulkSelected[path]
-                window.bulkRangeActive = true
-            }
-
-            var first = Math.min(window.bulkAnchorIndex, index)
-            var last = Math.max(window.bulkAnchorIndex, index)
-            var rangePaths = {}
-            for (var i = first; i <= last; ++i) {
-                var rangeRecord = app.gallery.get(i)
-                if (!rangeRecord.filePath)
-                    continue
-                rangePaths[rangeRecord.filePath] = true
-            }
-
-            var copy = {}
-            for (var key in window.bulkRangeBase)
-                if (window.bulkRangeBase[key]
-                        && (window.bulkRangeSelecting || !rangePaths[key]))
-                    copy[key] = true
-            if (window.bulkRangeSelecting)
-                for (var rangePath in rangePaths)
-                    copy[rangePath] = true
-
-            window.bulkSelected = copy
-        } else {
-            var toggled = {}
-            for (var selectedPath in window.bulkSelected)
-                if (selectedPath !== path && window.bulkSelected[selectedPath])
-                    toggled[selectedPath] = true
-            if (!window.bulkSelected[path])
-                toggled[path] = true
-            window.bulkSelected = toggled
-            window.bulkAnchorIndex = index
-            window.bulkRangeActive = false
-            window.bulkRangeSelecting = true
-            window.bulkRangeBase = ({})
-        }
-        sounds.play("nav_tick")
+        if (bulkSelection.toggle(index, extendRange))
+            sounds.play("nav_tick")
     }
 
     function bulkClear() {
-        window.bulkSelected = ({})
-        window.bulkAnchorIndex = -1
-        window.bulkRangeActive = false
-        window.bulkRangeSelecting = true
-        window.bulkRangeBase = ({})
+        bulkSelection.clear()
     }
 
     function bulkEnter() {
@@ -275,33 +217,11 @@ ApplicationWindow {
     }
 
     function bulkSelectAll() {
-        if (window.bulkAllSelected()) {
-            window.bulkClear()
-            sounds.play("nav_tick")
-            return
-        }
-        var copy = {}
-        for (var i = 0; i < app.gallery.rowCount(); ++i) {
-            var rec = app.gallery.get(i)
-            if (rec.filePath)
-                copy[rec.filePath] = true
-        }
-        window.bulkSelected = copy
-        window.bulkAnchorIndex = -1
-        window.bulkRangeActive = false
-        window.bulkRangeSelecting = true
-        window.bulkRangeBase = ({})
-        sounds.play("favorite")
+        sounds.play(bulkSelection.selectAll() ? "nav_tick" : "favorite")
     }
 
     function bulkRows() {
-        var rows = []
-        for (var i = 0; i < app.gallery.rowCount(); ++i) {
-            var rec = app.gallery.get(i)
-            if (rec.filePath && window.bulkSelected[rec.filePath])
-                rows.push(i)
-        }
-        return rows
+        return bulkSelection.rows()
     }
 
     function bulkAskDelete() {
