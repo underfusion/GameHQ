@@ -1,5 +1,6 @@
 #include "app/App.h"
 #include "app/StartupManager.h"
+#include "config/ConfigKeys.h"
 #include "capture/FramePumpService.h"
 #include "capture/ScreenshotService.h"
 #include "config/CaptureLocations.h"
@@ -45,9 +46,9 @@ bool App::init()
     m_config->load();
     m_locations = std::make_unique<CaptureLocations>(m_config.get());
     m_startup = std::make_unique<StartupManager>();
-    const bool startupEnabled = m_config->value(QStringLiteral("startup.enabled"), false).toBool();
+    const bool startupEnabled = m_config->value(ConfigKeys::StartupEnabled, false).toBool();
     if (!m_startup->setEnabled(startupEnabled) && startupEnabled) {
-        m_config->setValue(QStringLiteral("startup.enabled"), false);
+        m_config->setValue(ConfigKeys::StartupEnabled, false);
         m_config->save();
     }
 
@@ -79,14 +80,14 @@ bool App::init()
     // so the feedback is immediate even though the PNG lands a moment later.
     connect(m_screenshots.get(), &ScreenshotService::grabbed, this,
             [this] {
-                if (m_config->value(QStringLiteral("capture.screenshot_sound"), true).toBool())
+                if (m_config->value(ConfigKeys::CaptureScreenshotSound, true).toBool())
                     m_sounds->play(QStringLiteral("screenshot"));
             });
     connect(m_screenshots.get(), &ScreenshotService::captured, this,
             [this](const QString& path, const QString& game, const QString& exePath) {
                 m_controller->commitCapture(path, QStringLiteral("screenshot"), game, exePath);
-                if (m_config->value(QStringLiteral("notifications.enabled"), true).toBool()
-                    && m_config->value(QStringLiteral("capture.screenshot_notify"), true).toBool()) {
+                if (m_config->value(ConfigKeys::NotificationsEnabled, true).toBool()
+                    && m_config->value(ConfigKeys::CaptureScreenshotNotify, true).toBool()) {
                     const QString when = QDateTime::currentDateTime().toString(QStringLiteral("d MMM yyyy, HH:mm"));
                     m_notify->post(tr("Screenshot saved"), game, path,
                                    QStringLiteral("success"), when, false);
@@ -120,10 +121,10 @@ bool App::init()
             [this](const QString& path, const QString& game, const QString& thumb,
                    const QString& exePath) {
                 m_controller->commitClip(path, game, thumb, exePath);
-                if (m_config->value(QStringLiteral("replay.clip_sound"), true).toBool())
+                if (m_config->value(ConfigKeys::ReplayClipSound, true).toBool())
                     m_sounds->play(QStringLiteral("replay_saved"));
-                if (m_config->value(QStringLiteral("notifications.enabled"), true).toBool()
-                    && m_config->value(QStringLiteral("replay.clip_notify"), true).toBool()) {
+                if (m_config->value(ConfigKeys::NotificationsEnabled, true).toBool()
+                    && m_config->value(ConfigKeys::ReplayClipNotify, true).toBool()) {
                     const QString when = QDateTime::currentDateTime().toString(QStringLiteral("d MMM yyyy, HH:mm"));
                     m_notify->post(tr("Replay saved"), game, thumb,
                                    QStringLiteral("success"), when, true);
@@ -132,7 +133,7 @@ bool App::init()
     connect(m_framePump.get(), &FramePumpService::clipFailed, this,
             [this](const QString& game, const QString& reason) {
                 m_sounds->play(QStringLiteral("error"));
-                if (m_config->value(QStringLiteral("notifications.enabled"), true).toBool()) {
+                if (m_config->value(ConfigKeys::NotificationsEnabled, true).toBool()) {
                     const QString when = QDateTime::currentDateTime().toString(QStringLiteral("d MMM yyyy, HH:mm"));
                     m_notify->post(tr("Replay failed"), reason.isEmpty() ? game : reason,
                                    QString(), QStringLiteral("error"), when, false);

@@ -1,4 +1,5 @@
 #include "config/ConfigManager.h"
+#include "config/ConfigKeys.h"
 
 #include <QFile>
 #include <QJsonDocument>
@@ -15,36 +16,36 @@ ConfigManager::ConfigManager(QString filePath, QObject* parent)
 QJsonObject ConfigManager::defaults()
 {
     return {
-        { "capture.mode",            "only_in_games" },   // only_in_games | whitelist | always
-        { "capture.screenshot_format", "png" },           // png | jpg
-        { "capture.jpeg_quality",    90 },                 // 1-100, only used when format=jpg
-        { "capture.screenshot_sound", true },
-        { "capture.screenshot_notify", true },
-        { "replay.clip_sound",       true },
-        { "replay.clip_notify",      true },
-        { "replay.resolution",       "1920x1080" },
-        { "replay.fps",              30 },
-        { "replay.bitrate_mbps",     14 },
+        { ConfigKeys::CaptureMode,             "only_in_games" }, // only_in_games | whitelist | always
+        { ConfigKeys::CaptureScreenshotFormat, "png" },           // png | jpg
+        { ConfigKeys::CaptureJpegQuality,      90 },              // 1-100, only used when format=jpg
+        { ConfigKeys::CaptureScreenshotSound,  true },
+        { ConfigKeys::CaptureScreenshotNotify, true },
+        { ConfigKeys::ReplayClipSound,         true },
+        { ConfigKeys::ReplayClipNotify,        true },
+        { ConfigKeys::ReplayResolution,        "1920x1080" },
+        { ConfigKeys::ReplayFps,               30 },
+        { ConfigKeys::ReplayBitrateMbps,       14 },
         // Rolling replay-buffer length, in seconds. UI dropdown exposes the
         // allowed set {30,60,180,300,600,900} (30s/1m/3m/5m/10m/15m); default 5 min.
-        { "replay.length_seconds",   300 },
+        { ConfigKeys::ReplayLengthSeconds,     300 },
         // Internal segment granularity for the disk-backed ring (not in the UI).
         // Ring size = ceil(length_seconds / segment_seconds).
-        { "replay.segment_seconds",  5 },
+        { ConfigKeys::ReplaySegmentSeconds,    5 },
         // Always-on recording: auto-arm the replay buffer whenever a game is
         // foreground (per capture.mode). Ctrl+Shift+R toggles this master switch.
-        { "replay.auto",             true },
-        { "input.share_hold_ms",     2000 },
-        { "audio.enabled",           false },
-        { "storage.screenshots_root", "" },
-        { "storage.clips_root",       "" },
-        { "startup.enabled",          false },
-        { "startup.minimized",        false },
-        { "sounds.enabled",          true },
-        { "sounds.volume",           80 },
-        { "tray.close_to_tray",      true },
-        { "tray.minimize_to_tray",   false },
-        { "notifications.enabled",   true },
+        { ConfigKeys::ReplayAuto,              true },
+        { ConfigKeys::InputShareHoldMs,        2000 },
+        { ConfigKeys::AudioEnabled,            false },
+        { ConfigKeys::StorageScreenshotsRoot,  "" },
+        { ConfigKeys::StorageClipsRoot,        "" },
+        { ConfigKeys::StartupEnabled,          false },
+        { ConfigKeys::StartupMinimized,        false },
+        { ConfigKeys::SoundsEnabled,           true },
+        { ConfigKeys::SoundsVolume,            80 },
+        { ConfigKeys::TrayCloseToTray,         true },
+        { ConfigKeys::TrayMinimizeToTray,      false },
+        { ConfigKeys::NotificationsEnabled,    true },
     };
 }
 

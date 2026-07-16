@@ -1,5 +1,6 @@
 #include "input/InputEngine.h"
 
+#include "config/ConfigKeys.h"
 #include "config/ConfigManager.h"
 #include "input/BindingRuntime.h"
 #include "input/BindingEditorModel.h"
@@ -41,10 +42,10 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
     , m_controllerStatus(QStringLiteral("No controller detected"))
 {
     m_runtime->setDefaultHoldMs(
-        m_config->value(QStringLiteral("input.share_hold_ms"), 2000).toInt());
+        m_config->value(ConfigKeys::InputShareHoldMs, 2000).toInt());
     connect(m_config, &ConfigManager::valueChanged, this,
             [this](const QString& key, const QVariant& value) {
-                if (key != QStringLiteral("input.share_hold_ms"))
+                if (key != ConfigKeys::InputShareHoldMs)
                     return;
                 const int threshold = qBound(250, value.toInt(), 10000);
                 m_runtime->setDefaultHoldMs(threshold);

@@ -4,6 +4,19 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.63] - 2026-07-16
+
+### Changed
+
+- Every `config.json` key is now spelled once, in the new
+  `src/config/ConfigKeys.h` registry, and referenced from C++ through a
+  constant instead of a repeated string literal. A mistyped key is now a
+  compile error rather than a silent fall back to the default value. QML keeps
+  using string literals, since it cannot see the constants.
+- The settings "Restore defaults" taxonomy (which config groups each page
+  owns) moved out of `AppController` into `src/config/SettingsCategories.h`,
+  next to the key registry.
+
 ## [0.5.62] - 2026-07-16
 
 ### Changed

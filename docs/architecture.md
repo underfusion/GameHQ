@@ -15,7 +15,7 @@ GameHQ.exe
 |-- input/        InputEngine, DualSenseDevice, XInputDevice, WinMMDevice, HotkeyManager
 |-- games/        GameDetector: foreground process, title resolution, fullscreen heuristic
 |-- storage/      CaptureDatabase, CaptureQueries, CaptureScanner, ThumbnailService, GameIconCache, GameMetadataBackfill, GameRowRepair
-|-- config/       ConfigManager, CaptureLocations, and Paths
+|-- config/       ConfigManager, ConfigKeys, SettingsCategories, CaptureLocations, and Paths
 |-- tray/         TrayIcon and menu
 `-- diagnostics/  Logger
 ```
@@ -29,6 +29,7 @@ GameHQ.exe
 - `overlay` owns window/focus mechanics.
 - `input` decides controller routing between global actions, overlay, and desktop gallery.
 - Settings use an observable configuration facade behind `AppController`; built-in defaults remain separate from persisted user overrides so individual groups can reset safely.
+- C++ spells every `config.json` key through the `ConfigKeys` constants in `config/ConfigKeys.h`, never a raw string, so a typo fails to compile instead of silently falling back to the default. The key list there and `ConfigManager::defaults()` are expected to match. QML keeps using string literals (`app.config("capture.mode")`) — it has no access to the constants. `SettingsCategories` holds the page → config-group taxonomy that each page's "Restore defaults" uses.
 - `CaptureLocations` resolves portable-aware screenshot/clip roots, validates changes, retains prior managed roots for safe rescans, and passes plain path values across worker boundaries.
 - Win32/WinRT code stays in `.cpp` files where possible; headers should remain platform-clean unless the type boundary requires otherwise.
 

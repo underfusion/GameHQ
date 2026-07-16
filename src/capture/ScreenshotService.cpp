@@ -1,6 +1,7 @@
 #include "capture/ScreenshotService.h"
 
 #include "capture/CaptureUtil.h"
+#include "config/ConfigKeys.h"
 #include "config/ConfigManager.h"
 #include "config/CaptureLocations.h"
 #include "core/GameIdentity.h"
@@ -29,7 +30,7 @@ ScreenshotService::ScreenshotService(ConfigManager* config, CaptureLocations* lo
 void ScreenshotService::capture()
 {
     const QString mode = m_config
-        ? m_config->value(QStringLiteral("capture.mode"),
+        ? m_config->value(ConfigKeys::CaptureMode,
                           QStringLiteral("only_in_games")).toString()
         : QStringLiteral("only_in_games");
 
@@ -61,11 +62,11 @@ void ScreenshotService::capture()
     // Read format/quality on the calling thread (ConfigManager is not meant for
     // concurrent access) and hand plain values to the worker.
     const bool jpeg = m_config
-        && m_config->value(QStringLiteral("capture.screenshot_format"), QStringLiteral("png"))
+        && m_config->value(ConfigKeys::CaptureScreenshotFormat, QStringLiteral("png"))
                .toString().compare(QStringLiteral("jpg"), Qt::CaseInsensitive) == 0;
     const QString ext = jpeg ? QStringLiteral(".jpg") : QStringLiteral(".png");
     const int jpegQuality = m_config
-        ? qBound(1, m_config->value(QStringLiteral("capture.jpeg_quality"), 90).toInt(), 100)
+        ? qBound(1, m_config->value(ConfigKeys::CaptureJpegQuality, 90).toInt(), 100)
         : 90;
     qInfo() << "Screenshot: grabbed" << img.width() << "x" << img.height()
             << "in" << grabMs << "ms — encoding in background";

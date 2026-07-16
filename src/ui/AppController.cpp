@@ -1,7 +1,9 @@
 #include "ui/AppController.h"
 #include "app/StartupManager.h"
 #include "config/CaptureLocations.h"
+#include "config/ConfigKeys.h"
 #include "config/ConfigManager.h"
+#include "config/SettingsCategories.h"
 #include "config/Paths.h"
 #include "storage/CaptureDatabase.h"
 #include "storage/CaptureScanner.h"
@@ -39,9 +41,9 @@ bool parseCaptureKind(const QString& value, CaptureLocations::Kind& kind)
 // recording parameter and must re-arm a running buffer to take effect.
 bool isReplayBufferParamKey(const QString& key)
 {
-    if (key == QStringLiteral("replay.clip_sound") || key == QStringLiteral("replay.clip_notify"))
+    if (key == ConfigKeys::ReplayClipSound || key == ConfigKeys::ReplayClipNotify)
         return false;
-    return key.startsWith(QStringLiteral("replay.")) || key == QStringLiteral("audio.enabled");
+    return key.startsWith(QStringLiteral("replay.")) || key == ConfigKeys::AudioEnabled;
 }
 }
 
@@ -101,7 +103,7 @@ QStringList AppController::managedRoots() const
 
 bool AppController::startMinimized() const
 {
-    return m_config->value(QStringLiteral("startup.minimized"), false).toBool();
+    return m_config->value(ConfigKeys::StartupMinimized, false).toBool();
 }
 
 bool AppController::portableMode() const
@@ -188,16 +190,16 @@ QVariant AppController::config(const QString& key, const QVariant& fallback) con
 
 void AppController::setConfig(const QString& key, const QVariant& value)
 {
-    if (key == QStringLiteral("startup.enabled")
+    if (key == ConfigKeys::StartupEnabled
         && !m_startup->setEnabled(value.toBool())) {
         qWarning() << "Startup: setting change was rejected";
         emit configChanged(key, m_config->value(key, false));
         return;
     }
     CaptureLocations::Kind locationKind;
-    if (key == QStringLiteral("storage.screenshots_root")
-        || key == QStringLiteral("storage.clips_root")) {
-        const QString kindValue = key == QStringLiteral("storage.screenshots_root")
+    if (key == ConfigKeys::StorageScreenshotsRoot
+        || key == ConfigKeys::StorageClipsRoot) {
+        const QString kindValue = key == ConfigKeys::StorageScreenshotsRoot
             ? QStringLiteral("screenshots") : QStringLiteral("clips");
         parseCaptureKind(kindValue, locationKind);
         QString error;
@@ -227,15 +229,15 @@ bool AppController::configIsDefault(const QString& key) const
 
 void AppController::resetConfig(const QString& key)
 {
-    if (key == QStringLiteral("startup.enabled") && !m_startup->setEnabled(false)) {
+    if (key == ConfigKeys::StartupEnabled && !m_startup->setEnabled(false)) {
         emit configChanged(key, m_config->value(key, false));
         return;
     }
-    if (key == QStringLiteral("storage.screenshots_root")) {
+    if (key == ConfigKeys::StorageScreenshotsRoot) {
         resetCaptureRoot(QStringLiteral("screenshots"));
         return;
     }
-    if (key == QStringLiteral("storage.clips_root")) {
+    if (key == ConfigKeys::StorageClipsRoot) {
         resetCaptureRoot(QStringLiteral("clips"));
         return;
     }
@@ -275,23 +277,11 @@ void AppController::resetAllConfig()
 
 void AppController::resetCategory(const QString& category)
 {
-    // Each entry lists every config prefix that page actually reads/writes.
-    // Input bindings have their own database-backed restore path. Library has
-    // no config group of its own (watched folders are DB rows). The screenshot/clip
-    // folder pickers live on the Capture page even though the clip root also
-    // feeds Replay, so both single-key resets (not the shared "storage."
-    // group, which would silently affect both) belong to "Capture" here.
-    static const QHash<QString, QStringList> kCategoryGroups = {
-        { QStringLiteral("General"),               { QStringLiteral("startup"), QStringLiteral("tray") } },
-        { QStringLiteral("Capture"),                { QStringLiteral("capture") } },
-        { QStringLiteral("Replay"),                 { QStringLiteral("replay"), QStringLiteral("audio") } },
-        { QStringLiteral("Notifications & Sound"),  { QStringLiteral("sounds"), QStringLiteral("notifications") } },
-    };
-    for (const QString& prefix : kCategoryGroups.value(category))
+    for (const QString& prefix : SettingsCategories::groups().value(category))
         resetConfigGroup(prefix);
-    if (category == QStringLiteral("Capture")) {
-        resetConfig(QStringLiteral("storage.screenshots_root"));
-        resetConfig(QStringLiteral("storage.clips_root"));
+    if (category == SettingsCategories::CaptureCategory) {
+        for (const QString& key : SettingsCategories::captureOnlyKeys())
+            resetConfig(key);
     }
 }
 

@@ -1,5 +1,6 @@
 #include "config/CaptureLocations.h"
 
+#include "config/ConfigKeys.h"
 #include "config/ConfigManager.h"
 #include "config/Paths.h"
 #include "core/GameIdentity.h"
@@ -11,11 +12,11 @@
 
 namespace
 {
-const QString kScreenshotRoot = QStringLiteral("storage.screenshots_root");
-const QString kClipRoot = QStringLiteral("storage.clips_root");
+const QString kScreenshotRoot = ConfigKeys::StorageScreenshotsRoot;
+const QString kClipRoot = ConfigKeys::StorageClipsRoot;
 // Safety metadata, not a user-facing setting. AppController preserves current
 // roots before a reset and ConfigManager keeps internal.* keys during reset-all.
-const QString kRootHistory = QStringLiteral("internal.capture_root_history");
+const QString kRootHistory = ConfigKeys::InternalCaptureRootHistory;
 
 QString comparisonKey(const QString& path)
 {

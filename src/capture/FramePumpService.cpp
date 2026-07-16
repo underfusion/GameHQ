@@ -3,6 +3,7 @@
 #include "capture/wgc_shims.h"
 #include "capture/AudioCapture.h"
 #include "capture/CaptureUtil.h"
+#include "config/ConfigKeys.h"
 #include "capture/SegmentRecorder.h"
 #include "capture/ReplayExporter.h"
 #include "config/CaptureLocations.h"
@@ -650,7 +651,7 @@ FramePumpService::FramePumpService(ConfigManager* config, CaptureLocations* loca
 
     // Always-on auto-arm (replay.auto, default true): a light poll of the foreground
     // window arms the buffer whenever a game is focused — no manual keypress needed.
-    m_autoEnabled = m_config ? m_config->value(QStringLiteral("replay.auto"), true).toBool() : true;
+    m_autoEnabled = m_config ? m_config->value(ConfigKeys::ReplayAuto, true).toBool() : true;
     m_autoTimer = new QTimer(this);
     m_autoTimer->setInterval(1500);
     connect(m_autoTimer, &QTimer::timeout, this, &FramePumpService::autoTick);
@@ -670,7 +671,7 @@ void FramePumpService::saveReplay()
 void FramePumpService::restartBuffer()
 {
     const bool configuredAuto = m_config
-        ? m_config->value(QStringLiteral("replay.auto"), true).toBool() : true;
+        ? m_config->value(ConfigKeys::ReplayAuto, true).toBool() : true;
     const bool autoChanged = configuredAuto != m_autoEnabled;
     m_autoEnabled = configuredAuto;
 
@@ -710,7 +711,7 @@ void FramePumpService::toggle()
     // Ctrl+Shift+R is now the master on/off for always-on recording (persisted).
     m_autoEnabled = !m_autoEnabled;
     if (m_config) {
-        m_config->setValue(QStringLiteral("replay.auto"), m_autoEnabled);
+        m_config->setValue(ConfigKeys::ReplayAuto, m_autoEnabled);
         m_config->save();
     }
     if (m_autoEnabled) {
@@ -726,7 +727,7 @@ void FramePumpService::toggle()
 void FramePumpService::autoTick()
 {
     const QString mode = m_config
-        ? m_config->value(QStringLiteral("capture.mode"), QStringLiteral("only_in_games")).toString()
+        ? m_config->value(ConfigKeys::CaptureMode, QStringLiteral("only_in_games")).toString()
         : QStringLiteral("only_in_games");
     const ForegroundGame g = GameDetector::current();
     const bool isGame = GameDetector::shouldCapture(g, mode);
@@ -752,7 +753,7 @@ void FramePumpService::startBuffer()
     if (m_running)
         return;
     const QString mode = m_config
-        ? m_config->value(QStringLiteral("capture.mode"), QStringLiteral("only_in_games")).toString()
+        ? m_config->value(ConfigKeys::CaptureMode, QStringLiteral("only_in_games")).toString()
         : QStringLiteral("only_in_games");
     const ForegroundGame g = GameDetector::current();
     if (!GameDetector::shouldCapture(g, mode))
@@ -760,17 +761,17 @@ void FramePumpService::startBuffer()
 
     m_running = true;
     m_noGameTicks = 0;
-    const int fps  = m_config ? m_config->value(QStringLiteral("replay.fps"), 30).toInt() : 30;
-    const int mbps = m_config ? m_config->value(QStringLiteral("replay.bitrate_mbps"), 14).toInt() : 14;
-    const int seg  = m_config ? m_config->value(QStringLiteral("replay.segment_seconds"), 5).toInt() : 5;
-    const int len  = m_config ? m_config->value(QStringLiteral("replay.length_seconds"), 300).toInt() : 300;
+    const int fps  = m_config ? m_config->value(ConfigKeys::ReplayFps, 30).toInt() : 30;
+    const int mbps = m_config ? m_config->value(ConfigKeys::ReplayBitrateMbps, 14).toInt() : 14;
+    const int seg  = m_config ? m_config->value(ConfigKeys::ReplaySegmentSeconds, 5).toInt() : 5;
+    const int len  = m_config ? m_config->value(ConfigKeys::ReplayLengthSeconds, 300).toInt() : 300;
     const QSize res = parseResolution(
-        m_config ? m_config->value(QStringLiteral("replay.resolution"),
+        m_config ? m_config->value(ConfigKeys::ReplayResolution,
                                    QStringLiteral("1920x1080")).toString()
                  : QStringLiteral("1920x1080"),
         QSize(1920, 1080));
     const bool audioRequested = m_config
-        ? m_config->value(QStringLiteral("audio.enabled"), false).toBool() : false;
+        ? m_config->value(ConfigKeys::AudioEnabled, false).toBool() : false;
     const bool audioOn = audioRequested;
     const QString gameName = g.gameName.isEmpty() ? QStringLiteral("Unknown Game") : g.gameName;
     const QString executablePath = g.executablePath;
