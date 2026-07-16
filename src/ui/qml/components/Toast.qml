@@ -77,23 +77,10 @@ Item {
 
                 // Same circle+▶ badge as the gallery tiles, so a clip
                 // thumbnail reads as a clip here too.
-                Rectangle {
+                VideoBadge {
                     anchors.centerIn: parent
                     visible: root.isVideo
-                    width: Math.min(thumb.width, thumb.height) * 0.45
-                    height: width
-                    radius: width / 2
-                    color: Theme.badgeFill
-                    border.width: Math.max(2, width * 0.035)
-                    border.color: Theme.badgeBorder
-                    opacity: 0.78
-                    Text {
-                        anchors.centerIn: parent
-                        anchors.horizontalCenterOffset: parent.width * 0.03
-                        text: "▶"
-                        color: Theme.badgeGlyph
-                        font.pixelSize: parent.width * 0.63
-                    }
+                    diameter: Math.min(thumb.width, thumb.height) * 0.45
                 }
             }
 

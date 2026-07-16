@@ -188,23 +188,10 @@ Item {
             layer.enabled: true
         }
 
-        Rectangle {
+        VideoBadge {
             anchors.centerIn: previewFrame
             visible: root.displayedIsVideo && !root.videoFocused
-            width: Math.min(previewFrame.width, previewFrame.height) * 0.16
-            height: width
-            radius: width / 2
-            color: Theme.badgeFill
-            border.width: Math.max(2, width * 0.035)
-            border.color: Theme.badgeBorder
-            opacity: 0.78
-            Text {
-                anchors.centerIn: parent
-                anchors.horizontalCenterOffset: parent.width * 0.03
-                text: "\u25b6"
-                color: Theme.badgeGlyph
-                font.pixelSize: parent.width * 0.63
-            }
+            diameter: Math.min(previewFrame.width, previewFrame.height) * 0.16
         }
     }
 }

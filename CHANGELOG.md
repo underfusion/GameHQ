@@ -4,6 +4,16 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.68] - 2026-07-16
+
+### Changed
+
+- The play marker shown on video thumbnails is now one shared `VideoBadge`
+  component instead of three separate copies of the same drawing in the capture
+  tile, the overlay preview and the toast. The three only ever differed in size,
+  which each caller still sets, so the badge looks exactly as before -- but it
+  can no longer end up looking different in one place after an edit.
+
 ## [0.5.67] - 2026-07-16
 
 ### Changed

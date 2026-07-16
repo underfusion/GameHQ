@@ -78,6 +78,7 @@ qt_add_qml_module(GameHQ
         ui/qml/components/CaptureTile.qml
         ui/qml/components/AccentButton.qml
         ui/qml/components/TileIconButton.qml
+        ui/qml/components/VideoBadge.qml
         ui/qml/components/ConfirmDialog.qml
         ui/qml/components/Toast.qml
         ui/qml/components/Lightbox.qml

@@ -87,23 +87,10 @@ Item {
         }
 
         // Big circular play badge so a video clip clearly reads as a clip.
-        Rectangle {
+        VideoBadge {
             anchors.centerIn: parent
             visible: root.captureType === "video"
-            width: Math.min(card.width, card.height) * 0.32
-            height: width
-            radius: width / 2
-            color: Theme.badgeFill
-            border.width: Math.max(2, width * 0.035)
-            border.color: Theme.badgeBorder
-            opacity: 0.78                                       // slightly transparent overall
-            Text {
-                anchors.centerIn: parent
-                anchors.horizontalCenterOffset: parent.width * 0.03   // glyph's own whitespace sits left, nudge right to visually center
-                text: "▶"
-                color: Theme.badgeGlyph
-                font.pixelSize: parent.width * 0.63                   // ~50% bigger relative to the smaller circle
-            }
+            diameter: Math.min(card.width, card.height) * 0.32
         }
 
         HoverHandler { id: cardHover }
