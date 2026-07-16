@@ -4,6 +4,15 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.57] - 2026-07-16
+
+### Documentation
+
+- Completed a full-codebase technical audit and recorded the Refactor Wave 2
+  execution plan in the internal planning docs (dead-code removal, startup-cost
+  fixes, config key centralization, theme-token cleanup, first automated test
+  target). No code changes.
+
 ## [0.5.56] - 2026-07-15
 
 ### Changed
