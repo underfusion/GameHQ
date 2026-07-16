@@ -105,7 +105,7 @@ bool App::init()
             });
 
     // WGC replay buffer (0.5): records continuously while a game is foreground
-    // (replay.auto, always-on). Ctrl+Shift+R toggles that master switch; Share-hold
+    // (replay.auto, always-on; Settings → Replay is the master switch). Share-hold
     // (or Ctrl+Shift+E) saves the last N seconds as one clip (below).
     m_framePump = std::make_unique<FramePumpService>(m_config.get(), m_locations.get());
     connect(m_framePump.get(), &FramePumpService::failed, this,
@@ -180,8 +180,6 @@ bool App::init()
             m_screenshots.get(), &ScreenshotService::capture);
     connect(m_input.get(), &InputEngine::replayRequested,
             m_framePump.get(), &FramePumpService::saveReplay);
-    connect(m_input.get(), &InputEngine::bufferToggleRequested,
-            m_framePump.get(), &FramePumpService::toggle);
     connect(m_overlay.get(), &OverlayManager::visibleChanged, this, [this] {
         m_input->setOverlayVisible(m_overlay->isVisible());
     });

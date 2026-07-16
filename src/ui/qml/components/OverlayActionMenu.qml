@@ -6,6 +6,10 @@ Item {
 
     property bool open: false
     property int currentIndex: 0
+    // The desktop and the overlay share this menu but do not offer the same
+    // actions — bulk selection is a desktop-only mode — so the caller owns the
+    // list. Index order is the caller's contract with its own confirm handler.
+    property var entries: ["Show in folder", "Delete"]
 
     signal closeRequested()
     signal itemHovered(int index)
@@ -50,7 +54,7 @@ Item {
             }
 
             Repeater {
-                model: ["Show in folder", "Delete"]
+                model: root.entries
                 delegate: Rectangle {
                     width: menuColumn.width
                     height: 40

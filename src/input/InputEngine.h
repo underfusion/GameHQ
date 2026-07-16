@@ -66,7 +66,6 @@ signals:
     // Global actions (0.4/0.5 wire these to real capture; for now sound + log).
     void screenshotRequested();
     void replayRequested();
-    void bufferToggleRequested();
     void overlayToggleRequested();
     // Circle: consumed entirely in QML now (OverlayWindow.qml) — pops the
     // action menu / sidebar focus first, only closes the overlay at the
@@ -90,6 +89,9 @@ signals:
     void desktopFavorite();         // Triangle
     void desktopMenu();             // Square: open/close the per-capture action menu
     void desktopTabStep(int direction);   // L1/R1: switch panel focus (sidebar ↔ grid), -1/+1
+    void desktopSettings();               // Options: open Settings
+    void desktopZoom(int direction);      // L2/R2: thumbnail size, -1/+1
+    void desktopBulkToggle();             // Cross held: enter/leave bulk selection
     void playbackPlayPause();
     void playbackSeek(int direction);
 
@@ -120,7 +122,6 @@ private:
     using Self = InputEngine;
     void handleScreenshot(const QString&)             { emit screenshotRequested(); }
     void handleSaveReplay(const QString&)             { emit replayRequested(); }
-    void handleToggleBuffer(const QString&)           { emit bufferToggleRequested(); }
     void handleToggleOverlay(const QString&)          { emit overlayToggleRequested(); }
     void handleOverlayNavigateLeft(const QString& tc)  { startNavRepeat(tc, -1, [this](int d) { emit overlayNavigate(d); }); }
     void handleOverlayNavigateRight(const QString& tc) { startNavRepeat(tc,  1, [this](int d) { emit overlayNavigate(d); }); }
@@ -143,6 +144,12 @@ private:
     void handleDesktopMenu(const QString&)             { emit desktopMenu(); }
     void handleDesktopTabPrev(const QString&)          { emit desktopTabStep(-1); }
     void handleDesktopTabNext(const QString&)          { emit desktopTabStep(1); }
+    void handleDesktopSettings(const QString&)         { emit desktopSettings(); }
+    // Zoom repeats while the trigger is held, like the nav buttons — holding
+    // R2 should sweep the thumbnails up, not step once per pull.
+    void handleDesktopZoomOut(const QString& tc)       { startNavRepeat(tc, -1, [this](int d) { emit desktopZoom(d); }); }
+    void handleDesktopZoomIn(const QString& tc)        { startNavRepeat(tc,  1, [this](int d) { emit desktopZoom(d); }); }
+    void handleDesktopBulkToggle(const QString&)       { emit desktopBulkToggle(); }
     void handlePlaybackPlayPause(const QString&)       { emit playbackPlayPause(); }
     void handlePlaybackSeekBack(const QString& tc)     { startNavRepeat(tc, -1, [this](int d) { emit playbackSeek(d); }); }
     void handlePlaybackSeekForward(const QString& tc)  { startNavRepeat(tc,  1, [this](int d) { emit playbackSeek(d); }); }

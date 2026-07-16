@@ -77,6 +77,7 @@ qt_add_qml_module(GameHQ
         ui/qml/themes/NordSkin.qml
         ui/qml/themes/DraculaSkin.qml
         ui/qml/themes/GruvboxSkin.qml
+        ui/qml/themes/ObsidianSkin.qml
         ui/qml/components/ThemeBackdrop.qml
         ui/qml/components/BulkSelection.qml
         ui/qml/components/SidebarItem.qml

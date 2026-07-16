@@ -475,7 +475,7 @@ void FramePumpWorker::saveReplayOnWorker(const QString& clipsBaseRoot)
                                   ? QStringLiteral("yes") : QStringLiteral("no"));
 
     if (!m_pipe || !m_pipe->recorder || !m_pipe->recorder->isActive()) {
-        qInfo() << "FramePump: save-replay ignored — buffer not running (arm it with Ctrl+Shift+R)";
+        qInfo() << "FramePump: save-replay ignored — buffer not running (always-on recording is controlled in Settings → Replay)";
         emit clipFailed(QStringLiteral("Replay"), QStringLiteral("Replay buffer is not running"));
         return;
     }
@@ -662,6 +662,26 @@ FramePumpService::FramePumpService(ConfigManager* config, CaptureLocations* loca
 
 void FramePumpService::saveReplay()
 {
+    // A cold buffer holds no past frames, so passing the request through would
+    // only bounce back as "buffer is not running" — the Share-hold then looks
+    // ignored no matter how long it was held. Arm here instead: an explicit
+    // save request outranks replay.auto, so this arms even with always-on off.
+    // The tick is restarted because disabling always-on stops it, and it is
+    // what disarms the buffer once the game leaves the foreground.
+    if (!m_running) {
+        if (m_autoTimer && !m_autoTimer->isActive())
+            m_autoTimer->start();
+        startBuffer();
+        qInfo() << "FramePump: save-replay on a cold buffer —"
+                << (m_running ? "armed now, next hold has footage to save"
+                              : "foreground window is not a game, nothing to arm");
+        emit clipFailed(QStringLiteral("Replay"),
+                        m_running
+                            ? QStringLiteral("Replay buffer was off — recording now, hold again in a few seconds")
+                            : QStringLiteral("Replay buffer is not running"));
+        return;
+    }
+
     const QString clipsBaseRoot = m_locations ? m_locations->clipsBaseRoot()
                                               : Paths::capturesRoot();
     QMetaObject::invokeMethod(m_worker, "saveReplayOnWorker", Qt::QueuedConnection,
@@ -704,24 +724,6 @@ FramePumpService::~FramePumpService()
     m_thread.quit();
     m_thread.wait();
     delete m_worker;
-}
-
-void FramePumpService::toggle()
-{
-    // Ctrl+Shift+R is now the master on/off for always-on recording (persisted).
-    m_autoEnabled = !m_autoEnabled;
-    if (m_config) {
-        m_config->setValue(ConfigKeys::ReplayAuto, m_autoEnabled);
-        m_config->save();
-    }
-    if (m_autoEnabled) {
-        qInfo() << "FramePump: always-on recording ENABLED";
-        if (m_autoTimer) m_autoTimer->start();
-        startBuffer();   // arm immediately if a game is already foreground
-    } else {
-        qInfo() << "FramePump: always-on recording DISABLED";
-        stopBuffer();
-    }
 }
 
 void FramePumpService::autoTick()

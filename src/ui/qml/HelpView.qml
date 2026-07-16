@@ -59,7 +59,6 @@ Item {
                     model: [
                         { binding: "Alt+Shift+G", act: "Open / close overlay" },
                         { binding: "Ctrl+Shift+S", act: "Take screenshot" },
-                        { binding: "Ctrl+Shift+R", act: "Toggle replay buffer on / off" },
                         { binding: "Ctrl+Shift+E", act: "Save last N seconds as clip" },
                         { binding: "Enter",        act: "Open selected capture" },
                         { binding: "Select mode",   act: "Enter / Space toggles, Ctrl+A selects all, Delete removes selected" },
@@ -194,7 +193,7 @@ Item {
 
                 Repeater {
                     model: [
-                        { heading: "Replay buffer",  desc: "Always-on auto-armed. Records in the background while a game is in focus. Hold Share (or Ctrl+Shift+E) to save the last few seconds as a clip. Toggle with Ctrl+Shift+R." },
+                        { heading: "Replay buffer",  desc: "Always-on auto-armed. Records in the background while a game is in focus. Hold Share (or Ctrl+Shift+E) to save the last few seconds as a clip. Turn always-on recording on or off in Settings → Replay." },
                         { heading: "Screenshots",    desc: "GDI grab of the active game window. PNG saved to your captures folder with instant shutter feedback." },
                         { heading: "Gallery",        desc: "All captures in one grid — filter by category or game. Grid navigation works with keyboard, mouse, and controller." },
                         { heading: "Overlay",        desc: "Transparent fullscreen HUD. View and manage captures from inside a game without alt-tabbing. Includes its own gallery grid, lightbox, and toast notifications." },

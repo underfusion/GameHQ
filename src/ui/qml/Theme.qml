@@ -25,6 +25,7 @@ QtObject {
     readonly property Skin nordSkin: NordSkin {}
     readonly property Skin draculaSkin: DraculaSkin {}
     readonly property Skin gruvboxSkin: GruvboxSkin {}
+    readonly property Skin obsidianSkin: ObsidianSkin {}
 
     // config key → skin. Adding a skin means one entry here and one in
     // skinOrder; the Settings picker builds itself from those.
@@ -40,13 +41,14 @@ QtObject {
         "synthwave":     synthwaveSkin,
         "nord":          nordSkin,
         "dracula":       draculaSkin,
-        "gruvbox":       gruvboxSkin
+        "gruvbox":       gruvboxSkin,
+        "obsidian":      obsidianSkin
     })
 
-    // Presentation order in Settings: the three neutrals first, then the
-    // characterful ones. Dark stays first because it is the default.
+    // Presentation order in Settings: the default first, then the neutrals,
+    // then the characterful ones.
     readonly property var skinOrder: [
-        "dark", "light", "high_contrast",
+        "obsidian", "dark", "light", "high_contrast",
         "midnight", "emerald", "harbor", "carbon", "cobalt",
         "synthwave", "nord", "dracula", "gruvbox"
     ]
@@ -57,15 +59,15 @@ QtObject {
 
     // Persisted as `theme.active_skin`. Assigned (not bound) so the Settings
     // combo can flip it live; seeded from config once the engine is up.
-    property string activeSkin: "dark"
+    property string activeSkin: "obsidian"
 
-    // Unknown key → Dark, so a hand-edited config.json cannot leave the app
-    // with no palette at all.
-    readonly property Skin skin: theme.skins[theme.activeSkin] || darkSkin
+    // Unknown key → the default skin, so a hand-edited config.json cannot leave
+    // the app with no palette at all.
+    readonly property Skin skin: theme.skins[theme.activeSkin] || obsidianSkin
 
     Component.onCompleted: {
         if (typeof app !== "undefined" && app)
-            theme.activeSkin = app.config("theme.active_skin", "dark")
+            theme.activeSkin = app.config("theme.active_skin", "obsidian")
     }
 
     // Repaint live when the skin is changed from Settings — every color token

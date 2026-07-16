@@ -33,7 +33,7 @@ QJsonObject ConfigManager::defaults()
         // Ring size = ceil(length_seconds / segment_seconds).
         { ConfigKeys::ReplaySegmentSeconds,    5 },
         // Always-on recording: auto-arm the replay buffer whenever a game is
-        // foreground (per capture.mode). Ctrl+Shift+R toggles this master switch.
+        // foreground (per capture.mode). Settings → Replay is the master switch.
         { ConfigKeys::ReplayAuto,              true },
         { ConfigKeys::InputShareHoldMs,        2000 },
         { ConfigKeys::AudioEnabled,            false },

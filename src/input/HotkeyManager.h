@@ -19,7 +19,6 @@ public:
 
     bool registerOverlayToggle();   // Ctrl+Shift+G -> action "global.toggle_overlay"
     bool registerScreenshot();      // Ctrl+Shift+S -> action "global.screenshot"
-    bool registerFramePump();       // Ctrl+Shift+R -> action "global.toggle_buffer"
     bool registerSaveReplay();      // Ctrl+Shift+E -> action "global.save_replay"
 
     // Result of parseChord(): a validated modifier+key pair, or invalid with
@@ -56,7 +55,6 @@ public:
 signals:
     void overlayTogglePressed();
     void screenshotPressed();
-    void framePumpTogglePressed();
     void saveReplayPressed();
 
     // Generic counterpart to the four signals above, keyed by action id —

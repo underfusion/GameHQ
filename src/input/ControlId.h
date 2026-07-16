@@ -14,6 +14,10 @@ inline const QString FaceNorth      = QStringLiteral("gamepad.face_north");
 inline const QString FaceWest       = QStringLiteral("gamepad.face_west");
 inline const QString ShoulderLeft   = QStringLiteral("gamepad.shoulder_left");
 inline const QString ShoulderRight  = QStringLiteral("gamepad.shoulder_right");
+// Triggers are treated as buttons, not axes: every action bound to them here is
+// a discrete step (zoom in/out), so a pressed/released edge is all we need.
+inline const QString TriggerLeft    = QStringLiteral("gamepad.trigger_left");
+inline const QString TriggerRight   = QStringLiteral("gamepad.trigger_right");
 inline const QString DpadUp         = QStringLiteral("gamepad.dpad_up");
 inline const QString DpadDown       = QStringLiteral("gamepad.dpad_down");
 inline const QString DpadLeft       = QStringLiteral("gamepad.dpad_left");

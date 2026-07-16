@@ -4,6 +4,116 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.91] - 2026-07-17
+
+### Fixed
+
+- The highlighted row in a Settings dropdown no longer paints its square
+  corners over the popup's rounded ones. The list's `clip` only ever clipped
+  to a plain bounding box, so the top and bottom rows overflowed the corner
+  radius; the list is now masked to the popup's rounded shape.
+
+## [0.5.90] - 2026-07-17
+
+### Fixed
+
+- A Share-hold (or `Ctrl+Shift+E`) made while the replay buffer was off now
+  arms the buffer instead of only reporting "Replay buffer is not running".
+  The gesture itself always fired on time; with nothing recording there was
+  no footage to save, so the hold looked ignored and invited ever longer
+  presses. The first hold now starts recording and says so, the next one
+  saves a real clip.
+
+## [0.5.89] - 2026-07-17
+
+### Removed
+
+- The `Ctrl+Shift+R` replay-buffer toggle hotkey. Always-on recording is
+  enabled by default and its only control is now the switch in
+  Settings → Replay — a stray key press can no longer silently persist
+  recording off, which made replay saves fail with "Replay buffer is not
+  running" while screenshots kept working.
+
+## [0.5.88] - 2026-07-17
+
+### Fixed
+
+- The GameHQ logo at the bottom of the overlay sidebar now lines up with the
+  icons of the entries above it, instead of sitting slightly further left.
+
+## [0.5.87] - 2026-07-17
+
+### Added
+
+- The tray menu now has monochrome icons — a grid for Open Gallery, a circular
+  arrow for Rescan, a camera for Take Screenshot, a clip for Save Replay, and a
+  power mark for Exit. They are drawn from the menu's own palette rather than
+  bundled as images, so they follow the Windows light/dark setting, and the
+  labels no longer float beside an empty icon column.
+
+## [0.5.86] - 2026-07-16
+
+### Added
+
+- **Options** opens Settings from anywhere in the gallery.
+- **L2 / R2** shrink and grow the gallery thumbnails, repeating while held.
+  The triggers are new bindable controls (L2/R2 on PlayStation, LT/RT on Xbox,
+  ZL/ZR on Nintendo) — they were not addressable before.
+- **Hold Cross** for a second enters bulk selection; **Square → Bulk select**
+  does the same from the action menu.
+
+### Changed
+
+- Cross now confirms on tap-release rather than on press, so that holding it
+  can mean something else. A quick tap behaves as before.
+
+## [0.5.85] - 2026-07-16
+
+### Fixed
+
+- A focused Settings dropdown showed no highlight, so pad users could not tell
+  where focus was and the control read as unreachable. Its border only lit on
+  press or while open — never on focus, unlike every other settings control.
+
+### Changed
+
+- The PS5 theme is now called **Obsidian** and is the default theme.
+
+## [0.5.84] - 2026-07-16
+
+### Changed
+
+- Settings now reads as three panels on a controller — sidebar │ categories │
+  options. Left/Right moves between the panels; Up/Down moves inside the
+  focused one and can no longer wander out of it. Cross flips a toggle or opens
+  a dropdown; inside a dropdown Up/Down moves the highlight, Cross commits, and
+  Circle backs out without changing the setting. Circle unwinds one step at a
+  time: dropdown → options → categories → sidebar → out of Settings.
+  Previously Left/Right switched category and Up/Down walked the raw focus
+  chain straight across panel boundaries.
+
+## [0.5.83] - 2026-07-16
+
+### Changed
+
+- The PS5 theme was too blue: its surfaces read as navy where the console's are
+  near-black and almost neutral, and its backdrop bloom was a saturated
+  blue/violet wash rather than the faint cool glow the real dashboard uses.
+  Surfaces are now near-black with a slight cool cast, the bloom drops from 0.5
+  to 0.2, and the violet orb is replaced by a cool teal.
+
+## [0.5.82] - 2026-07-16
+
+### Added
+
+- New **PS5** theme, modeled on the PlayStation 5 dashboard: a near-black cool
+  navy lit by a soft blue-violet bloom, pure white type, and generous spacing.
+  The accents are Sony's published brand colors — PlayStation Blue (#003791) and
+  X Blue (#0070D1) for the accent ramp, Triangle Green for success, Circle Pink
+  for danger (circle is cancel/back on PlayStation), and Square Purple tinting
+  the backdrop bloom. Type is Segoe UI, the closest match on Windows to Sony's
+  proprietary SST.
+
 ## [0.5.81] - 2026-07-16
 
 ### Fixed

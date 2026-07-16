@@ -52,7 +52,6 @@ QVector<BindingResolver::Binding> BindingResolver::defaultBindings(int captureHo
     return {
         k("global.toggle_overlay", 1, "Ctrl+Shift+G"),
         k("global.screenshot", 1, "Ctrl+Shift+S"),
-        k("global.toggle_buffer", 1, "Ctrl+Shift+R"),
         k("global.save_replay", 1, "Ctrl+Shift+E"),
 
         k("overlay.navigate_up", 1, "Up"),
@@ -116,12 +115,27 @@ QVector<BindingResolver::Binding> BindingResolver::defaultBindings(int captureHo
         c("desktop.navigate_down", 1, DpadDown),
         c("desktop.navigate_left", 1, DpadLeft),
         c("desktop.navigate_right", 1, DpadRight),
-        c("desktop.confirm", 1, FaceSouth),
+        // Cross is tap, not press: it shares the button with the bulk-select
+        // hold below, and the runtime only suppresses a tap when a hold has
+        // already fired. On "press" both would fire on a long press — opening
+        // the capture *and* entering bulk mode. Same shape as Share's
+        // screenshot-tap / save-replay-hold pair above.
+        c("desktop.confirm", 1, FaceSouth, "tap"),
         c("desktop.back", 1, FaceEast),
         c("desktop.favorite", 1, FaceNorth),
         c("desktop.menu", 1, FaceWest),
         c("desktop.tab_prev", 1, ShoulderLeft),
         c("desktop.tab_next", 1, ShoulderRight),
+        // Options opens Settings: in Desktop scope that button was unbound
+        // (its only binding is overlay.sidebar_toggle, a different scope).
+        c("desktop.settings", 1, Menu),
+        c("desktop.zoom_out", 1, TriggerLeft),
+        c("desktop.zoom_in", 1, TriggerRight),
+        // Hold Cross for a second to enter bulk selection. Cross keeps its
+        // press binding (desktop.confirm) — the runtime only fires the hold
+        // once the button has been down that long, so a normal tap still opens
+        // the capture.
+        c("desktop.bulk_toggle", 1, FaceSouth, "hold", 1000),
 
         c("playback.play_pause", 1, FaceSouth),
         c("playback.seek_back", 1, DpadLeft),

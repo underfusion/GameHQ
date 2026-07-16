@@ -438,6 +438,10 @@ void DualSenseDevice::parseReport(void* handle, DeviceState& st,
     if (b0 & 0x80) set(Triangle);
     if (b1 & 0x01) set(L1);
     if (b1 & 0x02) set(R1);
+    // The triggers also report a digital edge here alongside their analog axis;
+    // that edge is all this app binds, so the axis is left unread.
+    if (b1 & 0x04) set(L2);
+    if (b1 & 0x08) set(R2);
     if (b1 & 0x10) set(Share);      // "Create" button
     if (b1 & 0x20) set(Options);
     if (b2 & 0x01) set(PS);

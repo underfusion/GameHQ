@@ -80,8 +80,8 @@ Share down → start timer. Released before threshold → screenshot. Still held
 
 ## 8. Custom Bindings
 
-Bindable inputs: keyboard shortcuts, controller buttons/holds/combos (mouse later). Actions: screenshot, save replay, toggle overlay, pause/resume/toggle buffer, favorite, delete, open, open-in-folder, copy file/image, fullscreen viewer, play/pause, seek ±.
-Keyboard fallback defaults: `Ctrl+Shift+S` screenshot · `Ctrl+Shift+R` replay · `Ctrl+Shift+G` overlay.
+Bindable inputs: keyboard shortcuts, controller buttons/holds/combos (mouse later). Actions: screenshot, save replay, toggle overlay, favorite, delete, open, open-in-folder, copy file/image, fullscreen viewer, play/pause, seek ±. The replay buffer has no hotkey: it is always-on by default, with the master switch in Settings → Replay.
+Keyboard fallback defaults: `Ctrl+Shift+S` screenshot · `Ctrl+Shift+E` save replay · `Ctrl+Shift+G` overlay.
 
 ## 9. UI Sounds
 

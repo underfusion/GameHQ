@@ -26,6 +26,12 @@ quint32 mapButtons(const XINPUT_GAMEPAD& pad)
     if (pad.wButtons & XINPUT_GAMEPAD_X) set(Gamepad::Square);
     if (pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) set(Gamepad::L1);
     if (pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) set(Gamepad::R1);
+    // XInput reports the triggers as 0..255 analog, with no digital edge, so
+    // they are thresholded into buttons here — every action bound to a trigger
+    // is a discrete step. XINPUT_GAMEPAD_TRIGGER_THRESHOLD (30) is Microsoft's
+    // own "pressed" floor.
+    if (pad.bLeftTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD) set(Gamepad::L2);
+    if (pad.bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD) set(Gamepad::R2);
     if (pad.wButtons & XINPUT_GAMEPAD_DPAD_UP) set(Gamepad::DpadUp);
     if (pad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) set(Gamepad::DpadDown);
     if (pad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT) set(Gamepad::DpadLeft);

@@ -47,4 +47,4 @@ In the main app gallery, Select mode uses the standard batch-action mapping: **C
 
 ## Keyboard fallback (global hotkeys, `RegisterHotKey`)
 
-`Ctrl+Shift+S` screenshot · `Ctrl+Shift+R` save replay · `Ctrl+Shift+G` overlay toggle.
+`Ctrl+Shift+S` screenshot · `Ctrl+Shift+E` save replay · `Ctrl+Shift+G` overlay toggle. The replay buffer itself has no hotkey — it auto-arms while a game is focused (`replay.auto`, Settings → Replay).

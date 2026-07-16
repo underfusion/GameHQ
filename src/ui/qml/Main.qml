@@ -223,6 +223,28 @@ ApplicationWindow {
         grid.forceActiveFocus()
     }
 
+    // Settings from a button rather than the sidebar row: same end state the
+    // sidebar produces, minus the sidebar cursor.
+    function openSettings() {
+        if (window.settingsOpen)
+            return
+        if (window.bulkMode)
+            window.bulkExit()
+        window.menuOpen = false
+        window.helpOpen = false
+        window.settingsOpen = true
+        window.sidebarFocused = false
+        sounds.play("nav_tick")
+    }
+
+    function padBulkToggle() {
+        if (window.bulkMode)
+            window.bulkExit()
+        else
+            window.bulkEnter()
+        sounds.play("nav_tick")
+    }
+
     function bulkSelectAll() {
         sounds.play(bulkSelection.selectAll() ? "nav_tick" : "favorite")
     }
@@ -335,8 +357,22 @@ ApplicationWindow {
     }
 
     function padNavigate(direction) {
+        // Settings is three panels — sidebar │ categories │ options — and
+        // Left/Right walks between them. Right off the sidebar enters the
+        // categories; Left past the categories returns to the sidebar.
         if (window.settingsOpen) {
-            settingsView.padCategoryStep(direction)
+            if (window.sidebarFocused) {
+                if (direction > 0) {
+                    window.sidebarFocused = false
+                    settingsView.enterPanel(settingsView.panelCategories)
+                }
+                return
+            }
+            if (!settingsView.padPanelStep(direction)) {
+                window.sidebarFocused = true
+                window.refreshSidebarHoverIndex()
+                sounds.play("nav_tick")
+            }
             return
         }
         if (window.menuOpen || window.helpOpen)
@@ -375,7 +411,11 @@ ApplicationWindow {
 
     function padNavigateVertical(direction) {
         if (window.settingsOpen) {
-            settingsView.padFocusStep(direction)
+            // Up/Down moves inside whichever panel is focused, never across.
+            if (window.sidebarFocused)
+                window.sidebarStepVertical(direction)
+            else
+                settingsView.padFocusStep(direction)
             return
         }
         if (window.helpOpen)
@@ -383,7 +423,8 @@ ApplicationWindow {
         if (deleteDialog.visible || bulkDeleteDialog.visible)
             return
         if (window.menuOpen) {
-            window.menuIndex = (window.menuIndex + direction + 2) % 2
+            const menuCount = padMenu.entries.length
+            window.menuIndex = (window.menuIndex + direction + menuCount) % menuCount
             sounds.play("nav_tick")
         } else if (window.sidebarFocused) {
             window.sidebarStepVertical(direction)
@@ -414,7 +455,12 @@ ApplicationWindow {
         if (deleteDialog.visible) { deleteDialog.confirmed(); deleteDialog.close(); return }
         if (bulkDeleteDialog.visible) { window.bulkConfirmDelete(); bulkDeleteDialog.close(); return }
         if (window.settingsOpen) {
-            settingsView.padConfirm()
+            // On the sidebar, Cross still activates the sidebar row (it is the
+            // app's nav, not a settings control).
+            if (window.sidebarFocused)
+                window.activateSidebarRow(window.sidebarHoverIndex)
+            else
+                settingsView.padConfirm()
             return
         }
         if (window.helpOpen)
@@ -463,11 +509,17 @@ ApplicationWindow {
     }
 
     function padMenuConfirm() {
+        // Index order mirrors padMenu.entries.
         if (window.menuIndex === 0) {
             app.showInFolder(grid.currentIndex)
-        } else {
+        } else if (window.menuIndex === 1) {
             const rec = app.gallery.get(grid.currentIndex)
             window.askDelete(grid.currentIndex, rec.gameName, rec.dateText)
+        } else {
+            window.menuOpen = false
+            window.bulkEnter()
+            sounds.play("confirm")
+            return
         }
         sounds.play("confirm")
         window.menuOpen = false
@@ -477,7 +529,17 @@ ApplicationWindow {
         if (deleteDialog.visible) { deleteDialog.canceled(); deleteDialog.close(); return }
         if (bulkDeleteDialog.visible) { bulkDeleteDialog.canceled(); bulkDeleteDialog.close(); return }
         if (window.settingsOpen) {
+            // Circle unwinds one step at a time: dropdown → options →
+            // categories → sidebar → out of Settings entirely.
+            if (!window.sidebarFocused && settingsView.padBack())
+                return
+            if (!window.sidebarFocused) {
+                window.sidebarFocused = true
+                window.refreshSidebarHoverIndex()
+                return
+            }
             window.settingsOpen = false
+            window.sidebarFocused = false
             grid.forceActiveFocus()
         } else if (window.bulkMode) {
             window.bulkExit()
@@ -542,6 +604,27 @@ ApplicationWindow {
             window.padTabStep(direction)
         }
         function onDesktopBack() { window.usingGamepad = true; window.padBack() }
+        function onDesktopSettings() {
+            window.usingGamepad = true
+            if (lightbox.visible)
+                return
+            window.openSettings()
+        }
+        function onDesktopZoom(direction) {
+            window.usingGamepad = true
+            if (lightbox.visible || window.settingsOpen || window.helpOpen)
+                return
+            if (direction > 0)
+                window.zoomIn()
+            else
+                window.zoomOut()
+        }
+        function onDesktopBulkToggle() {
+            window.usingGamepad = true
+            if (lightbox.visible || window.settingsOpen || window.helpOpen)
+                return
+            window.padBulkToggle()
+        }
         function onPlaybackPlayPause() {
             if (lightbox.visible)
                 lightbox.toggleVideoPlayback()
@@ -721,6 +804,9 @@ ApplicationWindow {
     // equivalent that doesn't require hovering.
     OverlayActionMenu {
         id: padMenu
+        // Bulk select is desktop-only, so it is added here rather than in the
+        // shared component. padMenuConfirm() maps these by index.
+        entries: ["Show in folder", "Delete", "Bulk select"]
         open: window.menuOpen
         currentIndex: window.menuIndex
         onCloseRequested: window.menuOpen = false

@@ -8,7 +8,8 @@ class QTimer;
 
 // Milestone 0.5, Step 3 — Windows Graphics Capture frame pump (log-only, no encode).
 //
-// Toggled by Ctrl+Shift+R. On start it captures the current foreground game window
+// Auto-armed while a game is foreground (replay.auto, master switch in
+// Settings → Replay). On start it captures the current foreground game window
 // (gated by capture.mode, same as the screenshot path) via a free-threaded WGC
 // Direct3D11CaptureFramePool, polls TryGetNextFrame on a ~16 ms timer, reads each
 // frame's ID3D11Texture2D description and logs size/format + a per-second fps count.
@@ -70,7 +71,6 @@ public:
     ~FramePumpService() override;
 
 public slots:
-    void toggle();                   // Ctrl+Shift+R: master on/off for always-on recording
     void saveReplay();               // Share-hold: save the last N seconds as one clip
     // Replay settings changed (fps/resolution/length): disarm a running
     // buffer so the auto-arm tick re-arms it with the new parameters.

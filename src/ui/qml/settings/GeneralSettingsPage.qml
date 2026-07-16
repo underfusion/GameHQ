@@ -21,7 +21,7 @@ SettingsPage {
             }
             SettingsCombo {
                 configKey: "theme.active_skin"
-                defaultValue: "dark"
+                defaultValue: "obsidian"
                 options: Theme.availableSkins.map(function (s) {
                     return { label: s.label, value: s.key }
                 })

@@ -25,6 +25,8 @@ QString label(const QString& code, ControllerFamily family)
         if (code == FaceWest)      return QStringLiteral("Square");
         if (code == ShoulderLeft)  return QStringLiteral("L1");
         if (code == ShoulderRight) return QStringLiteral("R1");
+        if (code == TriggerLeft)   return QStringLiteral("L2");
+        if (code == TriggerRight)  return QStringLiteral("R2");
         if (code == Menu)          return QStringLiteral("Options");
         if (code == Guide)         return QStringLiteral("PS");
         if (code == Capture)       return QStringLiteral("Share");
@@ -36,6 +38,8 @@ QString label(const QString& code, ControllerFamily family)
         if (code == FaceWest)      return QStringLiteral("X");
         if (code == ShoulderLeft)  return QStringLiteral("LB");
         if (code == ShoulderRight) return QStringLiteral("RB");
+        if (code == TriggerLeft)   return QStringLiteral("LT");
+        if (code == TriggerRight)  return QStringLiteral("RT");
         if (code == Menu)          return QStringLiteral("Menu");
         if (code == Guide)         return QStringLiteral("Guide");
         if (code == Capture)       return QStringLiteral("View");
@@ -48,6 +52,8 @@ QString label(const QString& code, ControllerFamily family)
         if (code == FaceWest)      return QStringLiteral("Y");
         if (code == ShoulderLeft)  return QStringLiteral("L");
         if (code == ShoulderRight) return QStringLiteral("R");
+        if (code == TriggerLeft)   return QStringLiteral("ZL");
+        if (code == TriggerRight)  return QStringLiteral("ZR");
         if (code == Menu)          return QStringLiteral("+");
         if (code == Guide)         return QStringLiteral("Home");
         if (code == Capture)       return QStringLiteral("Capture");
@@ -62,6 +68,8 @@ QString label(const QString& code, ControllerFamily family)
     if (code == FaceWest)      return QStringLiteral("West Button");
     if (code == ShoulderLeft)  return QStringLiteral("L1");
     if (code == ShoulderRight) return QStringLiteral("R1");
+    if (code == TriggerLeft)   return QStringLiteral("L2");
+    if (code == TriggerRight)  return QStringLiteral("R2");
     if (code == DpadUp)        return QStringLiteral("D-Up");
     if (code == DpadDown)      return QStringLiteral("D-Down");
     if (code == DpadLeft)      return QStringLiteral("D-Left");
