@@ -27,8 +27,28 @@ bool isShellProcess(const QString& exeLower)
         QStringLiteral("dwm.exe"),
         QStringLiteral("lockapp.exe"),
         QStringLiteral("gamehq.exe"),   // never screenshot ourselves / the overlay
+        // The Snipping Tool's screen-clip layer covers the whole monitor, so the
+        // fullscreen test below took it for a game and armed the replay buffer on
+        // the desktop (observed 2026-07-17).
+        QStringLiteral("snippingtool.exe"),
+        QStringLiteral("screenclippinghost.exe"),
+        QStringLiteral("screensketch.exe"),
     };
     return kShell.contains(exeLower);
+}
+
+// Overlay surfaces: fullscreen, but never a game — the class fix behind the
+// per-process list above, which only ever catches the names we already know.
+//
+// A game's own render window cannot carry these. A flip-model D3D swapchain
+// cannot present to a WS_EX_LAYERED window (layered windows go through DWM
+// redirection), and no game's main window is click-through, a tool palette, or
+// refuses activation. Overlays and HUDs are exactly what these mark.
+bool isOverlayWindow(HWND hwnd)
+{
+    const LONG_PTR ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+    return (ex & WS_EX_LAYERED) || (ex & WS_EX_TRANSPARENT)
+        || (ex & WS_EX_TOOLWINDOW) || (ex & WS_EX_NOACTIVATE);
 }
 
 // Generic executable base names shared by many games (mostly Unreal Engine
@@ -343,7 +363,9 @@ ForegroundGame GameDetector::current()
     }
 
     g.isExcludedProcess = isShellProcess(g.processName.toLower());
-    g.isGame = g.isFullscreen && !g.isExcludedProcess;
+    // "Covers the monitor" alone is not a game: it also matches every overlay,
+    // which is how the replay buffer ended up recording the desktop.
+    g.isGame = g.isFullscreen && !g.isExcludedProcess && !isOverlayWindow(hwnd);
     return g;
 }
 

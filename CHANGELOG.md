@@ -4,6 +4,18 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.92] - 2026-07-17
+
+### Fixed
+
+- The replay buffer no longer arms on fullscreen windows that are not games.
+  A game was detected as "covers the monitor and is not a known shell
+  process", which also matches every overlay — the Snipping Tool's screen-clip
+  layer armed the buffer and recorded the desktop. Overlay windows are now
+  rejected by their extended styles (layered, click-through, tool window, or
+  no-activate), none of which a game's render window can carry, and the
+  Snipping Tool's processes joined the shell blocklist.
+
 ## [0.5.91] - 2026-07-17
 
 ### Fixed
