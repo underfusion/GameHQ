@@ -20,7 +20,6 @@
 #include "Brand.h"
 
 #include <QDateTime>
-#include <QFile>
 #include <QGuiApplication>
 #include <QQmlContext>
 #include <QQuickWindow>
@@ -52,14 +51,7 @@ bool App::init()
         m_config->save();
     }
 
-    const QString databasePath = Paths::dataDir() + QStringLiteral("/gamehq.db");
-    for (const QString& legacyName : {QStringLiteral("saveplay.db"),
-                                      QStringLiteral("playhq.db")}) {
-        const QString legacyPath = Paths::dataDir() + QLatin1Char('/') + legacyName;
-        if (!QFile::exists(databasePath) && QFile::exists(legacyPath))
-            QFile::rename(legacyPath, databasePath);
-    }
-    m_db = std::make_unique<CaptureDatabase>(databasePath);
+    m_db = std::make_unique<CaptureDatabase>(Paths::databasePath());
     if (!m_db->open()) {
         qCritical() << "Failed to open database — aborting startup";
         return false;
@@ -72,6 +64,14 @@ bool App::init()
     m_controller = std::make_unique<AppController>(m_db.get(), m_scanner.get(),
                                                    m_gallery.get(), m_overlayGallery.get(),
                                                    m_config.get(), m_locations.get(), m_startup.get());
+
+    // Ordering contract for everything below: the service lambdas capture `this`
+    // and dereference members that are constructed further down (m_sounds at the
+    // SoundEngine block, m_notify at the NotificationCenter block). That is safe
+    // only because nothing here emits before init() returns — the first capture
+    // needs the pad/hotkeys, which m_input->start() arms last. Keep it that way:
+    // if a service ever fires a signal from its own constructor, construct
+    // m_sounds/m_notify before the connect that uses them.
 
     // Screenshot capture (0.4): GDI grab of the foreground game → DB/gallery.
     m_screenshots = std::make_unique<ScreenshotService>(m_config.get(),

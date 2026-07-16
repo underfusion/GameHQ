@@ -9,6 +9,7 @@ qt_add_executable(GameHQ
     capture/SegmentRecorder.cpp capture/SegmentRecorder.h
     capture/ReplayExporter.cpp capture/ReplayExporter.h
     config/Paths.cpp       config/Paths.h
+    config/LegacyMigration.cpp config/LegacyMigration.h
     config/ConfigManager.cpp config/ConfigManager.h
     config/CaptureLocations.cpp config/CaptureLocations.h
     core/GameIdentity.cpp core/GameIdentity.h

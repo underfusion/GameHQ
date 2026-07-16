@@ -10,6 +10,7 @@ namespace Paths
     bool isPortable();
 
     QString dataDir();        // config.json, gamehq.db
+    QString databasePath();   // gamehq.db, adopting a legacy-named DB if present
     QString logsDir();
     QString thumbnailsDir();
     QString gameIconsDir();

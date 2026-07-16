@@ -4,6 +4,17 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.65] - 2026-07-16
+
+### Changed
+
+- The compatibility shims that adopt data from the app's former names (SavePlay,
+  PlayHQ) now live in one place, a new `LegacyMigration` helper, instead of being
+  spread between `Paths` and an inline block in `App::init`. The database
+  hand-over is reached through the new `Paths::databasePath()`. Migration
+  behavior is unchanged: legacy folders and a legacy database are still adopted
+  on first start, and capture media is still never moved.
+
 ## [0.5.64] - 2026-07-16
 
 ### Changed
