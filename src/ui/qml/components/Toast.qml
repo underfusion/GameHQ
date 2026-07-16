@@ -83,15 +83,15 @@ Item {
                     width: Math.min(thumb.width, thumb.height) * 0.45
                     height: width
                     radius: width / 2
-                    color: Qt.rgba(0, 0, 0, 0.40)
+                    color: Theme.badgeFill
                     border.width: Math.max(2, width * 0.035)
-                    border.color: Qt.rgba(1, 1, 1, 0.9)
+                    border.color: Theme.badgeBorder
                     opacity: 0.78
                     Text {
                         anchors.centerIn: parent
                         anchors.horizontalCenterOffset: parent.width * 0.03
                         text: "▶"
-                        color: Qt.rgba(1, 1, 1, 0.95)
+                        color: Theme.badgeGlyph
                         font.pixelSize: parent.width * 0.63
                     }
                 }

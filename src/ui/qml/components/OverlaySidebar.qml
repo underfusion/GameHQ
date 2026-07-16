@@ -38,7 +38,7 @@ Rectangle {
             color: Theme.textFaint
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontCaption
-            font.letterSpacing: 1
+            font.letterSpacing: Theme.letterSpacingWide
             topPadding: Theme.s16
             leftPadding: Theme.s8
         }

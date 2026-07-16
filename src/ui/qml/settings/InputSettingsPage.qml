@@ -109,7 +109,7 @@ SettingsPage {
                     color: Theme.textFaint
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontCaption
-                    font.letterSpacing: 1
+                    font.letterSpacing: Theme.letterSpacingWide
                     Layout.preferredWidth: modelData.width
                 }
             }

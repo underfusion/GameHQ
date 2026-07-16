@@ -4,6 +4,18 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.67] - 2026-07-16
+
+### Changed
+
+- The visual values that were still written directly into individual QML
+  components -- the video play badge, the thumbnail icon buttons, the player's
+  play/pause pulse, the tinted Delete/Done buttons, row hover, two font sizes
+  and the all-caps letter spacing -- now come from named `Theme` tokens like
+  every other value. Each literal was mapped to a token of exactly the same
+  value, so nothing changes visually; the point is that these values can now be
+  changed in one place.
+
 ## [0.5.66] - 2026-07-16
 
 ### Changed

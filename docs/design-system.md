@@ -24,6 +24,19 @@ Modern, minimalist, **PS5-inspired**: dark, spacious, content-first. The capture
 | `danger` | `#FF5D73` | destructive actions, record dot |
 | `success` | `#4ADE80` | confirmations |
 | `warning` | `#FFC24D` | warnings |
+| `textOnAccent` | `#FFFFFF` | text/icons on the accent gradient (never `onAccent` — QML reads `on…` as a signal handler) |
+| `highlight` | `#FFFFFF` | white wash for hover/press feedback; the caller owns the opacity |
+| `hoverTint` | `#FFFFFF` @ 3 % | hover fill for rows with no surface of their own |
+| `badgeFill` | black @ 40 % | video play-badge circle |
+| `badgeBorder` | `#FFFFFF` @ 90 % | video play-badge outline |
+| `badgeGlyph` | `#FFFFFF` @ 95 % | video play-badge ▶ |
+| `tileButtonIdle` | black @ 55 % | circular icon button over a thumbnail |
+| `tileButtonHover` | black @ 80 % | same, hovered |
+| `pulseFill` | black @ 46 % | player's centered play/pause pulse |
+| `dangerQuietTop` / `dangerQuietBottom` / `dangerQuietBorder` | `#301B28` / `#21141E` / `danger` @ 45 % | quiet AccentButton tinted destructive |
+| `successQuietTop` / `successQuietBottom` / `successQuietBorder` | `#173328` / `#11251E` / `success` @ 45 % | quiet AccentButton tinted confirm |
+
+The badge and tile-button tokens are deliberately neutral black/white rather than palette hues: they sit on arbitrary video frames and must stay legible against any content.
 
 Rules: one accent family only — never introduce new hues for decoration. Gradient (`accent1→accent2`, 135°) is reserved for: primary buttons, active selection fills, progress, and brand marks. Backgrounds are always the `bg1→bg0` vertical gradient, never flat black.
 
@@ -33,13 +46,14 @@ Font: **Segoe UI Variable Display**, fallback Segoe UI (system-native, ships wit
 
 | Token | Size / weight | Use |
 |---|---|---|
+| `fontHero` | 48 px | oversized decorative glyph in empty states |
 | `fontDisplay` | 32 px / Light | screen titles (PS5-style thin headers) |
 | `fontTitle` | 22 px / DemiBold | section titles, dialog headers |
 | `fontH3` | 16 px / DemiBold | card titles, sidebar group labels |
 | `fontBody` | 14 px / Regular | default text |
 | `fontCaption` | 12 px / Regular | metadata, timestamps, hints |
 
-Rules: big numbers/headers are Light, never Bold. No ALL-CAPS except tiny group labels (letter-spacing +1). Line height ≥ 1.4 for body.
+Rules: big numbers/headers are Light, never Bold. No ALL-CAPS except tiny group labels (`letterSpacingWide`, +1). Line height ≥ 1.4 for body.
 
 ## 3. Spacing, radius, elevation
 

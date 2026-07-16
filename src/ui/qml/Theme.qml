@@ -30,13 +30,52 @@ QtObject {
     // dark surface tone instead of looking washed out.
     readonly property color panelTint:  Qt.rgba(0.0902, 0.1216, 0.2392, 0.82)
 
+    // Foreground on the accent gradient — stays white on every accent tint,
+    // so it is its own token rather than a `text` variant. NOT named `onAccent`:
+    // QML would parse that as a signal handler for the `accent` property above
+    // and refuse to load the singleton.
+    readonly property color textOnAccent: "#FFFFFF"
+    // White wash laid over a control for hover/press feedback; the opacity is
+    // the caller's, the color is always this.
+    readonly property color highlight:  "#FFFFFF"
+    // Faint hover fill for list rows that have no surface of their own.
+    readonly property color hoverTint:  Qt.rgba(1, 1, 1, 0.03)
+
+    // Video play badge — the circular ▶ marker drawn over a video thumbnail
+    // (capture tile, overlay preview, toast). Reads on any frame, so it is
+    // deliberately independent of the surface palette.
+    readonly property color badgeFill:   Qt.rgba(0, 0, 0, 0.40)
+    readonly property color badgeBorder: Qt.rgba(1, 1, 1, 0.9)
+    readonly property color badgeGlyph:  Qt.rgba(1, 1, 1, 0.95)
+
+    // Circular icon button floating over a thumbnail — darker than the badge
+    // so its glyph stays legible without a border.
+    readonly property color tileButtonIdle:  Qt.rgba(0, 0, 0, 0.55)
+    readonly property color tileButtonHover: Qt.rgba(0, 0, 0, 0.8)
+
+    // Player's centered play/pause pulse.
+    readonly property color pulseFill: Qt.rgba(0, 0, 0, 0.46)
+
+    // Quiet (low-emphasis) AccentButton tinted to a semantic color: a muted
+    // gradient pair plus a resting border derived from the same hue. Only the
+    // danger and success variants exist because only those are used.
+    readonly property color dangerQuietBorder:  Qt.rgba(1.0, 0.36, 0.45, 0.45)
+    readonly property color dangerQuietTop:     "#301B28"
+    readonly property color dangerQuietBottom:  "#21141E"
+    readonly property color successQuietBorder: Qt.rgba(0.29, 0.87, 0.50, 0.45)
+    readonly property color successQuietTop:    "#173328"
+    readonly property color successQuietBottom: "#11251E"
+
     // Typography
     readonly property string fontFamily: "Segoe UI Variable Display"
+    readonly property int fontHero:    48   // oversized glyph in empty states
     readonly property int fontDisplay: 32   // weight Light
     readonly property int fontTitle:   22   // weight DemiBold
     readonly property int fontH3:      16   // weight DemiBold
     readonly property int fontBody:    14
     readonly property int fontCaption: 12
+    // Tracking for the all-caps section labels.
+    readonly property real letterSpacingWide: 1
 
     // Spacing (4-base scale)
     readonly property int s4:  4

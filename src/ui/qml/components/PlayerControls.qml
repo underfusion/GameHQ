@@ -88,7 +88,7 @@ Item {
         width: Math.min(parent.width, parent.height) * 0.18
         height: width
         radius: width / 2
-        color: Qt.rgba(0, 0, 0, 0.46)
+        color: Theme.pulseFill
         border.width: Math.max(1, Math.round(Theme.s4 / 2))
         border.color: Theme.borderLight
         opacity: 0

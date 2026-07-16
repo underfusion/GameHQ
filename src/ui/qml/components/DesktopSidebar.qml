@@ -79,7 +79,7 @@ Rectangle {
             color: Theme.textFaint
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontCaption
-            font.letterSpacing: 1
+            font.letterSpacing: Theme.letterSpacingWide
             Layout.margins: Theme.s8
             Layout.topMargin: Theme.s16
         }

@@ -39,7 +39,7 @@ Item {
             color: Theme.textFaint
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontCaption
-            font.letterSpacing: 1
+            font.letterSpacing: Theme.letterSpacingWide
         }
         Rectangle {
             Layout.fillWidth: true
@@ -107,7 +107,7 @@ Item {
             color: Theme.textFaint
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontCaption
-            font.letterSpacing: 1
+            font.letterSpacing: Theme.letterSpacingWide
         }
         Rectangle {
             Layout.fillWidth: true
@@ -176,7 +176,7 @@ Item {
             color: Theme.textFaint
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontCaption
-            font.letterSpacing: 1
+            font.letterSpacing: Theme.letterSpacingWide
         }
         Rectangle {
             Layout.fillWidth: true

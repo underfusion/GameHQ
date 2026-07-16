@@ -18,7 +18,7 @@ Rectangle {
     width: diameter
     height: diameter
     radius: diameter / 2
-    color: mouse.containsMouse ? Qt.rgba(0, 0, 0, 0.8) : Qt.rgba(0, 0, 0, 0.55)
+    color: mouse.containsMouse ? Theme.tileButtonHover : Theme.tileButtonIdle
     border.width: 1
     border.color: Theme.stroke
 

@@ -15,7 +15,7 @@ ColumnLayout {
         color: Theme.textFaint
         font.family: Theme.fontFamily
         font.pixelSize: Theme.fontCaption
-        font.letterSpacing: 1
+        font.letterSpacing: Theme.letterSpacingWide
     }
     Text {
         visible: root.description.length > 0

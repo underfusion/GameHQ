@@ -53,9 +53,9 @@ RowLayout {
             iconColor: Theme.danger
             labelColor: Theme.danger
             borderColor: Theme.danger
-            quietIdleBorderColor: Qt.rgba(1.0, 0.36, 0.45, 0.45)
-            quietTopColor: "#301B28"
-            quietBottomColor: "#21141E"
+            quietIdleBorderColor: Theme.dangerQuietBorder
+            quietTopColor: Theme.dangerQuietTop
+            quietBottomColor: Theme.dangerQuietBottom
             label: "Delete"
             opacity: root.bulkCount === 0 ? 0.45 : 1.0
             enabled: root.bulkCount > 0
@@ -66,9 +66,9 @@ RowLayout {
             quiet: true
             icon: "\u2713"
             borderColor: Theme.success
-            quietIdleBorderColor: Qt.rgba(0.29, 0.87, 0.50, 0.45)
-            quietTopColor: "#173328"
-            quietBottomColor: "#11251E"
+            quietIdleBorderColor: Theme.successQuietBorder
+            quietTopColor: Theme.successQuietTop
+            quietBottomColor: Theme.successQuietBottom
             label: "Done"
             onClicked: root.bulkExitRequested()
         }
