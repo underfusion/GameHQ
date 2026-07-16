@@ -166,8 +166,19 @@ bool CaptureDatabase::migrate()
             update.exec();
         }
     }
-    GameRowRepair::normalizeDuplicateNames(m_db);
-    GameMetadataBackfill::run(m_db);
+    // The remaining repairs are heavy one-time passes: a full O(n²) duplicate
+    // display-name scan and a full gamehq.log rescan. Gate both behind a
+    // completion sentinel so they run once after an upgrade, then skip forever.
+    // The sentinel is written inside this same repair transaction, so it only
+    // sticks if the repairs themselves commit.
+    if (!repairsV1Done()) {
+        qInfo() << "DB: running one-time game-row/metadata repairs (repairs_v1)";
+        GameRowRepair::normalizeDuplicateNames(m_db);
+        GameMetadataBackfill::run(m_db);
+        markRepairsV1Done();
+    } else {
+        qInfo() << "DB: one-time game-row/metadata repairs already done, skipping (repairs_v1)";
+    }
     if (repairTx && !m_db.commit()) {
         qWarning() << "DB: repair transaction commit failed:" << m_db.lastError().text();
         m_db.rollback();
@@ -511,6 +522,25 @@ bool CaptureDatabase::ensureGameMetadataColumns()
         qInfo() << "DB: added games." << c.name;
     }
     return true;
+}
+
+bool CaptureDatabase::repairsV1Done() const
+{
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral("SELECT value FROM settings WHERE key = :k"));
+    q.bindValue(QStringLiteral(":k"), QStringLiteral("internal.repairs_v1_done"));
+    return q.exec() && q.next() && q.value(0).toString() == QLatin1String("1");
+}
+
+void CaptureDatabase::markRepairsV1Done()
+{
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral(
+        "INSERT INTO settings (key, value) VALUES (:k, '1') "
+        "ON CONFLICT(key) DO UPDATE SET value = '1'"));
+    q.bindValue(QStringLiteral(":k"), QStringLiteral("internal.repairs_v1_done"));
+    if (!q.exec())
+        qWarning() << "DB: could not record repairs_v1 sentinel:" << q.lastError().text();
 }
 
 int CaptureDatabase::findOrCreateGame(const QString& displayName, const QString& executablePath)

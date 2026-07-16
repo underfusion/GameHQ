@@ -4,6 +4,17 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.61] - 2026-07-16
+
+### Changed
+
+- The two heavy one-time startup repairs — the O(n²) duplicate display-name
+  collapse and the full `gamehq.log` metadata rescan — are now gated behind a
+  completion sentinel (`internal.repairs_v1_done` in the `settings` table).
+  They run once after an upgrade and are skipped on every subsequent launch,
+  cutting startup cost. The sentinel is written inside the same repair
+  transaction, so it only sticks if the repairs commit successfully.
+
 ## [0.5.60] - 2026-07-16
 
 ### Fixed

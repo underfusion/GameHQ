@@ -107,6 +107,8 @@ private:
     bool applyV2();
     bool applyV3();
     bool ensureGameMetadataColumns();
+    bool repairsV1Done() const;
+    void markRepairsV1Done();
     int findOrCreateGame(const QString& displayName, const QString& executablePath = QString());
     void updateGameExecutable(int gameId, const QString& executablePath);
 
