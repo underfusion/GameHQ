@@ -90,13 +90,9 @@ Window {
         // instant-feedback feel as Left/Right on the strip.
         function selectSidebarEntryAt(idx, playSound) {
             if (idx < content.categories.length) {
-                const category = content.categories[idx].key
-                if (category === "game")
-                    overlayGallery.setFilter("all", app.currentGameId)
-                else if (category === "game_favorites")
-                    overlayGallery.setFilter("favorites", app.currentGameId)
-                else
-                    overlayGallery.setFilter(category, -1)
+                const f = SidebarCategories.resolveFilter(content.categories[idx].key,
+                                                          app.currentGameId)
+                overlayGallery.setFilter(f.category, f.gameId)
             } else {
                 const game = app.games[idx - content.categories.length]
                 if (!game)

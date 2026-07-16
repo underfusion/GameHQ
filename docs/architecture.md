@@ -86,7 +86,7 @@ The desktop gallery entry point remains `src/ui/qml/Main.qml`, but presentationa
 - `components/OverlayActionMenu.qml` is shared by the overlay and desktop pad action menu.
 - `SettingsView.qml` owns the settings category rail while focused page files under `ui/qml/settings/` own General, Capture, Replay, Input, Library, Feedback, and Advanced content.
 - Shared settings page, section, row, toggle, category, and combo controls live under `ui/qml/components/` and update from `AppController::configChanged`.
-- `helpers/SidebarCategories.js` owns shared desktop/overlay category definitions.
+- `helpers/SidebarCategories.js` owns shared desktop/overlay category definitions (`categories()`) and the key→filter mapping behind them (`resolveFilter()`). Every sidebar — desktop mouse click, desktop pad nav, overlay pad nav — resolves a row through it and then applies the result on its own surface: the desktop via `AppController::setGameCategory`, the overlay via its gallery's `setFilter`. Both land on `GalleryModel::setFilter` with the same pair. Do not re-implement the `game` / `game_favorites` special cases in a sidebar.
 
 `Main.qml` still owns top-level desktop state, dialogs, and navigation helper functions; `DesktopGalleryGrid.qml` keeps the existing grid API exposed back to that owner.
 

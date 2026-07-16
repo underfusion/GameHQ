@@ -344,14 +344,11 @@ ApplicationWindow {
     function activateSidebarRow(i) {
         const catCount = window.sidebarCategories.length
         const gameCount = app.games.length
-            if (i < catCount) {
-                window.settingsOpen = false; window.helpOpen = false
-                if (window.sidebarCategories[i].key === "game")
-                    app.setGame(app.currentGameId)
-                else if (window.sidebarCategories[i].key === "game_favorites")
-                    app.setGameCategory("favorites", app.currentGameId)
-                else
-                    app.setCategory(window.sidebarCategories[i].key)
+        if (i < catCount) {
+            window.settingsOpen = false; window.helpOpen = false
+            const f = SidebarCategories.resolveFilter(window.sidebarCategories[i].key,
+                                                      app.currentGameId)
+            app.setGameCategory(f.category, f.gameId)
         } else if (i < catCount + gameCount) {
             window.settingsOpen = false; window.helpOpen = false
             app.setGame(app.games[i - catCount].id)

@@ -4,6 +4,17 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.69] - 2026-07-16
+
+### Changed
+
+- Picking a sidebar category now runs through one shared rule instead of three
+  separate copies of it (desktop mouse click, desktop controller navigation, and
+  the overlay). The `Game` and `Game Favourites` rows are the only special
+  cases, and they are now described in exactly one place, so the three sidebars
+  can no longer disagree about what a row means. Every row filters exactly as
+  before.
+
 ## [0.5.68] - 2026-07-16
 
 ### Changed
