@@ -31,7 +31,6 @@ private:
     // instead of querying per file and keeps it current as it inserts.
     int scanFolder(const QString& root, const QString& source,
                    QHash<QString, CaptureIndexEntry>& index);
-    QString inferGameName(const QString& root, const QString& filePath) const;
 
     CaptureDatabase* m_db;
     CaptureLocations* m_locations;

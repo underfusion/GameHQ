@@ -4,6 +4,23 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.71] - 2026-07-16
+
+### Added
+
+- The project has its first automated tests: 51 checks covering game-name
+  handling, the settings file (defaults, overrides, resetting, and preserving
+  keys written by a future version), and the rule that picks the better of two
+  duplicate game names. They are opt-in (`-DGAMEHQ_BUILD_TESTS=ON`), cover pure
+  logic only -- no recording, no controller, no database -- and run in under a
+  second. The command is documented in `docs/dev-setup.md`.
+
+### Changed
+
+- Working out which game a capture belongs to from its folder now lives next to
+  the rest of the game-name logic, and uses the same "Unknown Game" fallback as
+  everything else instead of its own copy of the text.
+
 ## [0.5.70] - 2026-07-16
 
 ### Changed

@@ -1,5 +1,8 @@
 #include "core/GameIdentity.h"
 
+#include <QDir>
+#include <QStringList>
+
 namespace
 {
 constexpr auto kFallbackName = "Unknown Game";
@@ -32,5 +35,20 @@ bool hasFolderForbiddenChar(const QString& name)
             return true;
     }
     return false;
+}
+
+QString inferFromPath(const QString& root, const QString& filePath)
+{
+    const QDir rootDir(root);
+    const QString relative = rootDir.relativeFilePath(filePath);
+    const QStringList parts = relative.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+
+    // "<Game>/Screenshots/file.png" or "<Game>/Clips/file.mp4"
+    if (parts.size() >= 3)
+        return parts.first();
+    // "<Game>/file.png"
+    if (parts.size() == 2)
+        return parts.first();
+    return QString::fromLatin1(kFallbackName);
 }
 }

@@ -2,6 +2,7 @@
 #include "storage/CaptureDatabase.h"
 #include "storage/ThumbnailService.h"
 #include "config/CaptureLocations.h"
+#include "core/GameIdentity.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -77,7 +78,7 @@ int CaptureScanner::scanFolder(const QString& root, const QString& source,
             continue;
         }
 
-        const QString game = inferGameName(root, path);
+        const QString game = GameIdentity::inferFromPath(root, path);
         const QString createdAt =
             info.birthTime().isValid() ? info.birthTime().toUTC().toString(Qt::ISODate)
                                        : info.lastModified().toUTC().toString(Qt::ISODate);
@@ -96,17 +97,3 @@ int CaptureScanner::scanFolder(const QString& root, const QString& source,
     return added;
 }
 
-QString CaptureScanner::inferGameName(const QString& root, const QString& filePath) const
-{
-    const QDir rootDir(root);
-    const QString relative = rootDir.relativeFilePath(filePath);
-    const QStringList parts = relative.split(QLatin1Char('/'), Qt::SkipEmptyParts);
-
-    // "<Game>/Screenshots/file.png" or "<Game>/Clips/file.mp4"
-    if (parts.size() >= 3)
-        return parts.first();
-    // "<Game>/file.png"
-    if (parts.size() == 2)
-        return parts.first();
-    return QStringLiteral("Unknown Game");
-}

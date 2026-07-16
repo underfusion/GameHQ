@@ -57,6 +57,41 @@ Portable dev data lands in `build/gamehq-data/` and captures in
 `build/Captures/` (see [storage.md](storage.md)). Package structure and release
 assembly are documented in [packaging.md](packaging.md).
 
+## Tests
+
+Automated tests are opt-in, so a normal build and `start.bat` are unaffected.
+Configure once with the flag on, then build and run:
+
+```sh
+tools/cmake/bin/cmake.exe -S . -B out -DGAMEHQ_BUILD_TESTS=ON
+tools/cmake/bin/cmake.exe --build out
+tools/cmake/bin/ctest.exe --test-dir out --output-on-failure
+```
+
+`ctest` needs the Qt runtime on `PATH`. In Git Bash use POSIX paths — a
+`I:/...`-style entry is not translated and every test dies with
+`0xc0000135` (DLL not found):
+
+```sh
+export PATH="/i/PROJECTS/Apps/GameHQ/tools/Qt/6.8.3/mingw_64/bin:/i/PROJECTS/Apps/GameHQ/tools/Qt/Tools/mingw1310_64/bin:$PATH"
+```
+
+Test exes land in `out/` and can be run directly (`./out/tst_gameidentity.exe`).
+Their console output is not always captured when run from a tool-driven shell;
+`-o file,txt` writes the full per-test report regardless:
+
+```sh
+./out/tst_gameidentity.exe -o results.txt,txt
+```
+
+Scope is **pure logic only** — no database, no GUI, no game process:
+`tst_gameidentity` (folder names, identity keys, path→game inference),
+`tst_configmanager` (defaults vs overrides, reset, save/reload, forward
+compatibility) and `tst_gamerowrepair` (duplicate display-name preference).
+Each test compiles the few sources it needs directly, since `GameHQ` is an
+executable with no library to link against. If a unit needs half the app to
+build, it is not pure logic and does not belong here.
+
 ## MSVC note
 
 The production project currently uses the MinGW raw-ABI path for Windows
