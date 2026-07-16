@@ -7,8 +7,18 @@ SettingsPage {
         title: "Appearance"
         description: "Choose the color scheme " + Brand.name + " uses. The change applies immediately."
         SettingsRow {
+            id: themeRow
             label: "Theme"
-            description: "High contrast trades the tinted palette for maximum legibility."
+            // Track the picker rather than the live skin: this should describe
+            // what is selected in the combo, which is the same thing, but the
+            // intent is the selection, not whatever is currently painting.
+            description: {
+                const match = Theme.availableSkins.filter(function (s) {
+                    return s.key === Theme.activeSkin
+                })
+                return match.length ? match[0].blurb
+                                    : "Choose how " + Brand.name + " looks."
+            }
             SettingsCombo {
                 configKey: "theme.active_skin"
                 defaultValue: "dark"

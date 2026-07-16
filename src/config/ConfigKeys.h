@@ -50,7 +50,7 @@ inline constexpr QLatin1StringView NotificationsEnabled{ "notifications.enabled"
 
 // theme.* — appearance. Read by the QML Theme singleton, which resolves an
 // unknown value back to "dark" rather than leaving the app unpainted.
-inline constexpr QLatin1StringView ThemeActiveSkin{ "theme.active_skin" };  // dark | light | high_contrast
+inline constexpr QLatin1StringView ThemeActiveSkin{ "theme.active_skin" };  // see Theme.skinOrder (QML) for the full set; default dark
 
 // internal.* — safety metadata, never shown in the UI and deliberately absent
 // from ConfigManager::defaults(). ConfigManager preserves internal.* across a

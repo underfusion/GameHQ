@@ -25,7 +25,14 @@ ApplicationWindow {
     minimumWidth: 1024
     minimumHeight: 640
     title: Brand.name
+    // ThemeBackdrop paints the window; this stays as the fill behind it so a
+    // resize never flashes the default white.
     color: Theme.bg0
+
+    ThemeBackdrop {
+        anchors.fill: parent
+        z: -1
+    }
 
     // Debounce timer for geometry persistence (avoid writing config.json on
     // every pixel of a drag). Fires 500ms after the last resize/move.

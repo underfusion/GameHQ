@@ -13,25 +13,55 @@ QtObject {
     id: theme
 
     // ───────────────────────── Skin selection ─────────────────────────
-    readonly property var availableSkins: [
-        { key: "dark",          label: darkSkin.label },
-        { key: "light",         label: lightSkin.label },
-        { key: "high_contrast", label: highContrastSkin.label }
+    readonly property Skin darkSkin: DarkSkin {}
+    readonly property Skin lightSkin: LightSkin {}
+    readonly property Skin highContrastSkin: HighContrastSkin {}
+    readonly property Skin midnightSkin: MidnightSkin {}
+    readonly property Skin emeraldSkin: EmeraldSkin {}
+    readonly property Skin harborSkin: HarborSkin {}
+    readonly property Skin carbonSkin: CarbonSkin {}
+    readonly property Skin cobaltSkin: CobaltSkin {}
+    readonly property Skin synthwaveSkin: SynthwaveSkin {}
+    readonly property Skin nordSkin: NordSkin {}
+    readonly property Skin draculaSkin: DraculaSkin {}
+    readonly property Skin gruvboxSkin: GruvboxSkin {}
+
+    // config key → skin. Adding a skin means one entry here and one in
+    // skinOrder; the Settings picker builds itself from those.
+    readonly property var skins: ({
+        "dark":          darkSkin,
+        "light":         lightSkin,
+        "high_contrast": highContrastSkin,
+        "midnight":      midnightSkin,
+        "emerald":       emeraldSkin,
+        "harbor":        harborSkin,
+        "carbon":        carbonSkin,
+        "cobalt":        cobaltSkin,
+        "synthwave":     synthwaveSkin,
+        "nord":          nordSkin,
+        "dracula":       draculaSkin,
+        "gruvbox":       gruvboxSkin
+    })
+
+    // Presentation order in Settings: the three neutrals first, then the
+    // characterful ones. Dark stays first because it is the default.
+    readonly property var skinOrder: [
+        "dark", "light", "high_contrast",
+        "midnight", "emerald", "harbor", "carbon", "cobalt",
+        "synthwave", "nord", "dracula", "gruvbox"
     ]
+
+    readonly property var availableSkins: theme.skinOrder.map(function (key) {
+        return { key: key, label: theme.skins[key].label, blurb: theme.skins[key].blurb }
+    })
 
     // Persisted as `theme.active_skin`. Assigned (not bound) so the Settings
     // combo can flip it live; seeded from config once the engine is up.
     property string activeSkin: "dark"
 
-    readonly property Skin darkSkin: DarkSkin {}
-    readonly property Skin lightSkin: LightSkin {}
-    readonly property Skin highContrastSkin: HighContrastSkin {}
-
     // Unknown key → Dark, so a hand-edited config.json cannot leave the app
     // with no palette at all.
-    readonly property Skin skin: theme.activeSkin === "light" ? lightSkin
-        : theme.activeSkin === "high_contrast" ? highContrastSkin
-        : darkSkin
+    readonly property Skin skin: theme.skins[theme.activeSkin] || darkSkin
 
     Component.onCompleted: {
         if (typeof app !== "undefined" && app)
@@ -109,18 +139,41 @@ QtObject {
     readonly property color successQuietTop:    skin.successQuietTop
     readonly property color successQuietBottom: skin.successQuietBottom
 
-    // ── Everything below is fixed across skins: layout and behavior. ──
+    // ───────────────────────── Style tokens ─────────────────────────
+    // Skinnable, like the colors: these carry a skin's character as much as its
+    // palette does — machined vs pill-soft, snappy vs cinematic.
+    readonly property string fontFamily: skin.fontFamily
+    readonly property real letterSpacingWide: skin.letterSpacingWide
 
-    // Typography
-    readonly property string fontFamily: "Segoe UI Variable Display"
+    readonly property int radiusS: skin.radiusS
+    readonly property int radiusM: skin.radiusM
+    readonly property int radiusL: skin.radiusL
+    readonly property int radiusPill: 999   // a pill is a pill in every skin
+    readonly property int borderWidth: skin.borderWidth
+
+    readonly property int durFast:   skin.durFast
+    readonly property int durNormal: skin.durNormal
+    readonly property int durSlow:   skin.durSlow
+    readonly property real focusScale: skin.focusScale
+
+    // Backdrop treatment — consumed by components/ThemeBackdrop.qml.
+    readonly property string backdropStyle: skin.backdropStyle
+    readonly property color backdropTop:    skin.backdropTop
+    readonly property color backdropBottom: skin.backdropBottom
+    readonly property color washA: skin.washA
+    readonly property color washB: skin.washB
+    readonly property real glowStrength: skin.glowStrength
+
+    // ── Everything below is fixed across skins: layout, not style. ──
+    // Sizes stay put because a skin must restyle the app, not re-lay-it-out.
+
+    // Typography sizes
     readonly property int fontHero:    48   // oversized glyph in empty states
     readonly property int fontDisplay: 32   // weight Light
     readonly property int fontTitle:   22   // weight DemiBold
     readonly property int fontH3:      16   // weight DemiBold
     readonly property int fontBody:    14
     readonly property int fontCaption: 12
-    // Tracking for the all-caps section labels.
-    readonly property real letterSpacingWide: 1
 
     // Spacing (4-base scale)
     readonly property int s4:  4
@@ -137,16 +190,4 @@ QtObject {
     readonly property int playerSeekStepMs: 2000
     readonly property int playerHudHoldMs: 1600
     readonly property int playerControlsAutoHideMs: 5000
-
-    // Radius
-    readonly property int radiusS: 8
-    readonly property int radiusM: 12
-    readonly property int radiusL: 16
-    readonly property int radiusPill: 999
-
-    // Motion
-    readonly property int durFast:   140
-    readonly property int durNormal: 220
-    readonly property int durSlow:   320
-    readonly property real focusScale: 1.04
 }

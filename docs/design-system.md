@@ -8,24 +8,44 @@ Modern, minimalist, **PS5-inspired**: dark, spacious, content-first. The capture
 
 ## 0. Skins
 
-Colors resolve through the **active skin**; everything else in `Theme.qml`
-(typography, spacing, radii, motion, player timings) is fixed across skins. That
-split is deliberate: a skin recolors the app, it does not re-lay-it-out.
+**Style** resolves through the active skin; **layout** does not. That line is the
+whole design:
 
-- `themes/Skin.qml` declares the whole color surface with the **Dark values as
-  defaults**. `DarkSkin` overrides nothing, `LightSkin` and `HighContrastSkin`
-  override only what differs — so a token a skin forgets falls back to Dark
-  instead of resolving to an invalid color. Add a token here first, then bind it
-  in `Theme.qml`.
-- `Theme.activeSkin` is seeded from `theme.active_skin` (`dark` | `light` |
-  `high_contrast`) and re-assigned on `AppController::configChanged`, which
-  re-evaluates every color binding — that is what makes the switch live. An
-  unknown value resolves to Dark.
+| Skinnable (style) | Fixed (layout) |
+|---|---|
+| colors, `fontFamily`, `letterSpacingWide`, `radiusS/M/L`, `borderWidth`, `durFast/Normal/Slow`, `focusScale`, backdrop + `glowStrength` | spacing scale (`s4`…`s48`), font **sizes**, player control sizes, `radiusPill` |
+
+A skin restyles the app; it must never re-lay-it-out. If a token would move
+things rather than restyle them, it stays fixed — nothing should shift under the
+user when they switch skin.
+
+- `themes/Skin.qml` declares the whole skinnable surface with the **Dark values
+  as defaults**. `DarkSkin` overrides nothing; every other skin overrides only
+  what differs — so a token a skin forgets falls back to Dark instead of
+  resolving to an invalid value. Add a token here first, then bind it in
+  `Theme.qml`.
+- `Theme.skins` maps config key → skin and `Theme.skinOrder` fixes the order
+  Settings shows. Adding a skin = one file + one entry in each; the picker builds
+  itself from `Theme.availableSkins` (label + blurb).
+- `Theme.activeSkin` is seeded from `theme.active_skin` and re-assigned on
+  `AppController::configChanged`, which re-evaluates every binding above — that
+  is what makes the switch live, with no reload path. An unknown value resolves
+  to Dark.
+- `components/ThemeBackdrop.qml` renders `backdropStyle`: `flat` (single fill —
+  exactly the original look), `gradient`, `wash` (blurred accent orbs via
+  `MultiEffect`), `scanlines` (drawn once to a `Canvas`, not a Repeater). It is
+  decorative and never takes input.
+- Scrims and the chrome drawn over video frames (badge, tile buttons, player
+  pulse) stay dark in **every** skin: they sit over the user's captures, not over
+  app surfaces, and must read against arbitrary imagery.
 - **Never name a token `on<Existing>`** (e.g. `onAccent` next to `accent`): QML
   parses it as a signal handler and refuses to load the singleton, taking the
   whole UI down. It is `textOnAccent` for exactly this reason.
 - Components are unaffected by all of this — every token name is unchanged, and
   nothing outside `Theme.qml`/`themes/` knows skins exist. Keep it that way.
+
+Shipped skins: Dark (default), Light, High contrast, Midnight, Emerald, Harbor,
+Carbon, Cobalt, Synthwave, Nord, Dracula, Gruvbox.
 
 Values in the table below are the **Dark** (default) skin's.
 

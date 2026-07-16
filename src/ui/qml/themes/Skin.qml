@@ -1,20 +1,25 @@
 import QtQuick
 
-// Base for every skin: declares the full color surface with the Dark values as
-// defaults. A skin overrides only what it changes, so a token a skin forgets
-// falls back to Dark rather than resolving to an invalid color.
+// Base for every skin: declares the full skinnable surface with the Dark values
+// as defaults. A skin overrides only what it changes, so a token a skin forgets
+// falls back to Dark rather than resolving to an invalid value.
 //
-// Only COLORS live here. Sizes, fonts, spacing, radii and durations are layout
-// and behavior, not palette — they stay fixed in Theme.qml across every skin.
+// WHAT IS SKINNABLE: style — color, font family, roundness, border weight,
+// motion, glow, backdrop treatment.
+// WHAT IS NOT: layout — spacing steps, font sizes, control sizes. A skin
+// restyles the app; it must not re-lay-it-out. Those stay in Theme.qml.
 //
-// Adding a token: declare it here first, then in Theme.qml. Never name one
-// `onAccent` (or any `on<Existing>`) — QML parses that as a signal handler for
-// the matching property and refuses to load. See docs/design-system.md.
+// Adding a token: declare it here first, then bind it in Theme.qml. Never name
+// one `on<Existing>` (e.g. `onAccent` beside `accent`) — QML parses that as a
+// signal handler and refuses to load the singleton, taking the whole UI down.
+// See docs/design-system.md §0.
 QtObject {
-    // Display name shown in Settings.
+    // ── Identity ──────────────────────────────────────────────────
     property string label: "Dark"
+    // One line, shown under the Settings picker.
+    property string blurb: "The original palette."
 
-    // Surfaces
+    // ── Surfaces ──────────────────────────────────────────────────
     property color bg0:        "#0B0F20"
     property color bg1:        "#131A33"
     property color surface:    "#171F3D"
@@ -23,18 +28,18 @@ QtObject {
     property color borderLight: Qt.rgba(1, 1, 1, 0.22)
     property color panelTint:  Qt.rgba(0.0902, 0.1216, 0.2392, 0.82)
 
-    // Brand accents
+    // ── Brand accents ─────────────────────────────────────────────
     property color accent1: "#8B6BFF"
     property color accent2: "#3FA9FF"
     property color accent:  "#6D8DFF"
 
-    // Text
+    // ── Text ──────────────────────────────────────────────────────
     property color text:      "#E8EAF0"
     property color textMuted: "#8B93A7"
     property color textFaint: "#5A6378"
     property color textOnAccent: "#FFFFFF"
 
-    // Semantic
+    // ── Semantic ──────────────────────────────────────────────────
     property color danger:  "#FF5D73"
     property color success: "#4ADE80"
     property color warning: "#FFC24D"
@@ -59,11 +64,49 @@ QtObject {
     property color tileButtonHover: Qt.rgba(0, 0, 0, 0.8)
     property color pulseFill: Qt.rgba(0, 0, 0, 0.46)
 
-    // Quiet AccentButton variants
+    // ── Quiet AccentButton variants ───────────────────────────────
     property color dangerQuietBorder:  Qt.rgba(1.0, 0.36, 0.45, 0.45)
     property color dangerQuietTop:     "#301B28"
     property color dangerQuietBottom:  "#21141E"
     property color successQuietBorder: Qt.rgba(0.29, 0.87, 0.50, 0.45)
     property color successQuietTop:    "#173328"
     property color successQuietBottom: "#11251E"
+
+    // ── Typography ────────────────────────────────────────────────
+    // Family only. Sizes are layout and stay fixed. A missing family falls back
+    // through Qt's font matching, so naming one that is not installed degrades
+    // to the system default rather than failing.
+    property string fontFamily: "Segoe UI Variable Display"
+    property real letterSpacingWide: 1
+
+    // ── Shape ─────────────────────────────────────────────────────
+    // Roundness is a skin's loudest signal after color: pill-soft vs machined.
+    property int radiusS: 8
+    property int radiusM: 12
+    property int radiusL: 16
+    // Hairline by default; skins that want drawn edges raise it.
+    property int borderWidth: 1
+
+    // ── Motion ────────────────────────────────────────────────────
+    // "Reactive" lives here: shorter durations and a bigger focus pop read as
+    // snappier without touching a single component.
+    property int durFast:   140
+    property int durNormal: 220
+    property int durSlow:   320
+    property real focusScale: 1.04
+
+    // ── Backdrop ──────────────────────────────────────────────────
+    // How the desktop window paints behind its content:
+    //   flat      — single bg0 fill (the original look)
+    //   gradient  — linear backdropTop → backdropBottom
+    //   wash      — gradient plus soft blurred accent orbs (console-dashboard feel)
+    //   scanlines — gradient plus fine horizontal rules
+    property string backdropStyle: "flat"
+    property color backdropTop:    "#0B0F20"
+    property color backdropBottom: "#0B0F20"
+    // Orb tints for `wash`.
+    property color washA: "#8B6BFF"
+    property color washB: "#3FA9FF"
+    // 0 = none. Scales the focus bloom and the wash orb opacity.
+    property real glowStrength: 0
 }

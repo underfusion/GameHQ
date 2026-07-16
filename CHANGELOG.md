@@ -4,6 +4,28 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.77] - 2026-07-16
+
+### Added
+
+- Nine more themes, and they now change more than color. A theme can also set
+  the typeface, how round the corners are, how heavy the borders are, how fast
+  the app responds, and what gets painted behind everything -- so they actually
+  feel different rather than just looking recolored.
+  - **Midnight** -- near-black with soft blue light pooling behind the content;
+    slow and cinematic.
+  - **Emerald** -- charcoal and green, quick and immediate.
+  - **Harbor** -- flat blue-grey with squared-off edges; deliberately plain.
+  - **Carbon** -- layered greys and one bright blue; the quietest of the set.
+  - **Cobalt** -- soft greys and indigo, very round, the fastest to respond.
+  - **Synthwave** -- neon magenta and cyan over a violet horizon, with
+    scanlines and a glow on anything selected.
+  - **Nord**, **Dracula**, **Gruvbox** -- three well-known palettes; Gruvbox is
+    warm and monospaced where the others are cool.
+- **Dark is still the default and is unchanged.** Text sizes and spacing stay
+  identical in every theme -- a theme restyles the app, it does not rearrange
+  it, so nothing shifts under you when you switch.
+
 ## [0.5.76] - 2026-07-16
 
 ### Added

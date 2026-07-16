@@ -68,6 +68,16 @@ qt_add_qml_module(GameHQ
         ui/qml/themes/DarkSkin.qml
         ui/qml/themes/LightSkin.qml
         ui/qml/themes/HighContrastSkin.qml
+        ui/qml/themes/MidnightSkin.qml
+        ui/qml/themes/EmeraldSkin.qml
+        ui/qml/themes/HarborSkin.qml
+        ui/qml/themes/CarbonSkin.qml
+        ui/qml/themes/CobaltSkin.qml
+        ui/qml/themes/SynthwaveSkin.qml
+        ui/qml/themes/NordSkin.qml
+        ui/qml/themes/DraculaSkin.qml
+        ui/qml/themes/GruvboxSkin.qml
+        ui/qml/components/ThemeBackdrop.qml
         ui/qml/components/BulkSelection.qml
         ui/qml/components/SidebarItem.qml
         ui/qml/components/DesktopSidebar.qml
