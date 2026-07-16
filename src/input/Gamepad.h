@@ -91,16 +91,13 @@ public:
     }
 
 signals:
-    // Canonical backend events consumed by the binding runtime. The legacy
-    // integer signals remain available during the incremental migration.
+    // Canonical backend events consumed by the binding runtime.
     void controlPressed(const QString& controlId, int family,
                         const QString& backend, const QString& fingerprint,
-                        const QString& displayName, int legacyButton);
+                        const QString& displayName);
     void controlReleased(const QString& controlId, int family,
                          const QString& backend, const QString& fingerprint,
-                         const QString& displayName, int legacyButton);
-    void buttonPressed(int button);
-    void buttonReleased(int button);
+                         const QString& displayName);
     void connected(bool isConnected);
 
 protected:
@@ -108,15 +105,13 @@ protected:
     {
         const auto device = profile();
         emit controlPressed(controlIdFor(button), static_cast<int>(device.family),
-                            device.backend, device.fingerprint, device.displayName, button);
-        emit buttonPressed(button);
+                            device.backend, device.fingerprint, device.displayName);
     }
 
     void publishButtonReleased(int button)
     {
         const auto device = profile();
         emit controlReleased(controlIdFor(button), static_cast<int>(device.family),
-                             device.backend, device.fingerprint, device.displayName, button);
-        emit buttonReleased(button);
+                             device.backend, device.fingerprint, device.displayName);
     }
 };

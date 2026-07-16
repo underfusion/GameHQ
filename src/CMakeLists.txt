@@ -24,7 +24,6 @@ qt_add_executable(GameHQ
     input/XInputDevice.cpp input/XInputDevice.h
     input/WinMMDevice.cpp input/WinMMDevice.h
     input/MouseHookDevice.cpp input/MouseHookDevice.h
-    input/TapHoldDetector.cpp input/TapHoldDetector.h
     input/InputEngine.cpp input/InputEngine.h
     notify/NotificationCenter.cpp notify/NotificationCenter.h
     overlay/OverlayManager.cpp overlay/OverlayManager.h

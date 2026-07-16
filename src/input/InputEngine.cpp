@@ -302,11 +302,10 @@ void InputEngine::setPlaybackActive(bool active)
 
 void InputEngine::onControlPressed(const QString& controlId, int family,
                                    const QString&, const QString& fingerprint,
-                                   const QString&, int legacyButton)
+                                   const QString&)
 {
     if (sender() != m_activeBackend)
         return;
-    Q_UNUSED(legacyButton);
     setLastInput(ControlId::label(controlId, static_cast<ControlId::ControllerFamily>(family))
                  + QStringLiteral(" pressed"));
     if (m_bindingEditor->captureInput(
@@ -318,11 +317,10 @@ void InputEngine::onControlPressed(const QString& controlId, int family,
 }
 
 void InputEngine::onControlReleased(const QString& controlId, int, const QString&,
-                                    const QString& fingerprint, const QString&, int legacyButton)
+                                    const QString& fingerprint, const QString&)
 {
     if (sender() != m_activeBackend)
         return;
-    Q_UNUSED(legacyButton);
     m_runtime->release(QStringLiteral("controller"), fingerprint, controlId);
     if (controlId == m_repeatTrigger)
         stopNavRepeat();

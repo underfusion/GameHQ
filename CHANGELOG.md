@@ -4,6 +4,14 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.58] - 2026-07-16
+
+### Removed
+
+- Unused input-layer code: the superseded `TapHoldDetector` class and the
+  legacy integer controller signals that had no remaining consumers. No
+  behavior change; controller dispatch is unaffected.
+
 ## [0.5.57] - 2026-07-16
 
 ### Documentation

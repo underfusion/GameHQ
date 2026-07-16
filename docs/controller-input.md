@@ -27,7 +27,7 @@ held ≥ threshold (def. 2 s) → HOLD action (save replay), mark consumed
 release after consumed      → nothing
 ```
 
-Threshold options: 1.0 / 1.5 / 2.0 / 3.0 s / custom. Implemented in `TapHoldDetector`, unit-testable, no Qt deps.
+Threshold options: 1.0 / 1.5 / 2.0 / 3.0 s / custom. Implemented in the binding runtime's gesture handling (`BindingRuntime`).
 
 ## Default mapping
 

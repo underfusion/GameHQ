@@ -12,7 +12,7 @@ GameHQ.exe
 |-- capture/      ScreenshotService, FramePumpService, SegmentRecorder, ReplayExporter, AudioCapture
 |-- core/         Shared cross-module helpers such as GameIdentity
 |-- sound/        SoundEngine for UI sounds
-|-- input/        InputEngine, DualSenseDevice, XInputDevice, WinMMDevice, HotkeyManager, TapHoldDetector
+|-- input/        InputEngine, DualSenseDevice, XInputDevice, WinMMDevice, HotkeyManager
 |-- games/        GameDetector: foreground process, title resolution, fullscreen heuristic
 |-- storage/      CaptureDatabase, CaptureQueries, CaptureScanner, ThumbnailService, GameIconCache, GameMetadataBackfill, GameRowRepair
 |-- config/       ConfigManager, CaptureLocations, and Paths

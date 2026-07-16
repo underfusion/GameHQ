@@ -99,10 +99,10 @@ signals:
 private:
     void onControlPressed(const QString& controlId, int family,
                           const QString& backend, const QString& fingerprint,
-                          const QString& displayName, int legacyButton);
+                          const QString& displayName);
     void onControlReleased(const QString& controlId, int family,
                            const QString& backend, const QString& fingerprint,
-                           const QString& displayName, int legacyButton);
+                           const QString& displayName);
     void attachGamepad(std::unique_ptr<Gamepad> pad, const QString& displayName);
     void updateActiveBackend();
     QString backendDisplayName(const Gamepad* pad) const;
