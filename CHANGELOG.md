@@ -4,6 +4,23 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.59] - 2026-07-16
+
+### Fixed
+
+- Replay audio timestamps now use an overflow-safe clock conversion shared
+  with the video pipeline (the previous audio-only formula could overflow
+  after about a day of system uptime and skew A/V sync).
+- The replay capture bring-up no longer leaks a d3d11.dll module reference on
+  every buffer arm.
+- Oversized system-audio packets that cannot fit the capture buffer are now
+  logged instead of being dropped silently.
+
+### Changed
+
+- Capture subsystem helpers (HRESULT logging, clock conversion, stale-cache
+  threshold, collision-safe file naming) consolidated into one shared header.
+
 ## [0.5.58] - 2026-07-16
 
 ### Removed

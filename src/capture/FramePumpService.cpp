@@ -2,6 +2,7 @@
 
 #include "capture/wgc_shims.h"
 #include "capture/AudioCapture.h"
+#include "capture/CaptureUtil.h"
 #include "capture/SegmentRecorder.h"
 #include "capture/ReplayExporter.h"
 #include "config/CaptureLocations.h"
@@ -157,11 +158,7 @@ QSize fitInsideEven(QSize source, QSize limit)
 
 long long qpcNow100ns()
 {
-    LARGE_INTEGER qpc{}, freq{};
-    QueryPerformanceCounter(&qpc);
-    QueryPerformanceFrequency(&freq);
-    return (qpc.QuadPart / freq.QuadPart) * 10000000LL
-         + (qpc.QuadPart % freq.QuadPart) * 10000000LL / freq.QuadPart;
+    return CaptureUtil::qpcNow100ns();
 }
 
 // Step 9 — stale replay-cache cleanup. On worker start, drop segment files a
@@ -177,7 +174,8 @@ void sweepStaleReplayCache()
                     QDir::Files, QDirIterator::Subdirectories);
     while (it.hasNext()) {
         const QString f = it.next();
-        if (nowSecs - QFileInfo(f).lastModified().toSecsSinceEpoch() > 600
+        if (nowSecs - QFileInfo(f).lastModified().toSecsSinceEpoch()
+                > CaptureUtil::kStaleSegmentMaxAgeSecs
             && QFile::remove(f))
             ++removed;
     }
@@ -236,10 +234,14 @@ void FramePumpWorker::startPump(qulonglong hwndVal, unsigned long pid, int encod
     // 2. Bridge the D3D11 device to a WinRT IDirect3DDevice. The export lives in
     //    d3d11.dll but the mingw import lib may not expose the symbol, so resolve
     //    it at runtime (exactly as the proven spike does).
-    HMODULE d3dll = LoadLibraryW(L"d3d11.dll");
-    auto pfnBridge = d3dll ? reinterpret_cast<PFN_CreateDirect3D11DeviceFromDXGIDevice>(
-                                 GetProcAddress(d3dll, "CreateDirect3D11DeviceFromDXGIDevice"))
-                           : nullptr;
+    //    Resolved once per process (function-local static) — the previous
+    //    per-arm LoadLibraryW leaked a module reference on every start.
+    static const auto pfnBridge = []() -> PFN_CreateDirect3D11DeviceFromDXGIDevice {
+        const HMODULE d3dll = LoadLibraryW(L"d3d11.dll");
+        return d3dll ? reinterpret_cast<PFN_CreateDirect3D11DeviceFromDXGIDevice>(
+                           GetProcAddress(d3dll, "CreateDirect3D11DeviceFromDXGIDevice"))
+                     : nullptr;
+    }();
     if (!pfnBridge) { delete pipe; failStep(this, "resolve CreateDirect3D11DeviceFromDXGIDevice", E_FAIL); return; }
 
     IDXGIDevice* dxgiDevice = nullptr;

@@ -1,4 +1,5 @@
 #include "capture/SegmentRecorder.h"
+#include "capture/CaptureUtil.h"
 
 #include <windows.h>
 #include <d3d11.h>
@@ -43,10 +44,7 @@ void mfRelease()
 
 inline bool ok(const char* what, HRESULT hr)
 {
-    if (FAILED(hr))
-        qWarning().nospace() << "SegmentRecorder: " << what
-                             << " failed hr=0x" << Qt::hex << quint32(hr);
-    return SUCCEEDED(hr);
+    return CaptureUtil::ok("SegmentRecorder", what, hr);
 }
 
 QString uniqueSegmentPath(const QString& cacheDir)
@@ -54,14 +52,8 @@ QString uniqueSegmentPath(const QString& cacheDir)
     // Include milliseconds because snapshotForSave() closes one segment and
     // opens the next immediately; second-resolution names can collide and
     // overwrite the segment the exporter is about to read.
-    const QString stamp = QDateTime::currentDateTime().toString(
-        QStringLiteral("yyyy-MM-dd_HH-mm-ss-zzz"));
-    QString path = cacheDir + QLatin1Char('/') + stamp + QStringLiteral("_clip.mp4");
-    for (int i = 2; QFile::exists(path); ++i) {
-        path = cacheDir + QLatin1Char('/') + stamp
-             + QStringLiteral("_%1_clip.mp4").arg(i);
-    }
-    return path;
+    return CaptureUtil::uniqueTimestampedPath(
+        cacheDir, QStringLiteral("yyyy-MM-dd_HH-mm-ss-zzz"), QStringLiteral("_clip.mp4"));
 }
 
 } // namespace
@@ -141,7 +133,7 @@ bool SegmentRecorder::begin(int sourceWidth, int sourceHeight, int encodeWidth, 
     // a previous play session; the ring trim below enforces the segment cap.
     {
         const qint64 lengthSecs = qint64(m_keepSegments) * (m_segTicks / 10000000LL);
-        const qint64 staleSecs  = 600;   // 10 min — see note above
+        const qint64 staleSecs  = CaptureUtil::kStaleSegmentMaxAgeSecs;   // 10 min — see note above
         const qint64 nowSecs    = QDateTime::currentSecsSinceEpoch();
         const QStringList files = QDir(m_cacheDir).entryList(
             QStringList() << QStringLiteral("*_clip.mp4"), QDir::Files, QDir::Name);

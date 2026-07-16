@@ -1,5 +1,6 @@
 #include "capture/ScreenshotService.h"
 
+#include "capture/CaptureUtil.h"
 #include "config/ConfigManager.h"
 #include "config/CaptureLocations.h"
 #include "core/GameIdentity.h"
@@ -78,10 +79,9 @@ void ScreenshotService::capture()
             return;
         }
 
-        const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
-        QString path = dir + QLatin1Char('/') + stamp + ext;
-        for (int n = 2; QFileInfo::exists(path); ++n)   // avoid same-second clobber
-            path = dir + QLatin1Char('/') + stamp + QStringLiteral("_%1").arg(n) + ext;
+        // Timestamped name with same-second clobber protection.
+        const QString path = CaptureUtil::uniqueTimestampedPath(
+            dir, QStringLiteral("yyyy-MM-dd_HH-mm-ss"), ext);
 
         QImageWriter writer(path, jpeg ? "JPG" : "PNG");
         if (jpeg)
