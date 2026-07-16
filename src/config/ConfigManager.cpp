@@ -46,6 +46,7 @@ QJsonObject ConfigManager::defaults()
         { ConfigKeys::TrayCloseToTray,         true },
         { ConfigKeys::TrayMinimizeToTray,      false },
         { ConfigKeys::NotificationsEnabled,    true },
+        { ConfigKeys::ThemeActiveSkin,         "dark" },  // dark | light | high_contrast
     };
 }
 

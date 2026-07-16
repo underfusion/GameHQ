@@ -6,6 +6,29 @@
 
 Modern, minimalist, **PS5-inspired**: dark, spacious, content-first. The captures *are* the interface — chrome stays quiet, typography is light and airy, and a single violet→blue accent (from the app icon) does all the talking. Everything must look correct from couch distance and navigate beautifully with a controller.
 
+## 0. Skins
+
+Colors resolve through the **active skin**; everything else in `Theme.qml`
+(typography, spacing, radii, motion, player timings) is fixed across skins. That
+split is deliberate: a skin recolors the app, it does not re-lay-it-out.
+
+- `themes/Skin.qml` declares the whole color surface with the **Dark values as
+  defaults**. `DarkSkin` overrides nothing, `LightSkin` and `HighContrastSkin`
+  override only what differs — so a token a skin forgets falls back to Dark
+  instead of resolving to an invalid color. Add a token here first, then bind it
+  in `Theme.qml`.
+- `Theme.activeSkin` is seeded from `theme.active_skin` (`dark` | `light` |
+  `high_contrast`) and re-assigned on `AppController::configChanged`, which
+  re-evaluates every color binding — that is what makes the switch live. An
+  unknown value resolves to Dark.
+- **Never name a token `on<Existing>`** (e.g. `onAccent` next to `accent`): QML
+  parses it as a signal handler and refuses to load the singleton, taking the
+  whole UI down. It is `textOnAccent` for exactly this reason.
+- Components are unaffected by all of this — every token name is unchanged, and
+  nothing outside `Theme.qml`/`themes/` knows skins exist. Keep it that way.
+
+Values in the table below are the **Dark** (default) skin's.
+
 ## 1. Color tokens
 
 | Token | Value | Use |

@@ -4,6 +4,20 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.76] - 2026-07-16
+
+### Added
+
+- You can now pick a theme. Settings -> General -> Appearance offers **Dark**
+  (unchanged, still the default), **Light**, and **High contrast**, and the app
+  repaints as soon as you choose -- no restart. Your choice is remembered.
+- Only colors change. Text sizes, spacing and the video player's timings stay
+  exactly as they were, because those are layout, not palette -- a theme should
+  recolor the app, not rearrange it. A few things stay dark in every theme on
+  purpose: the dimmed backdrop behind an opened capture, and the play badge and
+  buttons drawn on top of video thumbnails. Those sit over your captures rather
+  than over the app, and they have to stay readable whatever the frame shows.
+
 ## [0.5.75] - 2026-07-16
 
 ### Changed

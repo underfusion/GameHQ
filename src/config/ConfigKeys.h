@@ -48,6 +48,10 @@ inline constexpr QLatin1StringView TrayCloseToTray{ "tray.close_to_tray" };
 inline constexpr QLatin1StringView TrayMinimizeToTray{ "tray.minimize_to_tray" };
 inline constexpr QLatin1StringView NotificationsEnabled{ "notifications.enabled" };
 
+// theme.* — appearance. Read by the QML Theme singleton, which resolves an
+// unknown value back to "dark" rather than leaving the app unpainted.
+inline constexpr QLatin1StringView ThemeActiveSkin{ "theme.active_skin" };  // dark | light | high_contrast
+
 // internal.* — safety metadata, never shown in the UI and deliberately absent
 // from ConfigManager::defaults(). ConfigManager preserves internal.* across a
 // reset-all, so these keys survive "Restore all defaults" by design.
@@ -65,5 +69,6 @@ inline constexpr QLatin1StringView Tray{ "tray" };
 inline constexpr QLatin1StringView Notifications{ "notifications" };
 inline constexpr QLatin1StringView Input{ "input" };
 inline constexpr QLatin1StringView Audio{ "audio" };
+inline constexpr QLatin1StringView Theme{ "theme" };
 } // namespace Group
 } // namespace ConfigKeys

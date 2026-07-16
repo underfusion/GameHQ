@@ -4,6 +4,22 @@ import "../components"
 
 SettingsPage {
     SettingsSection {
+        title: "Appearance"
+        description: "Choose the color scheme " + Brand.name + " uses. The change applies immediately."
+        SettingsRow {
+            label: "Theme"
+            description: "High contrast trades the tinted palette for maximum legibility."
+            SettingsCombo {
+                configKey: "theme.active_skin"
+                defaultValue: "dark"
+                options: Theme.availableSkins.map(function (s) {
+                    return { label: s.label, value: s.key }
+                })
+            }
+        }
+    }
+
+    SettingsSection {
         title: "Startup"
         description: "Choose how " + Brand.name + " starts and whether it follows your Windows sign-in."
         SettingsRow {

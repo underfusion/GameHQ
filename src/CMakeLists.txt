@@ -64,6 +64,10 @@ qt_add_qml_module(GameHQ
         ui/qml/Theme.qml
         ui/qml/Brand.qml
         ui/qml/helpers/SidebarCategories.js
+        ui/qml/themes/Skin.qml
+        ui/qml/themes/DarkSkin.qml
+        ui/qml/themes/LightSkin.qml
+        ui/qml/themes/HighContrastSkin.qml
         ui/qml/components/BulkSelection.qml
         ui/qml/components/SidebarItem.qml
         ui/qml/components/DesktopSidebar.qml
