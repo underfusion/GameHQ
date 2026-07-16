@@ -4,6 +4,15 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.79] - 2026-07-16
+
+### Fixed
+
+- The app crashed on startup (blank white window, then gone) when the active
+  theme uses a background texture (Dracula, Gruvbox, Nord, Midnight, Harbor,
+  Synthwave, Carbon). Exporting the generated texture tile re-triggered its own
+  paint handler in an endless loop; it now exports exactly once per repaint.
+
 ## [0.5.78] - 2026-07-16
 
 ### Added

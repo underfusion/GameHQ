@@ -130,7 +130,16 @@ Item {
                 }
             }
         }
-        onPainted: textureLayer.source = textureTile.toDataURL()
+        // toDataURL() forces a synchronous render that re-emits painted();
+        // without this latch the handler re-enters itself until the JS stack
+        // blows and the process dies on startup for any skin with a texture.
+        property bool exported: false
+        onPainted: {
+            if (exported)
+                return
+            exported = true
+            textureLayer.source = toDataURL()
+        }
     }
 
     Image {
@@ -143,7 +152,10 @@ Item {
         Component.onCompleted: textureTile.requestPaint()
         Connections {
             target: Theme
-            function onSkinChanged() { textureTile.requestPaint() }
+            function onSkinChanged() {
+                textureTile.exported = false
+                textureTile.requestPaint()
+            }
         }
     }
 
