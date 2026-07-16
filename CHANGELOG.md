@@ -4,6 +4,19 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.73] - 2026-07-16
+
+### Changed
+
+- Working out which game you are playing no longer re-reads the disk every 1.5
+  seconds. The app checks the foreground window on a timer, and each check was
+  scanning your Steam library folder and reading the game executable's embedded
+  metadata again from scratch -- work that returns the same answer every time,
+  because it describes a file that is not changing. That answer is now
+  remembered for as long as the same game stays in front, and looked up again
+  the moment a different one takes over. The game's own window caption is still
+  read fresh each time, so a title that appears late still shows up.
+
 ## [0.5.72] - 2026-07-16
 
 ### Changed
