@@ -60,6 +60,7 @@ Rules: big numbers/headers are Light, never Bold. No ALL-CAPS except tiny group 
 - Spacing scale (4-base): `4, 8, 12, 16, 24, 32, 48`. Nothing off-scale.
 - Radius: `radiusS 8` (inputs, chips) · `radiusM 12` (cards, tiles) · `radiusL 16` (panels, dialogs) · `radiusPill 999`.
 - Elevation = subtle 6 % white hairline + soft black shadow (no bright borders). Max two elevation levels on screen.
+- Borders: `stroke` (6 %) outlines a **panel/container**; `borderLight` (22 %) outlines a **field inside** one, and is also the token for a 1 px row divider. Don't mix the two on the same kind of element.
 
 ## 4. Focus & controller navigation (the PS5 signature)
 
@@ -94,7 +95,7 @@ Easing: OutCubic everywhere (OutQuint for overlay slide). Rules: animate opacity
 - **Primary button**: gradient fill, white text, `radiusS`, 36 px tall. **Secondary**: `surface` + hairline. **Ghost**: text-only, accent on hover/focus. Destructive: `danger` text or fill for confirm step only.
 - **Dialogs/popups**: `surface`, `radiusL`, dim scrim `bg0` @ 60 %; one primary action max.
 - **Settings shell**: a compact `bg1` category rail sits beside one scrollable page; Input may add nested device tabs, but top-level categories never grow into one long page.
-- **Settings controls**: compose `SettingsPage`, `SettingsSection`, `SettingsRow`, `SettingsToggle`, `SettingsCategoryButton`, and `SettingsCombo`; changed/reset state must remain observable and all visuals come from `Theme.qml`.
+- **Settings controls**: compose `SettingsPage`, `SettingsSection`, `SettingsRow`, `SettingsToggle`, `SettingsCategoryButton`, `SettingsCombo`, and `SettingsPathField` (the read-only capture-root box — set `text`, it owns its own outline and middle elision); changed/reset state must remain observable and all visuals come from `Theme.qml`.
 - **Empty states**: centered icon (muted), one sentence, one action — never a blank grid.
 
 ## 7. Sounds (paired with motion)

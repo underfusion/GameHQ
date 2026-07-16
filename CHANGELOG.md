@@ -4,6 +4,15 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.70] - 2026-07-16
+
+### Changed
+
+- The two identical read-only folder boxes on the Capture settings page (the
+  screenshots root and the clips root) are now one shared `SettingsPathField`
+  component rather than the same twenty lines written twice. The page looks and
+  behaves exactly as before.
+
 ## [0.5.69] - 2026-07-16
 
 ### Changed
