@@ -41,6 +41,13 @@ user when they switch skin.
   any size/DPI, tinted by `textureColor`, faded by `textureOpacity` (keep it
   ≤ ~0.05: texture is atmosphere, never a legible pattern competing with
   captures).
+- **Never call `toDataURL()` from a `Canvas`'s `onPainted`.** It re-enters the
+  renderer synchronously: the export releases the render target the caller is
+  still painting into, and the app dies on startup with an access violation
+  (0.5.78/0.5.79 both shipped a variant of this). Export from a later event-loop
+  turn (`Qt.callLater`) instead, once the canvas is idle. Note a `Canvas` paints
+  itself once on creation, so an export path runs even for a skin whose texture
+  is `none` — guard it.
 - Scrims and the chrome drawn over video frames (badge, tile buttons, player
   pulse) stay dark in **every** skin: they sit over the user's captures, not over
   app surfaces, and must read against arbitrary imagery.

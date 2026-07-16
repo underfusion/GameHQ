@@ -130,15 +130,26 @@ Item {
                 }
             }
         }
-        // toDataURL() forces a synchronous render that re-emits painted();
-        // without this latch the handler re-enters itself until the JS stack
-        // blows and the process dies on startup for any skin with a texture.
+        // toDataURL() re-enters the canvas renderer synchronously, so it must
+        // never be called from inside painted(): exporting mid-paint releases
+        // the render target the caller is still painting into and the process
+        // dies with an access violation. Deferring to the next event-loop turn
+        // exports the same tile once the canvas is idle. The latch keeps the
+        // re-emitted painted() from queueing a second export; it resets on skin
+        // change, when the tile has to be regenerated.
         property bool exported: false
-        onPainted: {
-            if (exported)
+        function exportTile() {
+            // A Canvas paints itself once on creation, so this runs even for a
+            // skin with no texture — exporting there would burn a repaint on a
+            // blank tile the Image never shows.
+            if (exported || Theme.texture === "none")
                 return
             exported = true
             textureLayer.source = toDataURL()
+        }
+        onPainted: {
+            if (!exported)
+                Qt.callLater(exportTile)
         }
     }
 
@@ -149,13 +160,19 @@ Item {
         fillMode: Image.Tile
         opacity: Theme.textureOpacity
         smooth: false          // a texel is a texel; smoothing would blur the grain
-        Component.onCompleted: textureTile.requestPaint()
+        // Only skins that actually carry a texture generate a tile — a "none"
+        // skin would otherwise paint and export an empty 96x96 image on every
+        // start for nothing.
+        function regenerate() {
+            if (Theme.texture === "none")
+                return
+            textureTile.exported = false
+            textureTile.requestPaint()
+        }
+        Component.onCompleted: textureLayer.regenerate()
         Connections {
             target: Theme
-            function onSkinChanged() {
-                textureTile.exported = false
-                textureTile.requestPaint()
-            }
+            function onSkinChanged() { textureLayer.regenerate() }
         }
     }
 

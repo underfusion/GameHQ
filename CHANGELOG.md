@@ -4,6 +4,28 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.81] - 2026-07-16
+
+### Fixed
+
+- After using a Settings dropdown (for example the theme picker), the Up/Down
+  arrow keys kept driving that dropdown even after clicking elsewhere — so the
+  arrows went on changing the theme from anywhere on the page. Clicking any
+  non-interactive part of a settings page now drops keyboard focus, and the
+  arrows only drive a control while that control is focused.
+
+## [0.5.80] - 2026-07-16
+
+### Fixed
+
+- The app still died on startup (blank white window, then an access-violation
+  crash) on every theme, not just the textured ones. 0.5.79 stopped the texture
+  tile from exporting itself in a loop, but the export still ran from inside the
+  canvas paint handler, which released the render target mid-paint. The export
+  now runs once the canvas is idle.
+- Themes with no texture (Dark, Light, High contrast, Cobalt, Emerald) no longer
+  export an empty texture tile on every start.
+
 ## [0.5.79] - 2026-07-16
 
 ### Fixed
