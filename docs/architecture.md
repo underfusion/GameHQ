@@ -9,13 +9,13 @@ GameHQ.exe
 |-- app/          App lifecycle and service wiring
 |-- ui/           QML windows/components + AppController + GalleryModel + UI facade helpers
 |-- overlay/      OverlayManager: lazy overlay load, topmost show/hide, focus return
-|-- capture/      ScreenshotService, FramePumpService, SegmentRecorder, ReplayExporter, AudioCapture
+|-- capture/      ScreenshotService, FramePumpService, SegmentRecorder, ReplayExporter, AudioCapture, CaptureUtil
 |-- core/         Shared cross-module helpers such as GameIdentity
 |-- sound/        SoundEngine for UI sounds
 |-- input/        InputEngine, DualSenseDevice, XInputDevice, WinMMDevice, HotkeyManager
 |-- games/        GameDetector: foreground process, title resolution, fullscreen heuristic
 |-- storage/      CaptureDatabase, CaptureQueries, CaptureScanner, ThumbnailService, GameIconCache, GameMetadataBackfill, GameRowRepair
-|-- config/       ConfigManager, ConfigKeys, SettingsCategories, CaptureLocations, and Paths
+|-- config/       ConfigManager, ConfigKeys, SettingsCategories, CaptureLocations, LegacyMigration, and Paths
 |-- tray/         TrayIcon and menu
 `-- diagnostics/  Logger
 ```
@@ -44,6 +44,7 @@ GameHQ/
 |   |-- main.cpp
 |   |-- app/ ui/ overlay/ capture/ core/ sound/
 |   |-- input/ games/ storage/ config/ tray/ diagnostics/
+|-- tests/                opt-in pure-logic tests (-DGAMEHQ_BUILD_TESTS=ON)
 |-- assets/
 |   |-- icons/
 |   `-- sounds/

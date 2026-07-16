@@ -4,6 +4,19 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.72] - 2026-07-16
+
+### Changed
+
+- The technical audit document now describes the code as it is today. It was
+  written a week ago, before this round of cleanup, so it still listed problems
+  that have since been fixed and pointed at code that has since moved. It now
+  records what this round changed, and -- more usefully -- keeps an honest list
+  of the work that is deliberately not done: five finished changes still waiting
+  on a hands-on check, and five larger rewrites left alone because the recording
+  and controller code they touch was tuned against real games and real hardware
+  and cannot be re-checked without them.
+
 ## [0.5.71] - 2026-07-16
 
 ### Added
