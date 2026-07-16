@@ -57,6 +57,13 @@ bool CaptureDatabase::migrate()
     if (!ensureGameMetadataColumns())
         return false;
 
+    // Run the whole startup repair pass (brand paths, duplicate collapse, path
+    // renormalization, game-row and metadata repair) inside one transaction so
+    // a mid-run crash cannot leave the library half-repaired.
+    const bool repairTx = m_db.transaction();
+    if (!repairTx)
+        qWarning() << "DB: could not open repair transaction:" << m_db.lastError().text();
+
     // One-time brand-path compatibility for databases created by earlier brands.
     // The filesystem migration renames the managed roots; keep absolute paths
     // in existing gallery rows aligned with their new locations.
@@ -75,6 +82,8 @@ bool CaptureDatabase::migrate()
         QSqlQuery q(m_db);
         if (!q.exec(statement)) {
             qWarning() << "DB: brand-path migration failed:" << q.lastError().text();
+            if (repairTx)
+                m_db.rollback();
             return false;
         }
     }
@@ -159,6 +168,11 @@ bool CaptureDatabase::migrate()
     }
     GameRowRepair::normalizeDuplicateNames(m_db);
     GameMetadataBackfill::run(m_db);
+    if (repairTx && !m_db.commit()) {
+        qWarning() << "DB: repair transaction commit failed:" << m_db.lastError().text();
+        m_db.rollback();
+        return false;
+    }
     qInfo() << "DB: schema version" << schemaVersion();
     return true;
 }

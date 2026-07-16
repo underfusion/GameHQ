@@ -8,7 +8,7 @@ If an older row is missing executable/icon metadata, startup also checks prior `
 
 Existing v1 databases are repaired on startup with compatibility `ALTER TABLE` checks for `games.executable_path`, `games.icon_path`, and `games.last_seen_at`; the schema version stays at v1 because these columns are treated as v1-compatible metadata fields.
 
-File: `gamehq-data/gamehq.db`. Access via Qt SQL (`QSQLITE`) from the app/controller/model paths. Keep queries short on the UI path; larger repair work should stay in helpers such as `GameMetadataBackfill` and `GameRowRepair`. Schema versioned with `PRAGMA user_version`; migrations run in `CaptureDatabase::migrate()` — one numbered step per schema change, never edit past migrations.
+File: `gamehq-data/gamehq.db`. Access via Qt SQL (`QSQLITE`) from the app/controller/model paths. Keep queries short on the UI path; larger repair work should stay in helpers such as `GameMetadataBackfill` and `GameRowRepair`. Schema versioned with `PRAGMA user_version`; migrations run in `CaptureDatabase::migrate()` — one numbered step per schema change, never edit past migrations. The startup repair pass (brand paths, duplicate collapse, path renormalization, game-row/metadata repair) runs inside a single transaction so a mid-run crash cannot leave the library half-repaired.
 
 `CaptureDatabase` is the public storage facade for callers. Read-only capture/game listing and boolean lookup SQL lives in `CaptureQueries`; mutations, migrations, and insert-time game resolution stay in `CaptureDatabase`.
 

@@ -4,6 +4,15 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.60] - 2026-07-16
+
+### Fixed
+
+- The database startup repair pass (legacy brand paths, duplicate captures,
+  moved-path renormalization, game metadata) now runs inside a single
+  transaction, so an interrupted launch can no longer leave the library
+  half-repaired.
+
 ## [0.5.59] - 2026-07-16
 
 ### Fixed
