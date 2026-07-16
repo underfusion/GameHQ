@@ -39,6 +39,7 @@ qt_add_executable(GameHQ
     tray/TrayIcon.cpp      tray/TrayIcon.h
     ui/AppController.cpp   ui/AppController.h
     ui/CaptureLibraryService.cpp ui/CaptureLibraryService.h
+    ui/SettingsRouter.cpp ui/SettingsRouter.h
     ui/CurrentGameService.cpp ui/CurrentGameService.h
     ui/GalleryModel.cpp    ui/GalleryModel.h
     ui/ShellActions.cpp    ui/ShellActions.h

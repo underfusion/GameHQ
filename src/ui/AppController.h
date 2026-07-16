@@ -11,6 +11,7 @@ class CaptureLibraryService;
 class CaptureLocations;
 class ConfigManager;
 class CurrentGameService;
+class SettingsRouter;
 class StartupManager;
 
 // The single QML-facing bridge ("app" context property). QML never talks to
@@ -149,6 +150,7 @@ private:
     StartupManager* m_startup;
     std::unique_ptr<CaptureLibraryService> m_captureLibrary;
     std::unique_ptr<CurrentGameService> m_currentGame;
+    std::unique_ptr<SettingsRouter> m_settings;
     QString m_category = QStringLiteral("all");
     int m_gameId = -1;
     bool m_replayBufferActive = false;

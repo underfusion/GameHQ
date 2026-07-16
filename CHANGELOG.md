@@ -4,6 +4,16 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.64] - 2026-07-16
+
+### Changed
+
+- The special-cased settings keys (the startup toggle and the screenshot/clip
+  root pickers) moved out of `AppController::setConfig`/`resetConfig` into a
+  new internal `SettingsRouter` helper, matching the existing
+  `CaptureLibraryService` delegation pattern. Those two methods are now a plain
+  read of the router's outcome. Behavior and the QML API are unchanged.
+
 ## [0.5.63] - 2026-07-16
 
 ### Changed

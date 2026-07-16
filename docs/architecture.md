@@ -23,7 +23,8 @@ GameHQ.exe
 ## Dependency Rules
 
 - QML talks to app state and commands through `AppController` and exposed models.
-- `AppController` stays as the QML facade; helper classes such as `CaptureLibraryService`, `CurrentGameService`, and `ShellActions` handle capture-library, current-game, and platform actions behind that API.
+- `AppController` stays as the QML facade; helper classes such as `CaptureLibraryService`, `CurrentGameService`, `SettingsRouter`, and `ShellActions` handle capture-library, current-game, settings-key, and platform actions behind that API.
+- `SettingsRouter` owns the config keys that are not plain values: the startup toggle (an OS side effect that can refuse the change) and the capture roots (persisted by `CaptureLocations` itself). It performs the side effect and returns an outcome; emitting signals and rescanning stay with `AppController`.
 - QML never calls Win32/WinRT directly.
 - Visual values come from `Theme.qml` per [design-system.md](design-system.md).
 - `overlay` owns window/focus mechanics.

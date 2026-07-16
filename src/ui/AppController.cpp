@@ -9,6 +9,7 @@
 #include "storage/CaptureScanner.h"
 #include "ui/CaptureLibraryService.h"
 #include "ui/CurrentGameService.h"
+#include "ui/SettingsRouter.h"
 #include "ui/GalleryModel.h"
 #include "ui/ShellActions.h"
 
@@ -62,6 +63,7 @@ AppController::AppController(CaptureDatabase* db, CaptureScanner* scanner,
     , m_startup(startup)
     , m_captureLibrary(std::make_unique<CaptureLibraryService>(db, gallery, overlayGallery))
     , m_currentGame(std::make_unique<CurrentGameService>(db))
+    , m_settings(std::make_unique<SettingsRouter>(startup, locations))
 {
     connect(m_config, &ConfigManager::valueChanged,
             this, &AppController::configChanged);
@@ -190,24 +192,17 @@ QVariant AppController::config(const QString& key, const QVariant& fallback) con
 
 void AppController::setConfig(const QString& key, const QVariant& value)
 {
-    if (key == ConfigKeys::StartupEnabled
-        && !m_startup->setEnabled(value.toBool())) {
-        qWarning() << "Startup: setting change was rejected";
+    switch (m_settings->change(key, value)) {
+    case SettingsRouter::Outcome::Rejected:
         emit configChanged(key, m_config->value(key, false));
         return;
-    }
-    CaptureLocations::Kind locationKind;
-    if (key == ConfigKeys::StorageScreenshotsRoot
-        || key == ConfigKeys::StorageClipsRoot) {
-        const QString kindValue = key == ConfigKeys::StorageScreenshotsRoot
-            ? QStringLiteral("screenshots") : QStringLiteral("clips");
-        parseCaptureKind(kindValue, locationKind);
-        QString error;
-        if (!m_locations->setBaseRoot(locationKind, value.toString(), &error))
-            qWarning() << "Capture location:" << error;
-        else
-            rescan();
+    case SettingsRouter::Outcome::Rescan:
+        rescan();
         return;
+    case SettingsRouter::Outcome::Consumed:
+        return;
+    case SettingsRouter::Outcome::Plain:
+        break;
     }
     m_config->setValue(key, value);
     m_config->save();
@@ -229,17 +224,17 @@ bool AppController::configIsDefault(const QString& key) const
 
 void AppController::resetConfig(const QString& key)
 {
-    if (key == ConfigKeys::StartupEnabled && !m_startup->setEnabled(false)) {
+    switch (m_settings->reset(key)) {
+    case SettingsRouter::Outcome::Rejected:
         emit configChanged(key, m_config->value(key, false));
         return;
-    }
-    if (key == ConfigKeys::StorageScreenshotsRoot) {
-        resetCaptureRoot(QStringLiteral("screenshots"));
+    case SettingsRouter::Outcome::Rescan:
+        rescan();
         return;
-    }
-    if (key == ConfigKeys::StorageClipsRoot) {
-        resetCaptureRoot(QStringLiteral("clips"));
+    case SettingsRouter::Outcome::Consumed:
         return;
+    case SettingsRouter::Outcome::Plain:
+        break;
     }
     if (!m_config->resetValue(key))
         return;
