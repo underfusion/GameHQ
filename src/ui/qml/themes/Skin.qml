@@ -109,4 +109,20 @@ QtObject {
     property color washB: "#3FA9FF"
     // 0 = none. Scales the focus bloom and the wash orb opacity.
     property real glowStrength: 0
+
+    // ── Texture ───────────────────────────────────────────────────
+    // An optional fine pattern over the backdrop, generated procedurally and
+    // tiled — never a bundled image. That keeps it pixel-exact at any window
+    // size and DPI, tinted from the skin's own palette, and free of both
+    // licensing and package weight.
+    //   none  — no overlay
+    //   grain — sparse random specks (film/paper)
+    //   hatch — fine diagonal rules
+    //   grid  — thin blueprint lattice
+    //   weave — over-under twill (carbon fiber)
+    property string texture: "none"
+    // Keep this low. Texture is atmosphere; the moment it is legible as a
+    // pattern it competes with the captures, which are the actual content.
+    property real textureOpacity: 0.04
+    property color textureColor: "#FFFFFF"
 }

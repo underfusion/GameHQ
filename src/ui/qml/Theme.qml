@@ -164,6 +164,10 @@ QtObject {
     readonly property color washB: skin.washB
     readonly property real glowStrength: skin.glowStrength
 
+    readonly property string texture: skin.texture
+    readonly property real textureOpacity: skin.textureOpacity
+    readonly property color textureColor: skin.textureColor
+
     // ── Everything below is fixed across skins: layout, not style. ──
     // Sizes stay put because a skin must restyle the app, not re-lay-it-out.
 

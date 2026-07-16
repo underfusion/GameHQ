@@ -45,4 +45,9 @@ Skin {
     washA: "#1E5DDB"
     washB: "#5CC9FB"
     glowStrength: 0.9
+
+    // Grain only — the blue washes already carry this skin.
+    texture: "grain"
+    textureOpacity: 0.025
+    textureColor: "#5CC9FB"
 }

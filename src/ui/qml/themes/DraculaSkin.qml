@@ -48,4 +48,8 @@ Skin {
     successQuietBorder: Qt.rgba(0.31, 0.98, 0.48, 0.45)
     successQuietTop:    "#25382F"
     successQuietBottom: "#1D2B25"
+
+    texture: "grain"
+    textureOpacity: 0.03
+    textureColor: "#F8F8F2"
 }

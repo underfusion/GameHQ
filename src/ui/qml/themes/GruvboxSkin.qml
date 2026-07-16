@@ -52,4 +52,9 @@ Skin {
     successQuietBorder: Qt.rgba(0.56, 0.75, 0.49, 0.45)
     successQuietTop:    "#2F3A2C"
     successQuietBottom: "#242C22"
+
+    // Paper grain: the warm retro-terminal look leans on it.
+    texture: "grain"
+    textureOpacity: 0.05
+    textureColor: "#FBF1C7"
 }

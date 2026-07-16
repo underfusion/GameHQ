@@ -57,4 +57,9 @@ Skin {
     successQuietBorder: Qt.rgba(0.02, 1, 0.63, 0.6)
     successQuietTop:    "#06322A"
     successQuietBottom: "#04211C"
+
+    // Grid under the scanlines — the retro horizon motif.
+    texture: "grid"
+    textureOpacity: 0.05
+    textureColor: "#05D9E8"
 }

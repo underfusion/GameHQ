@@ -40,4 +40,9 @@ Skin {
     backdropTop:    "#121212"
     backdropBottom: "#121212"
     glowStrength: 0.2
+
+    // Carbon fiber, at the threshold of visible — the skin is named for it.
+    texture: "weave"
+    textureOpacity: 0.035
+    textureColor: "#FFFFFF"
 }

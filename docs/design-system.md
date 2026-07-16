@@ -13,7 +13,7 @@ whole design:
 
 | Skinnable (style) | Fixed (layout) |
 |---|---|
-| colors, `fontFamily`, `letterSpacingWide`, `radiusS/M/L`, `borderWidth`, `durFast/Normal/Slow`, `focusScale`, backdrop + `glowStrength` | spacing scale (`s4`…`s48`), font **sizes**, player control sizes, `radiusPill` |
+| colors, `fontFamily`, `letterSpacingWide`, `radiusS/M/L`, `borderWidth`, `durFast/Normal/Slow`, `focusScale`, backdrop + `glowStrength`, `texture` (+ opacity/color) | spacing scale (`s4`…`s48`), font **sizes**, player control sizes, `radiusPill` |
 
 A skin restyles the app; it must never re-lay-it-out. If a token would move
 things rather than restyle them, it stays fixed — nothing should shift under the
@@ -35,6 +35,12 @@ user when they switch skin.
   exactly the original look), `gradient`, `wash` (blurred accent orbs via
   `MultiEffect`), `scanlines` (drawn once to a `Canvas`, not a Repeater). It is
   decorative and never takes input.
+- On top of the backdrop style a skin may set `texture`: `none` (default),
+  `grain`, `hatch`, `grid`, or `weave`. The pattern is generated procedurally
+  into one 96×96 `Canvas` tile and repeated via `Image.Tile` — pixel-exact at
+  any size/DPI, tinted by `textureColor`, faded by `textureOpacity` (keep it
+  ≤ ~0.05: texture is atmosphere, never a legible pattern competing with
+  captures).
 - Scrims and the chrome drawn over video frames (badge, tile buttons, player
   pulse) stay dark in **every** skin: they sit over the user's captures, not over
   app surfaces, and must read against arbitrary imagery.

@@ -47,4 +47,9 @@ Skin {
     successQuietBorder: Qt.rgba(0.64, 0.75, 0.55, 0.45)
     successQuietTop:    "#3A4238"
     successQuietBottom: "#2F352E"
+
+    // A whisper of grain so the flat arctic greys are not perfectly dead.
+    texture: "grain"
+    textureOpacity: 0.03
+    textureColor: "#ECEFF4"
 }

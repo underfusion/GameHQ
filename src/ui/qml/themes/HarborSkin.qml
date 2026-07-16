@@ -45,4 +45,9 @@ Skin {
     backdropTop:    "#1B2838"
     backdropBottom: "#12151B"
     glowStrength: 0.15
+
+    // Faint hatch keeps the deliberately flat chrome from looking unfinished.
+    texture: "hatch"
+    textureOpacity: 0.022
+    textureColor: "#C7D5E0"
 }
