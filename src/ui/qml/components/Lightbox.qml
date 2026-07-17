@@ -28,11 +28,17 @@ Window {
         ? root.galleryModel.get(root.index) : ({})
 
     // The stage's double buffer lives in MediaStage.qml; `_targetUrl` is this
-    // window's rule for it — empty for a clip, so the still layer paints
-    // nothing behind the video surface.
-    readonly property url _targetUrl:
-        root.current.captureType !== "video" && root.current.fileUrl
-            ? root.current.fileUrl : ""
+    // window's rule for it. A clip decodes its THUMBNAIL, which the still layer
+    // keeps painting until the player renders its first frame over the top —
+    // without it the stage blanks on every clip while the media loads, which
+    // reads as a flicker when stepping quickly through a mixed gallery.
+    readonly property url _targetUrl: {
+        if (!root.current.fileUrl)
+            return ""
+        if (root.current.captureType === "video")
+            return root.current.thumbnail ? "file:///" + root.current.thumbnail : ""
+        return root.current.fileUrl
+    }
 
     screen: root.parentWindow ? root.parentWindow.screen : undefined
 
@@ -147,15 +153,17 @@ Window {
                 }
             }   // swallow left clicks so the scrim doesn't close
 
-            // Still/clip stage — the committed still is never cleared when a
-            // clip is selected (clearOnEmptyTarget stays off), so stepping
-            // clip → image repaints the previous capture while the next one
-            // decodes instead of flashing the dim scrim.
+            // Still/clip stage. The still layer stays visible for clips too:
+            // it paints the clip's thumbnail and the video surface above it
+            // covers that once the player has a frame, so the stage never
+            // blanks between captures. `_targetUrl` is only empty when there is
+            // genuinely nothing to paint (no capture, or a clip with no
+            // thumbnail), which is exactly when clearing is correct.
             MediaStage {
                 id: mediaStage
                 anchors.fill: parent
                 targetUrl: root._targetUrl
-                stillVisible: root.current.captureType !== "video"
+                stillVisible: true
                 videoSource: (root.current.captureType === "video" && root.current.fileUrl)
                     ? root.current.fileUrl : ""
                 videoVisible: root.current.captureType === "video"

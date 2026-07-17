@@ -126,7 +126,6 @@ Item {
                               && root.displayedRecord.fileUrl)
                     ? root.displayedRecord.fileUrl : ""
                 videoVisible: root.videoFocused && root.displayedIsVideo
-                clearOnEmptyTarget: true
                 onCommitted: root._displayedIndex = root.currentIndex
                 onCleared: root._displayedIndex = -1
                 onPlaybackStarted: playerControls.showPulse(true)

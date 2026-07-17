@@ -4,6 +4,22 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.96] - 2026-07-17
+
+### Fixed
+
+- The desktop Lightbox no longer blanks the stage when a clip is selected. It
+  now decodes the clip's thumbnail onto the still layer — as the overlay preview
+  already did — and the video surface above it covers that once the player has a
+  frame. Stepping quickly between captures in a mixed gallery no longer flickers
+  the item away before the next one appears.
+
+### Changed
+
+- Internal: with both surfaces now keeping a decodable still behind a clip, the
+  `MediaStage.qml` `clearOnEmptyTarget` flag that existed purely to tell them
+  apart was removed; an empty target now always clears the committed still.
+
 ## [0.5.95] - 2026-07-17
 
 ### Changed

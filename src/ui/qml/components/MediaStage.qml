@@ -9,11 +9,13 @@ import GameHQ
 // it reaches Image.Ready. The previously committed still stays painted until
 // then, so stepping between captures never flashes an empty stage.
 //
-// The two callers deliberately disagree about what sits behind a clip: the
-// Lightbox paints nothing there, while the overlay keeps the clip's thumbnail up
-// until playback is focused. Every rule that differs is therefore set by the
-// caller; this component owns only what is identical between them — the
-// decode-then-promote handoff and the player/end-of-media wiring.
+// Both callers paint a clip's thumbnail on the still layer and let the video
+// surface — which sits above it — cover that once the player has a frame, so the
+// stage never blanks between captures. They still differ in WHEN the video takes
+// over (the Lightbox plays a clip as soon as it is selected, the overlay waits
+// for playback to be focused), so those rules are set by the caller; this
+// component owns what is identical — the decode-then-promote handoff and the
+// player/end-of-media wiring.
 Item {
     id: root
 
@@ -25,11 +27,6 @@ Item {
     property url videoSource: ""
     property bool videoVisible: false
 
-    // Clear the committed still when targetUrl goes empty. OFF for the
-    // Lightbox on purpose: it blanks targetUrl for every clip, and dropping the
-    // committed still there would make the next image step decode against an
-    // empty stage — the flash the double buffer exists to prevent.
-    property bool clearOnEmptyTarget: false
     // Stop the player when its source clears. The overlay leaves the player
     // alone instead and re-sources it when playback is focused.
     property bool stopOnEmptySource: false
@@ -66,8 +63,12 @@ Item {
         source: root.targetUrl
         asynchronous: true
         cache: true
+        // An empty targetUrl means there is genuinely nothing to paint, so the
+        // committed still goes with it. Callers keep the stage populated across
+        // a capture step by pointing targetUrl at something decodable (a clip
+        // points at its thumbnail) — never by leaving it empty.
         onSourceChanged: {
-            if (source.toString() === "" && root.clearOnEmptyTarget) {
+            if (source.toString() === "") {
                 root.committedUrl = ""
                 root.cleared()
             }

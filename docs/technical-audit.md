@@ -201,20 +201,22 @@ that testing.
   explicit rather than hidden. `components/MediaStage.qml` owns only what is
   identical — the async decode-then-promote handoff and the player/end-of-media
   wiring — and every rule that differs is a property set by the caller
-  (`targetUrl`, `stillVisible`, `videoSource`, `videoVisible`). Two of those
-  properties are behavior flags that exist purely to tell the surfaces apart and
-  are the main cost of the unification:
-
-  - `clearOnEmptyTarget` — ON for the overlay, OFF for the Lightbox. The Lightbox
-    blanks `targetUrl` for *every* clip, so clearing the committed still there
-    would make the next image step decode against an empty stage. That is the
-    exact flash the double buffer exists to prevent, and it is why the two
-    surfaces cannot share one clear-on-empty rule.
-  - `stopOnEmptySource` — ON for the Lightbox only; the overlay leaves the player
-    alone and re-sources it when playback is focused.
+  (`targetUrl`, `stillVisible`, `videoSource`, `videoVisible`). One behavior flag
+  remains: `stopOnEmptySource`, ON for the Lightbox only; the overlay leaves the
+  player alone and re-sources it when playback is focused.
 
   Index tracking and the revision dependency stayed at the overlay call site
   (`onCommitted`/`onCleared` signals) rather than moving into the component.
+
+  0.5.96 closed the remaining gap the split had preserved. The Lightbox used to
+  blank `targetUrl` for every clip, so its still layer painted nothing and the
+  stage went black while the player loaded — a visible flicker when stepping
+  quickly through a mixed gallery. It now decodes the clip's *thumbnail* like the
+  overlay does and keeps the still visible; the video surface sits above the
+  still and covers it once it has a frame. With that, `targetUrl` is empty only
+  when there is genuinely nothing to paint, both callers want clear-on-empty, and
+  the `clearOnEmptyTarget` flag that existed purely to tell them apart was
+  removed — the two surfaces converged instead of staying parameterized.
 
 ## Prior Wave (2026-07-09)
 
