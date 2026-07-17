@@ -99,6 +99,7 @@ qt_add_qml_module(GameHQ
         ui/qml/components/ConfirmDialog.qml
         ui/qml/components/Toast.qml
         ui/qml/components/Lightbox.qml
+        ui/qml/components/MediaStage.qml
         ui/qml/components/PlayerControls.qml
         ui/qml/components/NavRepeat.qml
         ui/qml/components/SettingsCombo.qml

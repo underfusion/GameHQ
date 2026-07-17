@@ -84,6 +84,7 @@ The desktop gallery entry point remains `src/ui/qml/Main.qml`, but presentationa
 - `components/DesktopGalleryFooter.qml` owns footer hints and zoom controls.
 - `components/DesktopEmptyState.qml` owns the no-captures prompt.
 - `components/OverlaySidebar.qml`, `OverlayCaptureStrip.qml`, `OverlayPreview.qml`, and `OverlayFooter.qml` own the overlay's presentational panels.
+- `components/MediaStage.qml` is the double-buffered still/clip stage shared by `OverlayPreview.qml` and the desktop `Lightbox.qml`. It owns the async decode-then-promote handoff (the previous capture stays painted until the next one reaches `Image.Ready`) and the media-player/end-of-media wiring. The rules that differ between the two surfaces — what the loader decodes, what paints behind a clip, whether the committed still clears on an empty target — are properties set by each caller.
 - `components/OverlayActionMenu.qml` is shared by the overlay and desktop pad action menu.
 - `SettingsView.qml` owns the settings category rail while focused page files under `ui/qml/settings/` own General, Capture, Replay, Input, Library, Feedback, and Advanced content.
 - Shared settings page, section, row, toggle, category, and combo controls live under `ui/qml/components/` and update from `AppController::configChanged`.

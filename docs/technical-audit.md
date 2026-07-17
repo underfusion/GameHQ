@@ -186,22 +186,35 @@ that testing.
   bulk-selection item (0.5.74 landed the state-machine extraction). Deferred: the
   coupling carries pad nav-lock timing that needs a DualSense in hand.
 
-### Reassessed and no longer recommended
+### Reassessed and implemented as a parameterized stage (0.5.95)
 
-- **Shared `MediaStage.qml` for Lightbox/OverlayPreview.** Examined 2026-07-16:
-  the premise does not survive reading both files. They share a widget tree, not
-  behavior. On the video path they do opposite things — Lightbox leaves the Image
-  layer empty and lets `VideoOutput` cover the stage, while `OverlayPreview` paints
-  the clip's *thumbnail* there until `videoFocused` flips. `OverlayPreview` also
+- **Shared `MediaStage.qml` for Lightbox/OverlayPreview.** The 2026-07-16 pass
+  recommended dropping this: the two surfaces share a widget tree, not behavior.
+  On the video path they do opposite things — Lightbox leaves the still layer
+  empty and lets `VideoOutput` cover the stage, while `OverlayPreview` paints the
+  clip's *thumbnail* there until `videoFocused` flips. `OverlayPreview` also
   tracks a committed-vs-requested frame index, carries a `_modelRevision`
   dependency, and clears state on an empty source; Lightbox commits eagerly in
-  `openAt()` and has no equivalent. Diffing the one block that looks shared (the
-  `MediaPlayer`/`VideoOutput` config) leaves ~30 lines, and even those differ in
-  three places. Unifying them means parameterizing the target-URL rule, the index
-  tracking, the revision dependency and the clear-on-empty behavior — a
-  switch-driven component standing in for ~30 lines of real overlap, which reads
-  worse at both call sites. Either narrow this to "extract the shared
-  `MediaPlayer`/`EndOfMedia` handler" or drop it; do not build it as specified.
+  `openAt()` and has no equivalent.
+
+  Built anyway in 0.5.95 at the owner's direction, with the divergence made
+  explicit rather than hidden. `components/MediaStage.qml` owns only what is
+  identical — the async decode-then-promote handoff and the player/end-of-media
+  wiring — and every rule that differs is a property set by the caller
+  (`targetUrl`, `stillVisible`, `videoSource`, `videoVisible`). Two of those
+  properties are behavior flags that exist purely to tell the surfaces apart and
+  are the main cost of the unification:
+
+  - `clearOnEmptyTarget` — ON for the overlay, OFF for the Lightbox. The Lightbox
+    blanks `targetUrl` for *every* clip, so clearing the committed still there
+    would make the next image step decode against an empty stage. That is the
+    exact flash the double buffer exists to prevent, and it is why the two
+    surfaces cannot share one clear-on-empty rule.
+  - `stopOnEmptySource` — ON for the Lightbox only; the overlay leaves the player
+    alone and re-sources it when playback is focused.
+
+  Index tracking and the revision dependency stayed at the overlay call site
+  (`onCommitted`/`onCleared` signals) rather than moving into the component.
 
 ## Prior Wave (2026-07-09)
 

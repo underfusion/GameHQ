@@ -27,15 +27,9 @@ Window {
     readonly property var current: root.index >= 0 && root.galleryModel
         ? root.galleryModel.get(root.index) : ({})
 
-    // ── Double-buffer for instant capture switching ────────────────────
-    // The visible Image shows `_committedUrl` — always an already-decoded
-    // image, so it never goes blank between captures. The hidden `loader`
-    // async-decodes `_targetUrl` (the just-navigated-to capture's URL);
-    // only when it reaches Image.Ready is its source promoted to
-    // `_committedUrl`. Result: stepping with L1/R1 or ←/→ keeps the
-    // previous capture painted on screen until the next one is ready,
-    // eliminating the brief dim-scrim flash that previously appeared.
-    property url _committedUrl: ""
+    // The stage's double buffer lives in MediaStage.qml; `_targetUrl` is this
+    // window's rule for it — empty for a clip, so the still layer paints
+    // nothing behind the video surface.
     readonly property url _targetUrl:
         root.current.captureType !== "video" && root.current.fileUrl
             ? root.current.fileUrl : ""
@@ -48,17 +42,17 @@ Window {
         root.index = row
         // Commit the opening capture immediately so the first paint isn't
         // a blank stage waiting for the async loader. Subsequent steps
-        // leave _committedUrl alone — the loader updates it when Ready.
-        root._committedUrl = root._targetUrl
+        // leave the committed still alone — the loader updates it when Ready.
+        mediaStage.committedUrl = root._targetUrl
         root.showFullScreen()
         root.requestActivate()
         content.forceActiveFocus()
     }
     function close() {
-        clipPlayer.stop()
+        mediaStage.player.stop()
         root.visible = false
         root.index = -1
-        root._committedUrl = ""
+        mediaStage.committedUrl = ""
         root.closed()
     }
     function step(delta) {
@@ -72,20 +66,21 @@ Window {
         root.step(delta)
     }
     function seekVideo(deltaMs) {
-        if (!clipPlayer || clipPlayer.duration <= 0)
+        const player = mediaStage.player
+        if (!player || player.duration <= 0)
             return
         playerControls.revealControls()
-        clipPlayer.position = Math.max(0, Math.min(clipPlayer.duration, clipPlayer.position + deltaMs))
+        player.position = Math.max(0, Math.min(player.duration, player.position + deltaMs))
     }
     function toggleVideoPlayback() {
         if (root.current.captureType !== "video")
             return
         playerControls.revealControls()
-        if (clipPlayer.playbackState === MediaPlayer.PlayingState) {
-            clipPlayer.pause()
+        if (mediaStage.player.playbackState === MediaPlayer.PlayingState) {
+            mediaStage.player.pause()
             playerControls.showPulse(false)
         } else {
-            clipPlayer.play()
+            mediaStage.player.play()
             playerControls.showPulse(true)
         }
     }
@@ -152,74 +147,28 @@ Window {
                 }
             }   // swallow left clicks so the scrim doesn't close
 
-            // Visible image — paints `_committedUrl`, which is always an
-            // already-decoded image (either set on openAt or promoted from
-            // the loader below). Source changes here are cache hits, so the
-            // swap is instant — the previous capture stays painted while
-            // the next one decodes, eliminating the dim-scrim flash.
-            Image {
+            // Still/clip stage — the committed still is never cleared when a
+            // clip is selected (clearOnEmptyTarget stays off), so stepping
+            // clip → image repaints the previous capture while the next one
+            // decodes instead of flashing the dim scrim.
+            MediaStage {
+                id: mediaStage
                 anchors.fill: parent
-                visible: root.current.captureType !== "video"
-                source: root._committedUrl.toString() !== "" ? root._committedUrl : ""
-                fillMode: Image.PreserveAspectFit
-                cache: true
-            }
-
-            // Hidden async loader — decodes `_targetUrl` off the UI thread
-            // and promotes it to `_committedUrl` (→ the visible Image
-            // above) only when it reaches Image.Ready, so the stage never
-            // shows an empty frame between captures.
-            Image {
-                id: loader
-                anchors.fill: parent
-                visible: false
-                source: root._targetUrl
-                asynchronous: true
-                cache: true
-                onStatusChanged: {
-                    if (status === Image.Ready && source.toString() !== "")
-                        root._committedUrl = source
-                }
-            }
-
-            // QML Image can't decode video — clips now play in-app instead of
-            // just failing to decode the raw .mp4 as a still frame.
-            MediaPlayer {
-                id: clipPlayer
-                source: (root.current.captureType === "video" && root.current.fileUrl)
+                targetUrl: root._targetUrl
+                stillVisible: root.current.captureType !== "video"
+                videoSource: (root.current.captureType === "video" && root.current.fileUrl)
                     ? root.current.fileUrl : ""
-                audioOutput: AudioOutput {}
-                videoOutput: clipVideoOutput
-                onSourceChanged: {
-                    if (source.toString() !== "") {
-                        play()
-                        playerControls.showPulse(true)
-                    } else {
-                        stop()
-                    }
-                }
-                onMediaStatusChanged: {
-                    if (mediaStatus === MediaPlayer.EndOfMedia) {
-                        pause()
-                        if (duration > 0)
-                            position = duration
-                        playerControls.revealControls()
-                    }
-                }
-            }
-
-            VideoOutput {
-                id: clipVideoOutput
-                anchors.fill: parent
-                visible: root.current.captureType === "video"
-                fillMode: VideoOutput.PreserveAspectFit
+                videoVisible: root.current.captureType === "video"
+                stopOnEmptySource: true
+                onPlaybackStarted: playerControls.showPulse(true)
+                onPlaybackEnded: playerControls.revealControls()
             }
 
             PlayerControls {
                 id: playerControls
                 anchors.fill: parent
                 active: root.current.captureType === "video"
-                player: clipPlayer
+                player: mediaStage.player
                 onPlayPauseRequested: root.toggleVideoPlayback()
                 onSeekRequested: (deltaMs) => root.seekVideo(deltaMs)
                 onSurfaceRightClicked: root.close()

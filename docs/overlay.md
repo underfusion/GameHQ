@@ -23,7 +23,7 @@
 - `OverlayWindow.qml` owns overlay state, keyboard/controller routing, preview playback state, and top-level layout.
 - `components/OverlaySidebar.qml` renders category/game navigation.
 - `components/OverlayCaptureStrip.qml` renders the horizontal capture strip and L1/R1 or arrow hint pills. While video focus is inactive, controller/keyboard left-right navigation can browse captures; once Cross enters video focus, left-right seeks the clip and L1/R1 remains the capture-switch path.
-- `components/OverlayPreview.qml` renders the large selected-capture preview. It reacts to overlay gallery model resets/row/data changes as well as index changes, so a newly saved screenshot or clip at row 0 updates the preview immediately when the overlay opens.
+- `components/OverlayPreview.qml` renders the large selected-capture preview. It reacts to overlay gallery model resets/row/data changes as well as index changes, so a newly saved screenshot or clip at row 0 updates the preview immediately when the overlay opens. The still/clip surface itself is the shared `components/MediaStage.qml`; the preview supplies the overlay's own rules for it (a clip decodes its thumbnail, which keeps painting until `videoFocused` hands the stage to the video surface) and tracks the committed frame against the requested one via the stage's `committed`/`cleared` signals.
 - `components/OverlayFooter.qml` renders contextual footer hints.
 - `components/OverlayActionMenu.qml` renders per-capture actions and is also reused by the desktop pad action menu.
 

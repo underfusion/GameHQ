@@ -14,20 +14,32 @@ Item {
     readonly property var displayedRecord: (_displayedIndex >= 0 && galleryModel && galleryModel.rowCount() > 0)
         ? galleryModel.get(_displayedIndex) : ({})
     readonly property bool displayedIsVideo: displayedRecord.captureType === "video"
-    readonly property bool isPlaying: clipPlayer.playbackState === MediaPlayer.PlayingState
-    readonly property bool canSeek: clipPlayer.duration > 0
+    readonly property bool isPlaying: mediaStage.player.playbackState === MediaPlayer.PlayingState
+    readonly property bool canSeek: mediaStage.player.duration > 0
     readonly property int seekStepMs: playerControls.seekStepMs
 
     property int _displayedIndex: currentIndex
-    property string _committedUrl: ""
     property int _modelRevision: 0
+
+    // This surface's rule for the shared stage's hidden loader: a clip decodes
+    // its THUMBNAIL, so the still layer keeps painting that frame until
+    // videoFocused hands the stage over to the video surface.
+    readonly property url _targetUrl: {
+        root._modelRevision
+        const rec = (root.currentIndex >= 0 && root.galleryModel && root.galleryModel.rowCount() > 0)
+            ? root.galleryModel.get(root.currentIndex) : ({})
+        if (!rec || rec.captureType === undefined) return ""
+        if (rec.captureType === "video")
+            return rec.thumbnail !== "" ? "file:///" + rec.thumbnail : ""
+        return rec.fileUrl
+    }
 
     signal playPauseRequested()
     signal seekRequested(int deltaMs)
     signal backRequested()
 
     function stopPlayback() {
-        clipPlayer.stop()
+        mediaStage.player.stop()
     }
 
     function revealControls() {
@@ -35,19 +47,20 @@ Item {
     }
 
     function seekBy(deltaMs) {
-        if (clipPlayer.duration <= 0)
+        const player = mediaStage.player
+        if (player.duration <= 0)
             return
         revealControls()
-        clipPlayer.position = Math.max(0, Math.min(clipPlayer.duration, clipPlayer.position + deltaMs))
+        player.position = Math.max(0, Math.min(player.duration, player.position + deltaMs))
     }
 
     function playVideo() {
-        clipPlayer.play()
+        mediaStage.player.play()
         playerControls.showPulse(true)
     }
 
     function pauseVideo() {
-        clipPlayer.pause()
+        mediaStage.player.pause()
         playerControls.showPulse(false)
     }
 
@@ -59,14 +72,14 @@ Item {
     }
 
     readonly property real fitScale: {
-        const iw = previewImage.implicitWidth
-        const ih = previewImage.implicitHeight
+        const iw = mediaStage.sourceWidth
+        const ih = mediaStage.sourceHeight
         if (iw <= 0 || ih <= 0 || root.width <= 0 || root.height <= 0)
             return 0
         return Math.min(root.width / iw, root.height / ih)
     }
-    readonly property real paintedWidth: previewImage.implicitWidth * root.fitScale
-    readonly property real paintedHeight: previewImage.implicitHeight * root.fitScale
+    readonly property real paintedWidth: mediaStage.sourceWidth * root.fitScale
+    readonly property real paintedHeight: mediaStage.sourceHeight * root.fitScale
 
     Rectangle {
         id: previewFrame
@@ -101,71 +114,23 @@ Item {
                 maskSource: previewMask
             }
 
-            Image {
-                id: previewLoader
-                visible: false
-                fillMode: Image.PreserveAspectFit
-                asynchronous: true
-                source: {
-                    root._modelRevision
-                    const rec = (root.currentIndex >= 0 && root.galleryModel && root.galleryModel.rowCount() > 0)
-                        ? root.galleryModel.get(root.currentIndex) : ({})
-                    if (!rec || rec.captureType === undefined) return ""
-                    if (rec.captureType === "video")
-                        return rec.thumbnail !== "" ? "file:///" + rec.thumbnail : ""
-                    return rec.fileUrl
-                }
-                onSourceChanged: {
-                    if (source.toString() === "") {
-                        root._committedUrl = ""
-                        root._displayedIndex = -1
-                    }
-                }
-                onStatusChanged: {
-                    if (status === Image.Ready) {
-                        root._committedUrl = source
-                        root._displayedIndex = root.currentIndex
-                    }
-                }
-            }
-
-            Image {
-                id: previewImage
+            // Still/clip stage — the committed frame is tracked against the
+            // requested one (_displayedIndex) so the rest of the overlay reads
+            // what is actually painted, not what was last asked for.
+            MediaStage {
+                id: mediaStage
                 anchors.fill: parent
-                visible: !(root.videoFocused && root.displayedIsVideo)
-                fillMode: Image.PreserveAspectFit
-                asynchronous: false
-                source: root._committedUrl
-            }
-
-            MediaPlayer {
-                id: clipPlayer
-                source: (root.videoFocused && root.displayedIsVideo
-                         && root.displayedRecord.fileUrl)
+                targetUrl: root._targetUrl
+                stillVisible: !(root.videoFocused && root.displayedIsVideo)
+                videoSource: (root.videoFocused && root.displayedIsVideo
+                              && root.displayedRecord.fileUrl)
                     ? root.displayedRecord.fileUrl : ""
-                audioOutput: AudioOutput {}
-                videoOutput: clipVideoOutput
-                onSourceChanged: {
-                    if (source.toString() !== "") {
-                        play()
-                        playerControls.showPulse(true)
-                    }
-                }
-                onMediaStatusChanged: {
-                    if (mediaStatus === MediaPlayer.EndOfMedia) {
-                        pause()
-                        if (duration > 0)
-                            position = duration
-                        playerControls.revealControls()
-                    }
-                }
-            }
-
-            VideoOutput {
-                id: clipVideoOutput
-                anchors.fill: parent
-                visible: root.videoFocused && root.displayedIsVideo
-                fillMode: VideoOutput.PreserveAspectFit
+                videoVisible: root.videoFocused && root.displayedIsVideo
+                clearOnEmptyTarget: true
+                onCommitted: root._displayedIndex = root.currentIndex
+                onCleared: root._displayedIndex = -1
+                onPlaybackStarted: playerControls.showPulse(true)
+                onPlaybackEnded: playerControls.revealControls()
             }
         }
 
@@ -174,7 +139,7 @@ Item {
             anchors.fill: previewFrame
             active: root.videoFocused && root.displayedIsVideo
             surfaceEnabled: root.displayedIsVideo
-            player: clipPlayer
+            player: mediaStage.player
             onPlayPauseRequested: root.playPauseRequested()
             onSeekRequested: (deltaMs) => root.seekRequested(deltaMs)
             onSurfaceRightClicked: root.backRequested()

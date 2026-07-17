@@ -4,6 +4,20 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.95] - 2026-07-17
+
+### Changed
+
+- Internal: the desktop Lightbox and the overlay preview now share a single
+  `components/MediaStage.qml` for their double-buffered still/clip stage, with
+  no intended behavior change. The shared component owns the parts that were
+  genuinely identical — the async decode-then-promote handoff that keeps the
+  previous capture painted while the next one decodes, and the media
+  player/end-of-media wiring. The two surfaces disagree about what sits behind
+  a clip (the Lightbox paints nothing there, the overlay keeps the clip's
+  thumbnail up until playback is focused), so those rules stay explicit at each
+  call site instead of being duplicated.
+
 ## [0.5.94] - 2026-07-17
 
 ### Changed
