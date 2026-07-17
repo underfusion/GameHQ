@@ -1,5 +1,7 @@
 #include "input/XInputDevice.h"
 
+#include "input/StickNav.h"
+
 #include <QDebug>
 #include <QTimer>
 
@@ -41,11 +43,10 @@ quint32 mapButtons(const XINPUT_GAMEPAD& pad)
     if (pad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB) set(Gamepad::GenericButtonBase + 0);
     if (pad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) set(Gamepad::GenericButtonBase + 1);
 
-    constexpr SHORT kDeadzone = 12000;
-    if (pad.sThumbLX < -kDeadzone) set(Gamepad::DpadLeft);
-    else if (pad.sThumbLX > kDeadzone) set(Gamepad::DpadRight);
-    if (pad.sThumbLY < -kDeadzone) set(Gamepad::DpadDown);
-    else if (pad.sThumbLY > kDeadzone) set(Gamepad::DpadUp);
+    // Signed axes centered on 0, Y growing upward. No hysteresis here (return
+    // zone == deadzone), matching how this backend has always behaved.
+    constexpr StickNav::AxisConfig kNav{ 0, 12000, 12000, true };
+    s |= StickNav::bits(kNav, pad.sThumbLX, pad.sThumbLY);
 
     return s;
 }

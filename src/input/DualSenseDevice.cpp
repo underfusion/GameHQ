@@ -1,5 +1,7 @@
 #include "input/DualSenseDevice.h"
 
+#include "input/StickNav.h"
+
 #include <QByteArray>
 #include <QDebug>
 #include <QTimer>
@@ -445,46 +447,22 @@ quint32 DualSenseDevice::decodeButtons(const unsigned char* d, int base)
 // Left stick doubles as the D-pad for menu navigation (overlay request:
 // "D-pad or left stick"). Axes sit 7 bytes before the button block on
 // both encodings (USB base=8 → LX at d[1]; BT base=10 → LX at d[3]),
-// 0..255 with ~128 center. A wide deadzone avoids drift, and HYSTERESIS
-// (kReturnZone < kDeadzone) keeps an axis "active" until the stick
-// returns well inside the center — without this the stick oscillating at
-// the boundary would fire doubled navigation events, and overshooting
-// past center on release would fire a spurious opposite-direction event.
+// 0..255 with ~128 center and Y growing downward. A wide deadzone avoids
+// drift; this is the one backend that runs the hysteresis path, so its
+// return zone is tighter than its deadzone (see StickNav.h for why).
 // emitEdges() in the caller only fires once per direction crossed, same as
 // a real button — no auto-repeat while held, matching the D-pad.
 // Hysteresis state comes from st.stick (last frame's stick bits).
 quint32 DualSenseDevice::decodeStickNav(const DeviceState& st, const unsigned char* d,
                                         int base, int len)
 {
+    constexpr StickNav::AxisConfig kNav{ 128, 60, 30, false };
+
     const int axisBase = base >= 8 ? base - 7 : 1;
-    quint32 stick = 0;
-    auto stickSet = [&stick](int btn) { stick |= (1u << btn); };
-    if (axisBase >= 1 && len > axisBase + 1) {
-        constexpr int kCenter = 128;
-        constexpr int kDeadzone = 60;     // outer: enter active state
-        constexpr int kReturnZone = 30;   // inner: leave active state
+    if (axisBase < 1 || len <= axisBase + 1)
+        return 0;
 
-        const int lx = d[axisBase];
-        const int ly = d[axisBase + 1];
-
-        // X axis — right and left are mutually exclusive, with hysteresis on
-        // whichever direction was active last frame.
-        const bool wasRight = st.stick & (1u << DpadRight);
-        const bool wasLeft  = st.stick & (1u << DpadLeft);
-        if (wasRight ? (lx > kCenter + kReturnZone) : (lx > kCenter + kDeadzone))
-            stickSet(DpadRight);
-        else if (wasLeft ? (lx < kCenter - kReturnZone) : (lx < kCenter - kDeadzone))
-            stickSet(DpadLeft);
-
-        // Y axis — down and up are mutually exclusive, same hysteresis.
-        const bool wasDown = st.stick & (1u << DpadDown);
-        const bool wasUp   = st.stick & (1u << DpadUp);
-        if (wasDown ? (ly > kCenter + kReturnZone) : (ly > kCenter + kDeadzone))
-            stickSet(DpadDown);
-        else if (wasUp ? (ly < kCenter - kReturnZone) : (ly < kCenter - kDeadzone))
-            stickSet(DpadUp);
-    }
-    return stick;
+    return StickNav::bits(kNav, d[axisBase], d[axisBase + 1], st.stick);
 }
 
 void DualSenseDevice::parseReport(void* handle, DeviceState& st,

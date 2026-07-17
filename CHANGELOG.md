@@ -4,6 +4,17 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.98] - 2026-07-17
+
+### Changed
+
+- The "left stick doubles as the D-pad" rule now lives in one place
+  (`input/StickNav.h`) instead of being hand-rolled in the DualSense, XInput
+  and WinMM backends. Each backend keeps its own tuned deadzone values and its
+  existing hysteresis behaviour, so pad navigation feels exactly as before;
+  only the shared structure — axis polarity, mutually exclusive directions and
+  the optional hysteresis — moved.
+
 ## [0.5.97] - 2026-07-17
 
 ### Added

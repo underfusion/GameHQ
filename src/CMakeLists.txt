@@ -17,6 +17,7 @@ qt_add_executable(GameHQ
     games/GameDetector.cpp games/GameDetector.h
     input/HotkeyManager.cpp input/HotkeyManager.h
     input/Gamepad.h
+    input/StickNav.h
     input/ActionCatalog.cpp input/ActionCatalog.h
     input/BindingResolver.cpp input/BindingResolver.h
     input/BindingRuntime.cpp input/BindingRuntime.h

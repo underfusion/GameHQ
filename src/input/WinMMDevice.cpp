@@ -1,5 +1,7 @@
 #include "input/WinMMDevice.h"
 
+#include "input/StickNav.h"
+
 #include <QDebug>
 #include <QTimer>
 
@@ -66,14 +68,11 @@ quint32 mapWinMMState(const JOYINFOEX& info, bool ds4Layout)
         if (info.dwPOV >= 22500 && info.dwPOV <= 31500) set(Gamepad::DpadLeft);
     }
 
-    constexpr int kCenter = 32767;
-    constexpr int kDeadzone = 16000;
-    const int x = static_cast<int>(info.dwXpos);
-    const int y = static_cast<int>(info.dwYpos);
-    if (x < kCenter - kDeadzone) set(Gamepad::DpadLeft);
-    else if (x > kCenter + kDeadzone) set(Gamepad::DpadRight);
-    if (y < kCenter - kDeadzone) set(Gamepad::DpadUp);
-    else if (y > kCenter + kDeadzone) set(Gamepad::DpadDown);
+    // Unsigned 0..65535 axes centered mid-range, Y growing downward. No
+    // hysteresis here (return zone == deadzone), matching how this backend has
+    // always behaved.
+    constexpr StickNav::AxisConfig kNav{ 32767, 16000, 16000, false };
+    s |= StickNav::bits(kNav, static_cast<int>(info.dwXpos), static_cast<int>(info.dwYpos));
 
     return s;
 }
