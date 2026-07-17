@@ -27,6 +27,17 @@ SettingsPage {
                 })
             }
         }
+        SettingsRow {
+            label: "Overlay dimming"
+            description: "How strongly the in-game overlay darkens the game behind it. 100% is the theme's own dimming; lower keeps more of the game visible."
+            SettingsSlider {
+                configKey: "theme.overlay_scrim_strength"
+                defaultValue: 100
+                from: 25
+                to: 150
+                stepSize: 5
+            }
+        }
     }
 
     SettingsSection {

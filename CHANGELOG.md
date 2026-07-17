@@ -4,6 +4,19 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.97] - 2026-07-17
+
+### Added
+
+- Settings → General → Appearance gained an "Overlay dimming" slider
+  (25–150 %, default 100 %) that scales how strongly the in-game overlay
+  darkens the game behind it. 100 % keeps each theme's own dimming; lower
+  values keep more of the game visible, higher values darken it further
+  (capped just short of opaque). Stored as `theme.overlay_scrim_strength`
+  and applied live via the new `Theme.overlayScrim` token.
+- New reusable `SettingsSlider` control: an integer-valued slider bound to a
+  config key that follows the drag live but writes config only on release.
+
 ## [0.5.96] - 2026-07-17
 
 ### Fixed

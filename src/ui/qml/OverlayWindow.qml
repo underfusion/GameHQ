@@ -57,7 +57,7 @@ Window {
     Rectangle {
         id: scrim
         anchors.fill: parent
-        color: Theme.scrim
+        color: Theme.overlayScrim
         opacity: overlayWindow.visible ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: Theme.durSlow; easing.type: Easing.OutQuint } }
 

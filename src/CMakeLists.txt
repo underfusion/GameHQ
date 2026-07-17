@@ -107,6 +107,7 @@ qt_add_qml_module(GameHQ
         ui/qml/components/SettingsSection.qml
         ui/qml/components/SettingsRow.qml
         ui/qml/components/SettingsToggle.qml
+        ui/qml/components/SettingsSlider.qml
         ui/qml/components/SettingsCategoryButton.qml
         ui/qml/settings/GeneralSettingsPage.qml
         ui/qml/settings/CaptureSettingsPage.qml

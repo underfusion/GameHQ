@@ -65,9 +65,16 @@ QtObject {
     // the app with no palette at all.
     readonly property Skin skin: theme.skins[theme.activeSkin] || obsidianSkin
 
+    // Persisted as `theme.overlay_scrim_strength` (percent, 25–150). A
+    // multiplier on the active skin's scrim alpha rather than an absolute
+    // alpha, so 100 always means "the skin's own dimming" on every skin.
+    property int overlayScrimStrength: 100
+
     Component.onCompleted: {
-        if (typeof app !== "undefined" && app)
+        if (typeof app !== "undefined" && app) {
             theme.activeSkin = app.config("theme.active_skin", "obsidian")
+            theme.overlayScrimStrength = app.config("theme.overlay_scrim_strength", 100)
+        }
     }
 
     // Repaint live when the skin is changed from Settings — every color token
@@ -77,6 +84,14 @@ QtObject {
         function onConfigChanged(key, value) {
             if (key === "theme.active_skin")
                 theme.activeSkin = value
+            else if (key === "theme.overlay_scrim_strength")
+                theme.overlayScrimStrength = Number(value)
+        }
+        function onConfigGroupReset(prefix) {
+            if (prefix.length === 0 || prefix === "theme") {
+                theme.activeSkin = app.config("theme.active_skin", "obsidian")
+                theme.overlayScrimStrength = app.config("theme.overlay_scrim_strength", 100)
+            }
         }
     }
 
@@ -99,6 +114,11 @@ QtObject {
     readonly property color warning:    skin.warning
     readonly property color scrim:      skin.scrim
     readonly property color lightboxScrim: skin.lightboxScrim
+    // The in-game overlay's backdrop: the skin's scrim with its alpha scaled
+    // by the user's Settings → Appearance dimming strength, capped just short
+    // of opaque so the game behind the overlay never disappears entirely.
+    readonly property color overlayScrim: Qt.rgba(skin.scrim.r, skin.scrim.g, skin.scrim.b,
+                                                  Math.min(0.95, skin.scrim.a * theme.overlayScrimStrength / 100))
     readonly property color focusGlow:  skin.focusGlow
     // Translucent surface for in-overlay panels (sidebar, strip, preview frame)
     // — sits over the scrim with a hairline stroke so panels read as distinct

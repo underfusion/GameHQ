@@ -31,6 +31,11 @@ user when they switch skin.
   `AppController::configChanged`, which re-evaluates every binding above — that
   is what makes the switch live, with no reload path. An unknown value resolves
   to Dark.
+- `Theme.overlayScrim` is the in-game overlay's backdrop: the active skin's
+  `scrim` with its alpha scaled by `theme.overlay_scrim_strength` (percent,
+  25–150, Settings → General → Appearance → "Overlay dimming"), capped at 0.95
+  so the game never disappears entirely. The overlay must use this token, not
+  raw `scrim`.
 - `components/ThemeBackdrop.qml` renders `backdropStyle`: `flat` (single fill —
   exactly the original look), `gradient`, `wash` (blurred accent orbs via
   `MultiEffect`), `scanlines` (drawn once to a `Canvas`, not a Repeater). It is
@@ -151,7 +156,7 @@ Easing: OutCubic everywhere (OutQuint for overlay slide). Rules: animate opacity
 - **Primary button**: gradient fill, white text, `radiusS`, 36 px tall. **Secondary**: `surface` + hairline. **Ghost**: text-only, accent on hover/focus. Destructive: `danger` text or fill for confirm step only.
 - **Dialogs/popups**: `surface`, `radiusL`, dim scrim `bg0` @ 60 %; one primary action max.
 - **Settings shell**: a compact `bg1` category rail sits beside one scrollable page; Input may add nested device tabs, but top-level categories never grow into one long page.
-- **Settings controls**: compose `SettingsPage`, `SettingsSection`, `SettingsRow`, `SettingsToggle`, `SettingsCategoryButton`, `SettingsCombo`, and `SettingsPathField` (the read-only capture-root box — set `text`, it owns its own outline and middle elision); changed/reset state must remain observable and all visuals come from `Theme.qml`.
+- **Settings controls**: compose `SettingsPage`, `SettingsSection`, `SettingsRow`, `SettingsToggle`, `SettingsCategoryButton`, `SettingsCombo`, `SettingsSlider` (int-valued, commits to config on release, shows its value as text beside the track), and `SettingsPathField` (the read-only capture-root box — set `text`, it owns its own outline and middle elision); changed/reset state must remain observable and all visuals come from `Theme.qml`.
 - **Empty states**: centered icon (muted), one sentence, one action — never a blank grid.
 
 ## 7. Sounds (paired with motion)
