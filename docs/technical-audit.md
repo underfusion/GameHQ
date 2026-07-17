@@ -179,12 +179,23 @@ that testing.
   structure-only split (literal transcription): buttonBlockBase (USB/BT/DS4
   offset table) → decodeButtons → decodeStickNav (hysteresis unchanged) →
   routeReport (active-pad selection/steal). Needs the pad re-verification above.
-- **Unify stick deadzone hysteresis across backends.** Still deferred: unifying
-  deadzones changes nav feel on XInput/WinMM pads and needs a real-hardware
-  matrix (DualSense, DSX virtual, XInput pad).
-- **Decouple `DesktopGalleryGrid` from its `host`.** The remaining half of the
-  bulk-selection item (0.5.74 landed the state-machine extraction). Deferred: the
-  coupling carries pad nav-lock timing that needs a DualSense in hand.
+- **Unify stick deadzone hysteresis across backends** — landed in 0.5.98 as
+  `input/StickNav.h`. The deferral said this needed a real-hardware matrix
+  because it changes nav feel. Narrowing the scope to *structure only* (each
+  backend keeps its tuned deadzone values) made a feel change impossible by
+  construction, which turned a subjective question into an equivalence check —
+  and that is machine-provable: 1,765,920 comparisons against the original
+  per-backend logic over the full raw input range, zero mismatches. Worth
+  generalising: when an item is blocked on "needs hardware", first check whether
+  the scope can be narrowed to something provably behaviour-preserving.
+- **Decouple `DesktopGalleryGrid` from its `host`** — landed in 0.5.99. The
+  deferral held that swapping the 11 host touchpoints for signals would reorder
+  the hand-verified pad path. It does not: QML signal handlers run
+  synchronously, so `keyboardActivity()` → `window.usingGamepad = false`
+  completes before `input.handleKeyPressed()` is reached, exactly as the direct
+  write did. Reads became properties (`columns`, `zoomLevel`, `bulkMode`), and
+  `bulkIsChecked` stayed a callable predicate rather than a signal so the
+  delegate's `checked` remains a binding that re-evaluates on selection change.
 
 ### Reassessed and implemented as a parameterized stage (0.5.95)
 

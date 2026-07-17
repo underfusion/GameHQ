@@ -730,12 +730,19 @@ ApplicationWindow {
             }
             DesktopGalleryGrid {
                 id: grid
-                host: window
+                columns: window.gridColumns(grid.viewWidth)
+                zoomLevel: window.zoomLevel
+                bulkMode: window.bulkMode
+                bulkIsChecked: window.bulkIsChecked
                 deleteDialog: deleteDialog
                 bulkDeleteDialog: bulkDeleteDialog
                 onCaptureActivated: (index) => lightbox.openAt(index)
                 onDeleteRequested: (index, gameName, dateText) => window.askDelete(index, gameName, dateText)
                 onAddFolderRequested: folderDialog.open()
+                onKeyboardActivity: window.usingGamepad = false
+                onBulkToggleRequested: (index, extendRange) => window.bulkToggle(index, extendRange)
+                onBulkDeleteRequested: window.bulkAskDelete()
+                onBulkSelectAllRequested: window.bulkSelectAll()
             }
 
             DesktopGalleryFooter {

@@ -4,6 +4,18 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.99] - 2026-07-17
+
+### Changed
+
+- `DesktopGalleryGrid` no longer reaches into the main window. It now takes
+  what it displays as properties (`columns`, `zoomLevel`, `bulkMode`,
+  `bulkIsChecked`) and emits signals for what it wants done
+  (`keyboardActivity`, `bulkToggleRequested`, `bulkDeleteRequested`,
+  `bulkSelectAllRequested`), matching the pattern its sibling
+  `DesktopGalleryHeader` already used. Gallery behaviour, including the pad
+  bulk-selection flow and nav-lock timing, is unchanged.
+
 ## [0.5.98] - 2026-07-17
 
 ### Changed

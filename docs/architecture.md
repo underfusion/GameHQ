@@ -94,6 +94,8 @@ The desktop gallery entry point remains `src/ui/qml/Main.qml`, but presentationa
 
 `Main.qml` still owns top-level desktop state, dialogs, and navigation helper functions; `DesktopGalleryGrid.qml` keeps the existing grid API exposed back to that owner.
 
+Since 0.5.99 the grid takes no `host`. It is told what to show (`columns`, `zoomLevel`, `bulkMode`, `bulkIsChecked`) and emits what it wants done (`keyboardActivity`, `bulkToggleRequested`, `bulkDeleteRequested`, `bulkSelectAllRequested`), the same shape `DesktopGalleryHeader` already used. Two details are load-bearing: QML signal handlers run **synchronously**, which is what preserves the key-path order the direct `host.usingGamepad = false` write relied on (it must land before `input.handleKeyPressed()`); and `bulkIsChecked` is passed as a **predicate**, not converted to a signal, so the delegate's `checked` stays a real binding that re-evaluates when the selection changes.
+
 ## Refactor Direction
 
 The current safe refactor wave is complete. The near-term target is not a rewrite; future cleanup should stay tied to concrete feature work or isolated pain points:
