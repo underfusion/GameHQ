@@ -5,6 +5,7 @@
 #include <QtGlobal>
 
 #include <atomic>
+#include <string>
 #include <thread>
 
 // Forward declarations (avoid pulling d3d11.h / mfreadwrite.h into the header).
@@ -104,6 +105,11 @@ private:
     };
 
     bool buildWriter(const QString& path, PendingWriter& out, bool wantAudio) const;
+    // buildWriter stages, in call order. All const — they run on the worker OR
+    // the prep thread and must not touch mutable recorder state.
+    IMFSinkWriter* createSegmentSink(const std::wstring& wpath) const;
+    bool addVideoStream(IMFSinkWriter* writer, unsigned long& videoStream) const;
+    bool addAudioStream(IMFSinkWriter* writer, unsigned long& audioStream) const;
     void startPrep();                 // kick off building the NEXT segment's writer
     void joinPrep();                  // wait for the prep thread (if running)
     void discardPrep();               // join + release/delete an unused prepared writer

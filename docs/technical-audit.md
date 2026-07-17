@@ -157,6 +157,7 @@ the verification their acceptance requires, so they are held rather than claimed
 | Unified sidebar filter-select | 0.5.69 | Mandatory pad check - sits on the hand-verified DualSense path |
 | Cached `GameDetector` title resolution | 0.5.73 | Live game: Steam title path, codename/exe fallback path, a game switch, and auto-arm still catching a fullscreen game |
 | `BulkSelection.qml` state-machine extraction | 0.5.74 | Bulk mode: shift-click a range, then shift-click back over it — it must undo, not leave a trail; plus the pad flow |
+| Capture god-function split (`startPump`, `saveReplayOnWorker`, `remuxConcatImpl`, `buildWriter`) | 0.5.93 | Live game: replay buffer arms, 5 s segment rolls without hitching, Share-hold saves a playable clip with correct duration/audio, and a second save while one is exporting is refused cleanly |
 
 ### Deliberately Out of Scope for This Wave
 
@@ -165,10 +166,14 @@ common thread: each needs a live re-verification session that a code-only pass
 cannot provide, so each should ride along with feature work that already forces
 that testing.
 
-- **Split the capture god-functions** (`startPump`, `saveReplayOnWorker`,
-  `remuxConcatImpl`, `buildWriter`; 120-265 lines each). Deferred: this exact
-  bring-up/remux sequence was tuned against real games and needs multi-title live
-  re-verification.
+- **Split the capture god-functions** — landed in 0.5.93 as a structure-only
+  split (literal transcription into phase helpers, no behavior change intended):
+  `startPump` → createDevices/createCaptureItem/attachRecorder/createSession,
+  `saveReplayOnWorker` → saveGuard/freezeRing/instantThumbnail/runExport,
+  `remuxConcatImpl` → openSegment/beginConcatWriter/copySamples (the duplicated
+  video/audio copy loops unified), `buildWriter` →
+  createSegmentSink/addVideoStream/addAudioStream. Still needs the multi-title
+  live re-verification above before it counts as verified.
 - **Split `DualSenseDevice::parseReport` and unify stick deadzone hysteresis.**
   155 lines of hand-tuned USB/BT/DS4/DSX quirks; unifying deadzones changes nav
   feel on XInput/WinMM pads. Deferred: needs a real-hardware matrix (DualSense,

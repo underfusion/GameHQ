@@ -210,84 +210,88 @@ bool failStep(FramePumpWorker* self, const char* step, HRESULT hr)
 }
 } // namespace
 
-void FramePumpWorker::startPump(qulonglong hwndVal, unsigned long pid, int encodeWidth,
-                                int encodeHeight, int fps, int bitrateMbps, int segmentSeconds,
-                                int lengthSeconds, const QString& gameName,
-                                const QString& executablePath, bool audioEnabled)
+// 1-2. D3D11 device (BGRA support is mandatory for WGC) bridged to a WinRT
+//      IDirect3DDevice.
+bool FramePumpWorker::createDevices(Pipeline* pipe)
 {
-    if (m_pipe)   // already running
-        return;
-    if (!m_apartmentReady) {
-        qWarning() << "FramePump: cannot start — worker apartment not initialised";
-        return;
-    }
-
-    HWND hwnd = reinterpret_cast<HWND>(static_cast<quintptr>(hwndVal));
-    auto pipe = new Pipeline();
-
-    // 1. D3D11 device (BGRA support is mandatory for WGC).
     HRESULT hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr,
                                    D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr, 0,
                                    D3D11_SDK_VERSION, &pipe->d3dDevice, nullptr,
                                    &pipe->d3dCtx);
-    if (FAILED(hr)) { delete pipe; failStep(this, "D3D11CreateDevice", hr); return; }
+    if (FAILED(hr)) return failStep(this, "D3D11CreateDevice", hr);
 
-    // 2. Bridge the D3D11 device to a WinRT IDirect3DDevice. The export lives in
-    //    d3d11.dll but the mingw import lib may not expose the symbol, so resolve
-    //    it at runtime (exactly as the proven spike does).
-    //    Resolved once per process (function-local static) — the previous
-    //    per-arm LoadLibraryW leaked a module reference on every start.
+    // The bridge export lives in d3d11.dll but the mingw import lib may not expose
+    // the symbol, so resolve it at runtime (exactly as the proven spike does).
+    // Resolved once per process (function-local static) — the previous per-arm
+    // LoadLibraryW leaked a module reference on every start.
     static const auto pfnBridge = []() -> PFN_CreateDirect3D11DeviceFromDXGIDevice {
         const HMODULE d3dll = LoadLibraryW(L"d3d11.dll");
         return d3dll ? reinterpret_cast<PFN_CreateDirect3D11DeviceFromDXGIDevice>(
                            GetProcAddress(d3dll, "CreateDirect3D11DeviceFromDXGIDevice"))
                      : nullptr;
     }();
-    if (!pfnBridge) { delete pipe; failStep(this, "resolve CreateDirect3D11DeviceFromDXGIDevice", E_FAIL); return; }
+    if (!pfnBridge)
+        return failStep(this, "resolve CreateDirect3D11DeviceFromDXGIDevice", E_FAIL);
 
     IDXGIDevice* dxgiDevice = nullptr;
     hr = pipe->d3dDevice->QueryInterface(__uuidof(IDXGIDevice), reinterpret_cast<void**>(&dxgiDevice));
-    if (FAILED(hr)) { delete pipe; failStep(this, "QI IDXGIDevice", hr); return; }
+    if (FAILED(hr)) return failStep(this, "QI IDXGIDevice", hr);
 
     IInspectable* inspDevice = nullptr;
     hr = pfnBridge(dxgiDevice, &inspDevice);
     dxgiDevice->Release();
-    if (FAILED(hr) || !inspDevice) { delete pipe; failStep(this, "CreateDirect3D11DeviceFromDXGIDevice", hr); return; }
+    if (FAILED(hr) || !inspDevice)
+        return failStep(this, "CreateDirect3D11DeviceFromDXGIDevice", hr);
 
     hr = inspDevice->QueryInterface(IID_IDirect3DDevice, reinterpret_cast<void**>(&pipe->winrtDevice));
     inspDevice->Release();
-    if (FAILED(hr)) { delete pipe; failStep(this, "QI IDirect3DDevice", hr); return; }
+    if (FAILED(hr)) return failStep(this, "QI IDirect3DDevice", hr);
+    return true;
+}
 
-    // 3. HWND → GraphicsCaptureItem via the interop activation factory.
+// 3. HWND → GraphicsCaptureItem via the interop activation factory.
+bool FramePumpWorker::createCaptureItem(Pipeline* pipe, void* hwndPtr, int* outW, int* outH)
+{
     IGraphicsCaptureItemInterop* interop = nullptr;
     HSTRING itemClass = nullptr;
     WindowsCreateString(kWgcCaptureItemClass, UINT32(wcslen(kWgcCaptureItemClass)), &itemClass);
-    hr = RoGetActivationFactory(itemClass, IID_IGraphicsCaptureItemInterop, reinterpret_cast<void**>(&interop));
+    HRESULT hr = RoGetActivationFactory(itemClass, IID_IGraphicsCaptureItemInterop,
+                                        reinterpret_cast<void**>(&interop));
     if (itemClass) WindowsDeleteString(itemClass);
-    if (FAILED(hr) || !interop) { delete pipe; failStep(this, "RoGetActivationFactory(interop)", hr); return; }
+    if (FAILED(hr) || !interop)
+        return failStep(this, "RoGetActivationFactory(interop)", hr);
 
-    hr = interop->CreateForWindow(hwnd, IID_IGraphicsCaptureItem, reinterpret_cast<void**>(&pipe->item));
+    hr = interop->CreateForWindow(static_cast<HWND>(hwndPtr), IID_IGraphicsCaptureItem,
+                                  reinterpret_cast<void**>(&pipe->item));
     interop->Release();
-    if (FAILED(hr) || !pipe->item) { delete pipe; failStep(this, "CreateForWindow", hr); return; }
+    if (FAILED(hr) || !pipe->item) return failStep(this, "CreateForWindow", hr);
 
     WgcSizeInt32 size{ 0, 0 };
     hr = pipe->item->get_Size(&size);
-    if (FAILED(hr)) { delete pipe; failStep(this, "item->get_Size", hr); return; }
+    if (FAILED(hr)) return failStep(this, "item->get_Size", hr);
     qInfo() << "FramePump: capture item size" << size.Width << "x" << size.Height;
+    *outW = size.Width;
+    *outH = size.Height;
+    return true;
+}
 
-    // 3b. Rolling H.264 buffer (Step 4/5) into the TEMPORARY segment ring in
-    //     replay-cache/ (sized to ~lengthSeconds, oldest deleted). This is NOT the
-    //     saved clip — Share-hold snapshots this ring and remuxes it into one file
-    //     under <capturesRoot>/<Game>/Clips/ (Step 6/8, saveReplayOnWorker).
-    pipe->gameName = gameName;
-    pipe->executablePath = executablePath;
+// 3b. Rolling H.264 buffer (Step 4/5) into the TEMPORARY segment ring in
+//     replay-cache/ (sized to ~lengthSeconds, oldest deleted). This is NOT the
+//     saved clip — Share-hold snapshots this ring and remuxes it into one file
+//     under <capturesRoot>/<Game>/Clips/ (Step 6/8, saveReplayOnWorker).
+//
+// Cannot fail the arm: a recorder that will not begin degrades to capture-only,
+// exactly as before, so this returns void rather than bool.
+void FramePumpWorker::attachRecorder(Pipeline* pipe, unsigned long pid, int srcW, int srcH,
+                                     int encodeWidth, int encodeHeight, int fps, int bitrateMbps,
+                                     int segmentSeconds, int lengthSeconds, bool audioEnabled)
+{
     // Audio (Step 7) is opt-in: untested WASAPI code crashed the worker thread on
     // every game-arm in dev.74. Gate behind config "audio.enabled" (default false)
     // so video capture stays stable; audio only starts when explicitly enabled.
     if (audioEnabled) {
         pipe->audio = new AudioCapture();
-        bool audioOk = pipe->audio->start(pid);
-        if (audioOk) {
+        if (pipe->audio->start(pid)) {
             const unsigned frames = pipe->audio->sampleRate() / 10;
             pipe->audioBuf.resize(int(frames * pipe->audio->channels()));
             qInfo() << "FramePump: audio attached";
@@ -297,13 +301,12 @@ void FramePumpWorker::startPump(qulonglong hwndVal, unsigned long pid, int encod
             qInfo() << "FramePump: audio start failed — continuing video-only";
         }
     }
-    const QSize encodeSize = fitInsideEven(QSize(size.Width, size.Height),
-                                           QSize(encodeWidth, encodeHeight));
+    const QSize encodeSize = fitInsideEven(QSize(srcW, srcH), QSize(encodeWidth, encodeHeight));
     const QString cacheDir = Paths::replayCacheDir() + QLatin1Char('/')
-                             + GameIdentity::folderName(gameName) + QLatin1Char('/')
+                             + GameIdentity::folderName(pipe->gameName) + QLatin1Char('/')
                              + (pipe->audio ? QStringLiteral("audio") : QStringLiteral("video"));
     pipe->recorder = new SegmentRecorder();
-    if (!pipe->recorder->begin(size.Width, size.Height, encodeSize.width(), encodeSize.height(),
+    if (!pipe->recorder->begin(srcW, srcH, encodeSize.width(), encodeSize.height(),
                                fps, bitrateMbps, segmentSeconds, lengthSeconds, cacheDir,
                                pipe->d3dDevice, pipe->d3dCtx,
                                pipe->audio ? pipe->audio->sampleRate() : 0,
@@ -314,32 +317,37 @@ void FramePumpWorker::startPump(qulonglong hwndVal, unsigned long pid, int encod
     }
     pipe->encClock.start();
     pipe->encStartQpc100ns = qpcNow100ns();   // A/V share this epoch
+}
 
-    // 4. Free-threaded frame pool (no DispatcherQueue → pollable from this thread).
+// 4-5. Free-threaded frame pool (no DispatcherQueue → pollable from this thread),
+//      then the capture session.
+bool FramePumpWorker::createSession(Pipeline* pipe, int srcW, int srcH)
+{
     IDirect3D11CaptureFramePoolStatics2* poolStatics2 = nullptr;
     HSTRING poolClass = nullptr;
     WindowsCreateString(kWgcFramePoolClass, UINT32(wcslen(kWgcFramePoolClass)), &poolClass);
-    hr = RoGetActivationFactory(poolClass, IID_IDirect3D11CaptureFramePoolStatics2,
-                                reinterpret_cast<void**>(&poolStatics2));
+    HRESULT hr = RoGetActivationFactory(poolClass, IID_IDirect3D11CaptureFramePoolStatics2,
+                                        reinterpret_cast<void**>(&poolStatics2));
     if (poolClass) WindowsDeleteString(poolClass);
-    if (FAILED(hr) || !poolStatics2) { delete pipe; failStep(this, "RoGetActivationFactory(FramePoolStatics2)", hr); return; }
+    if (FAILED(hr) || !poolStatics2)
+        return failStep(this, "RoGetActivationFactory(FramePoolStatics2)", hr);
 
     // 4 buffers (was 2): the pump stalls for tens of ms every 5 s while the
     // segment writer finalizes + reopens (encoder MFT re-init). With only 2
     // buffers WGC drops frames during that stall — a periodic hitch in every
     // saved clip. 4 buffers ride it out; the drain loop in poll() catches up.
+    const WgcSizeInt32 size{ srcW, srcH };
     hr = poolStatics2->CreateFreeThreaded(pipe->winrtDevice,
                                           DirectXPixelFormat_B8G8R8A8UIntNormalized,
                                           4 /*buffers*/, size, &pipe->framePool);
     poolStatics2->Release();
-    if (FAILED(hr) || !pipe->framePool) { delete pipe; failStep(this, "CreateFreeThreaded", hr); return; }
+    if (FAILED(hr) || !pipe->framePool) return failStep(this, "CreateFreeThreaded", hr);
 
-    // 5. Session + start.
     hr = pipe->framePool->CreateCaptureSession(pipe->item, &pipe->session);
-    if (FAILED(hr) || !pipe->session) { delete pipe; failStep(this, "CreateCaptureSession", hr); return; }
+    if (FAILED(hr) || !pipe->session) return failStep(this, "CreateCaptureSession", hr);
 
     hr = pipe->session->StartCapture();
-    if (FAILED(hr)) { delete pipe; failStep(this, "StartCapture", hr); return; }
+    if (FAILED(hr)) return failStep(this, "StartCapture", hr);
 
     // Best-effort: hide the yellow WGC capture border (Win11 IGraphicsCaptureSession3).
     // If the interface/capability is unavailable, QI fails and the border just stays.
@@ -355,6 +363,37 @@ void FramePumpWorker::startPump(qulonglong hwndVal, unsigned long pid, int encod
         session3->Release();
     } else {
         qInfo() << "FramePump: capture-border interface unavailable — border stays";
+    }
+    return true;
+}
+
+void FramePumpWorker::startPump(qulonglong hwndVal, unsigned long pid, int encodeWidth,
+                                int encodeHeight, int fps, int bitrateMbps, int segmentSeconds,
+                                int lengthSeconds, const QString& gameName,
+                                const QString& executablePath, bool audioEnabled)
+{
+    if (m_pipe)   // already running
+        return;
+    if (!m_apartmentReady) {
+        qWarning() << "FramePump: cannot start — worker apartment not initialised";
+        return;
+    }
+
+    HWND hwnd = reinterpret_cast<HWND>(static_cast<quintptr>(hwndVal));
+    auto pipe = new Pipeline();
+    pipe->gameName = gameName;
+    pipe->executablePath = executablePath;
+
+    int srcW = 0, srcH = 0;
+    if (!createDevices(pipe) || !createCaptureItem(pipe, hwnd, &srcW, &srcH)) {
+        delete pipe;
+        return;
+    }
+    attachRecorder(pipe, pid, srcW, srcH, encodeWidth, encodeHeight, fps, bitrateMbps,
+                   segmentSeconds, lengthSeconds, audioEnabled);
+    if (!createSession(pipe, srcW, srcH)) {
+        delete pipe;
+        return;
     }
 
     // 6. Poll timer on this (worker) thread. PreciseTimer: the default coarse
@@ -459,14 +498,9 @@ void FramePumpWorker::poll()
     }
 }
 
-void FramePumpWorker::saveReplayOnWorker(const QString& clipsBaseRoot)
+// Preflight: refuse when the buffer is not running or an export is in flight.
+bool FramePumpWorker::saveGuard(const QString& saveId)
 {
-    static quint64 saveCounter = 0;
-    const QString saveId = QStringLiteral("%1-%2")
-        .arg(QDateTime::currentDateTime().toString(QStringLiteral("HHmmsszzz")))
-        .arg(++saveCounter);
-    QElapsedTimer saveTimer;
-    saveTimer.start();
     qInfo().noquote() << QStringLiteral("ReplaySave[%1]: request begin pipe=%2 recorder=%3 active=%4")
                              .arg(saveId)
                              .arg(m_pipe ? QStringLiteral("yes") : QStringLiteral("no"))
@@ -477,18 +511,24 @@ void FramePumpWorker::saveReplayOnWorker(const QString& clipsBaseRoot)
     if (!m_pipe || !m_pipe->recorder || !m_pipe->recorder->isActive()) {
         qInfo() << "FramePump: save-replay ignored — buffer not running (always-on recording is controlled in Settings → Replay)";
         emit clipFailed(QStringLiteral("Replay"), QStringLiteral("Replay buffer is not running"));
-        return;
+        return false;
     }
     if (m_exportBusy) {
         qInfo() << "FramePump: save-replay ignored — an export is already in progress";
         emit clipFailed(m_pipe->gameName.isEmpty() ? QStringLiteral("Replay") : m_pipe->gameName,
                         QStringLiteral("A replay save is already in progress"));
-        return;
+        return false;
     }
+    return true;
+}
 
-    // Freeze the ring (finalizes the in-flight segment, keeps recording).
-    // Pin it FIRST so the rolling recorder cannot delete any snapshot file
-    // while the export thread below is still reading it.
+// Freeze the ring (finalizes the in-flight segment, keeps recording).
+// Pin it FIRST so the rolling recorder cannot delete any snapshot file
+// while the export thread cut in runExport() is still reading it.
+// Empty result = ring had nothing; the failure signal is already emitted
+// and the ring unpinned.
+QStringList FramePumpWorker::freezeRing(const QString& saveId)
+{
     m_pipe->recorder->pinRing();
     QElapsedTimer snapshotTimer;
     snapshotTimer.start();
@@ -508,24 +548,24 @@ void FramePumpWorker::saveReplayOnWorker(const QString& clipsBaseRoot)
         const QString game = m_pipe->gameName.isEmpty() ? QStringLiteral("Replay")
                                                         : m_pipe->gameName;
         emit clipFailed(game, QStringLiteral("Replay buffer is empty"));
-        return;
+        return QStringList();
     }
+    return segs;
+}
 
-    const QString game = m_pipe->gameName.isEmpty() ? QStringLiteral("Unknown Game")
-                                                    : m_pipe->gameName;
-    const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
-    const QString thumbPath = Paths::thumbnailsDir() + QLatin1Char('/') + stamp
-                              + QStringLiteral("_clip.png");
-
-    // The moment is locked in — give instant feedback (before the slower
-    // remux) so the "saved" sound/notification doesn't wait for encoding.
-    // Grab a preview from the freshest completed segment (not the
-    // not-yet-remuxed final file) so the toast can show a thumbnail right away.
+// The moment is locked in — give instant feedback (before the slower
+// remux) so the "saved" sound/notification doesn't wait for encoding.
+// Grab a preview from the freshest completed segment (not the
+// not-yet-remuxed final file) so the toast can show a thumbnail right away.
+// Returns the written thumbnail path, or empty if the grab failed.
+QString FramePumpWorker::instantThumbnail(const QString& lastSegment, const QString& thumbPath,
+                                          const QString& saveId)
+{
     QString instantThumb;
     QImage instantFrame;
     QElapsedTimer instantThumbTimer;
     instantThumbTimer.start();
-    if (ReplayExporter::grabThumbnail(segs.last(), instantFrame) && !instantFrame.isNull()) {
+    if (ReplayExporter::grabThumbnail(lastSegment, instantFrame) && !instantFrame.isNull()) {
         QDir().mkpath(Paths::thumbnailsDir());
         const QImage scaled = instantFrame.width() > 640
             ? instantFrame.scaledToWidth(640, Qt::SmoothTransformation) : instantFrame;
@@ -537,30 +577,24 @@ void FramePumpWorker::saveReplayOnWorker(const QString& clipsBaseRoot)
                              .arg(instantThumb.isEmpty() ? QStringLiteral("no") : QStringLiteral("yes"))
                              .arg(instantThumb)
                              .arg(instantThumbTimer.elapsed());
-    emit clipSaving(game, instantThumb, m_pipe->executablePath);
+    return instantThumb;
+}
 
-    const QString clipsDir = clipsBaseRoot + QLatin1Char('/')
-                             + GameIdentity::folderName(game) + QStringLiteral("/Clips");
-    if (!QDir().mkpath(clipsDir)) {
-        m_pipe->recorder->unpinRing();
-        emit clipFailed(game, QStringLiteral("Could not create the selected clips folder"));
-        return;
-    }
-    const QString outPath = clipsDir + QLatin1Char('/') + stamp + QStringLiteral(".mp4");
+// Remux + final thumbnail on their OWN thread: previously they ran right
+// here on the capture thread, so every save paused recording (and any
+// pad/frame processing) for the whole export. The ring stays pinned until
+// the export finishes so none of the snapshot files can be deleted.
+void FramePumpWorker::runExport(const QStringList& segs, const QString& outPath,
+                                const QString& thumbPath, const QString& instantThumb,
+                                const QString& game, const QString& exePath,
+                                const QString& saveId)
+{
     const QString partialPath = outPath + QStringLiteral(".partial");
-    qInfo().noquote() << QStringLiteral("ReplaySave[%1]: output path=%2 game=%3")
-                             .arg(saveId).arg(outPath).arg(game);
-
-    // Remux + final thumbnail on their OWN thread: previously they ran right
-    // here on the capture thread, so every save paused recording (and any
-    // pad/frame processing) for the whole export. The ring stays pinned until
-    // the export finishes so none of the snapshot files can be deleted.
     struct ExportResult {
         bool ok = false;
         QString finalThumb;
     };
     auto result = std::make_shared<ExportResult>();
-    const QString exePath = m_pipe->executablePath;
     m_exportBusy = true;
 
     QThread* exportThread = QThread::create(
@@ -619,6 +653,45 @@ void FramePumpWorker::saveReplayOnWorker(const QString& clipsBaseRoot)
             });
     connect(exportThread, &QThread::finished, exportThread, &QObject::deleteLater);
     exportThread->start();
+}
+
+void FramePumpWorker::saveReplayOnWorker(const QString& clipsBaseRoot)
+{
+    static quint64 saveCounter = 0;
+    const QString saveId = QStringLiteral("%1-%2")
+        .arg(QDateTime::currentDateTime().toString(QStringLiteral("HHmmsszzz")))
+        .arg(++saveCounter);
+    QElapsedTimer saveTimer;
+    saveTimer.start();
+
+    if (!saveGuard(saveId))
+        return;
+
+    const QStringList segs = freezeRing(saveId);
+    if (segs.isEmpty())
+        return;
+
+    const QString game = m_pipe->gameName.isEmpty() ? QStringLiteral("Unknown Game")
+                                                    : m_pipe->gameName;
+    const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
+    const QString thumbPath = Paths::thumbnailsDir() + QLatin1Char('/') + stamp
+                              + QStringLiteral("_clip.png");
+
+    const QString instantThumb = instantThumbnail(segs.last(), thumbPath, saveId);
+    emit clipSaving(game, instantThumb, m_pipe->executablePath);
+
+    const QString clipsDir = clipsBaseRoot + QLatin1Char('/')
+                             + GameIdentity::folderName(game) + QStringLiteral("/Clips");
+    if (!QDir().mkpath(clipsDir)) {
+        m_pipe->recorder->unpinRing();
+        emit clipFailed(game, QStringLiteral("Could not create the selected clips folder"));
+        return;
+    }
+    const QString outPath = clipsDir + QLatin1Char('/') + stamp + QStringLiteral(".mp4");
+    qInfo().noquote() << QStringLiteral("ReplaySave[%1]: output path=%2 game=%3")
+                             .arg(saveId).arg(outPath).arg(game);
+
+    runExport(segs, outPath, thumbPath, instantThumb, game, m_pipe->executablePath, saveId);
     qInfo().noquote() << QStringLiteral("ReplaySave[%1]: export started in background totalSoFarMs=%2")
                              .arg(saveId).arg(saveTimer.elapsed());
 }

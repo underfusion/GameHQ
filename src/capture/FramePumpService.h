@@ -56,6 +56,25 @@ private:
     struct Pipeline;                 // all WGC/D3D pointers + timer + fps state (.cpp)
     void teardown();                 // delete m_pipe (releases everything, reverse order)
 
+    // startPump bring-up, one phase per step, in call order. Each reports its own
+    // failure via failStep() and returns false; startPump owns the single
+    // `delete pipe` cleanup, so no phase frees anything it did not create.
+    bool createDevices(Pipeline* pipe);                        // D3D11 + WinRT bridge
+    bool createCaptureItem(Pipeline* pipe, void* hwnd, int* outW, int* outH);
+    void attachRecorder(Pipeline* pipe, unsigned long pid, int srcW, int srcH,
+                        int encodeWidth, int encodeHeight, int fps, int bitrateMbps,
+                        int segmentSeconds, int lengthSeconds, bool audioEnabled);
+    bool createSession(Pipeline* pipe, int srcW, int srcH);    // frame pool + session
+
+    // saveReplayOnWorker stages, in call order.
+    bool saveGuard(const QString& saveId);                     // preflight: pipe/ring/busy
+    QStringList freezeRing(const QString& saveId);             // pin + snapshot (empty = refused)
+    QString instantThumbnail(const QString& lastSegment, const QString& thumbPath,
+                             const QString& saveId);
+    void runExport(const QStringList& segs, const QString& outPath,
+                   const QString& thumbPath, const QString& instantThumb,
+                   const QString& game, const QString& exePath, const QString& saveId);
+
     Pipeline* m_pipe = nullptr;
     bool m_apartmentReady = false;
     bool m_exportBusy = false;       // one async clip export at a time

@@ -4,6 +4,18 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.93] - 2026-07-17
+
+### Changed
+
+- Internal: the four large replay-pipeline functions were split into named
+  phase helpers with no intended behavior change — `startPump` (device/item/
+  recorder/session bring-up), `saveReplayOnWorker` (guard/freeze/thumbnail/
+  export stages), `remuxConcatImpl` (segment open, writer setup, and one
+  shared sample-copy loop for video and audio), and `SegmentRecorder::
+  buildWriter` (sink creation plus video and audio stream setup). Pending a
+  live-game re-verification pass of the replay buffer and clip saving.
+
 ## [0.5.92] - 2026-07-17
 
 ### Fixed
