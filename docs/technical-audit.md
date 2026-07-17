@@ -158,6 +158,7 @@ the verification their acceptance requires, so they are held rather than claimed
 | Cached `GameDetector` title resolution | 0.5.73 | Live game: Steam title path, codename/exe fallback path, a game switch, and auto-arm still catching a fullscreen game |
 | `BulkSelection.qml` state-machine extraction | 0.5.74 | Bulk mode: shift-click a range, then shift-click back over it — it must undo, not leave a trail; plus the pad flow |
 | Capture god-function split (`startPump`, `saveReplayOnWorker`, `remuxConcatImpl`, `buildWriter`) | 0.5.93 | Live game: replay buffer arms, 5 s segment rolls without hitching, Share-hold saves a playable clip with correct duration/audio, and a second save while one is exporting is refused cleanly |
+| `DualSenseDevice::parseReport` split | 0.5.94 | Pad in hand: DualSense over USB and BT — D-pad and left-stick nav (no doubled events at the deadzone boundary), face buttons, Share-hold replay save, and a DSX/second-pad failover if available |
 
 ### Deliberately Out of Scope for This Wave
 
@@ -174,10 +175,13 @@ that testing.
   video/audio copy loops unified), `buildWriter` →
   createSegmentSink/addVideoStream/addAudioStream. Still needs the multi-title
   live re-verification above before it counts as verified.
-- **Split `DualSenseDevice::parseReport` and unify stick deadzone hysteresis.**
-  155 lines of hand-tuned USB/BT/DS4/DSX quirks; unifying deadzones changes nav
-  feel on XInput/WinMM pads. Deferred: needs a real-hardware matrix (DualSense,
-  DSX virtual, XInput pad).
+- **Split `DualSenseDevice::parseReport`** — landed in 0.5.94 as a
+  structure-only split (literal transcription): buttonBlockBase (USB/BT/DS4
+  offset table) → decodeButtons → decodeStickNav (hysteresis unchanged) →
+  routeReport (active-pad selection/steal). Needs the pad re-verification above.
+- **Unify stick deadzone hysteresis across backends.** Still deferred: unifying
+  deadzones changes nav feel on XInput/WinMM pads and needs a real-hardware
+  matrix (DualSense, DSX virtual, XInput pad).
 - **Decouple `DesktopGalleryGrid` from its `host`.** The remaining half of the
   bulk-selection item (0.5.74 landed the state-machine extraction). Deferred: the
   coupling carries pad nav-lock timing that needs a DualSense in hand.

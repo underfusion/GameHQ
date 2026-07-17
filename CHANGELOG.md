@@ -4,6 +4,17 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.94] - 2026-07-17
+
+### Changed
+
+- Internal: `DualSenseDevice::parseReport` was split into named stages with no
+  intended behavior change — report-layout offset lookup, button decoding,
+  stick-to-D-pad decoding (hysteresis untouched), and active-pad routing.
+  The stick deadzone values and the USB/BT/DS4 offsets are byte-for-byte the
+  same; pending a pad-in-hand re-verification pass. Deadzone unification
+  across XInput/WinMM stays deferred.
+
 ## [0.5.93] - 2026-07-17
 
 ### Changed

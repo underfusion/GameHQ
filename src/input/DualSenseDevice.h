@@ -68,6 +68,13 @@ private:
     void failoverOrScheduleDisconnect();
     void finishDisconnect();
     void parseReport(void* handle, DeviceState& st, const unsigned char* data, int len);
+    // parseReport stages, in call order. The decoders are pure (static);
+    // routeReport owns the active-pad selection/steal side effects.
+    static int buttonBlockBase(unsigned char reportId, bool ds4, int len);
+    static quint32 decodeButtons(const unsigned char* d, int base);
+    static quint32 decodeStickNav(const DeviceState& st, const unsigned char* d, int base, int len);
+    void routeReport(void* handle, const DeviceState& st, quint32 s, bool changed,
+                     unsigned char reportId, const unsigned char* d, int len);
     void emitEdges(quint32 buttons);
 
     void* m_hwnd = nullptr;                  // HWND of the message-only window

@@ -389,41 +389,23 @@ void DualSenseDevice::onRawInput(void* hRawInputV)
         parseReport(handle, *st, raw + i * hidSize, static_cast<int>(hidSize));
 }
 
-void DualSenseDevice::parseReport(void* handle, DeviceState& st,
-                                  const unsigned char* d, int len)
+// Locate the button block. USB report 0x01 puts it at byte 8; Bluetooth
+// report 0x31 shifts the whole payload +2 bytes (docs/controller-input.md).
+// Returns -1 for report ids this app does not parse.
+int DualSenseDevice::buttonBlockBase(unsigned char reportId, bool ds4, int len)
 {
-    if (len < 1)
-        return;
-
-    // Locate the button block. USB report 0x01 puts it at byte 8; Bluetooth
-    // report 0x31 shifts the whole payload +2 bytes (docs/controller-input.md).
-    const unsigned char reportId = d[0];
-    int base;
-    const bool ds4 = st.layout == LayoutDs4;
     if (reportId == 0x01)
-        base = (ds4 || len < 11) ? 5 : 8;
-    else if (reportId == 0x11 && ds4)
-        base = 7;
-    else if (reportId == 0x31 && !ds4)
-        base = 10;
-    else
-        return;
+        return (ds4 || len < 11) ? 5 : 8;
+    if (reportId == 0x11 && ds4)
+        return 7;
+    if (reportId == 0x31 && !ds4)
+        return 10;
+    return -1;
+}
 
-    if (len < base + 3)
-        return;
-
-    st.reported = true;
-    st.lastReportMs = m_clock.elapsed();
-
-    // Any valid Sony report proves a pad is alive — cancel a pending
-    // disconnect. If the active pad was just removed, this report's device
-    // becomes the new active pad below.
-    if (m_disconnectTimer->isActive()) {
-        m_disconnectTimer->stop();
-        qInfo() << "Gamepad:" << padName(st.layout)
-                << "reports resumed before disconnect debounce";
-    }
-
+// Face buttons, shoulder/trigger edges, Share/Options/PS, and the D-pad hat.
+quint32 DualSenseDevice::decodeButtons(const unsigned char* d, int base)
+{
     const unsigned char b0 = d[base];        // dpad hat (low nibble) + face buttons
     const unsigned char b1 = d[base + 1];    // L1/R1/Share/Options/...
     const unsigned char b2 = d[base + 2];    // PS/touchpad/mute
@@ -457,17 +439,23 @@ void DualSenseDevice::parseReport(void* handle, DeviceState& st,
     case 7: set(DpadUp);   set(DpadLeft); break;
     default: break;
     }
+    return s;
+}
 
-    // Left stick doubles as the D-pad for menu navigation (overlay request:
-    // "D-pad or left stick"). Axes sit 7 bytes before the button block on
-    // both encodings (USB base=8 → LX at d[1]; BT base=10 → LX at d[3]),
-    // 0..255 with ~128 center. A wide deadzone avoids drift, and HYSTERESIS
-    // (kReturnZone < kDeadzone) keeps an axis "active" until the stick
-    // returns well inside the center — without this the stick oscillating at
-    // the boundary would fire doubled navigation events, and overshooting
-    // past center on release would fire a spurious opposite-direction event.
-    // emitEdges() below only fires once per direction crossed, same as a
-    // real button — no auto-repeat while held, matching the D-pad.
+// Left stick doubles as the D-pad for menu navigation (overlay request:
+// "D-pad or left stick"). Axes sit 7 bytes before the button block on
+// both encodings (USB base=8 → LX at d[1]; BT base=10 → LX at d[3]),
+// 0..255 with ~128 center. A wide deadzone avoids drift, and HYSTERESIS
+// (kReturnZone < kDeadzone) keeps an axis "active" until the stick
+// returns well inside the center — without this the stick oscillating at
+// the boundary would fire doubled navigation events, and overshooting
+// past center on release would fire a spurious opposite-direction event.
+// emitEdges() in the caller only fires once per direction crossed, same as
+// a real button — no auto-repeat while held, matching the D-pad.
+// Hysteresis state comes from st.stick (last frame's stick bits).
+quint32 DualSenseDevice::decodeStickNav(const DeviceState& st, const unsigned char* d,
+                                        int base, int len)
+{
     const int axisBase = base >= 8 ? base - 7 : 1;
     quint32 stick = 0;
     auto stickSet = [&stick](int btn) { stick |= (1u << btn); };
@@ -496,12 +484,48 @@ void DualSenseDevice::parseReport(void* handle, DeviceState& st,
         else if (wasUp ? (ly < kCenter - kReturnZone) : (ly < kCenter - kDeadzone))
             stickSet(DpadUp);
     }
-    st.stick = stick;
-    s |= stick;
+    return stick;
+}
+
+void DualSenseDevice::parseReport(void* handle, DeviceState& st,
+                                  const unsigned char* d, int len)
+{
+    if (len < 1)
+        return;
+
+    const unsigned char reportId = d[0];
+    const int base = buttonBlockBase(reportId, st.layout == LayoutDs4, len);
+    if (base < 0 || len < base + 3)
+        return;
+
+    st.reported = true;
+    st.lastReportMs = m_clock.elapsed();
+
+    // Any valid Sony report proves a pad is alive — cancel a pending
+    // disconnect. If the active pad was just removed, this report's device
+    // becomes the new active pad in routeReport.
+    if (m_disconnectTimer->isActive()) {
+        m_disconnectTimer->stop();
+        qInfo() << "Gamepad:" << padName(st.layout)
+                << "reports resumed before disconnect debounce";
+    }
+
+    quint32 s = decodeButtons(d, base);
+    st.stick = decodeStickNav(st, d, base, len);
+    s |= st.stick;
 
     const bool changed = (s != st.buttons);
     st.buttons = s;
 
+    routeReport(handle, st, s, changed, reportId, d, len);
+}
+
+// Decide which pad the decoded state drives: first reporting pad becomes
+// active, the active pad just emits, and a non-active pad may steal the
+// active role only on a real input change while the active pad is silent.
+void DualSenseDevice::routeReport(void* handle, const DeviceState& st, quint32 s, bool changed,
+                                  unsigned char reportId, const unsigned char* d, int len)
+{
     if (!m_activeHandle) {
         // First reporting pad (or the previous one just vanished) takes over.
         m_activeHandle = handle;
