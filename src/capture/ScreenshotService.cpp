@@ -57,7 +57,31 @@ void ScreenshotService::capture()
 
     const QString gameName = g.gameName.isEmpty() ? QStringLiteral("Unknown Game")
                                                   : g.gameName;
-    const QString executablePath = g.executablePath;
+    qInfo() << "Screenshot: grabbed" << img.width() << "x" << img.height()
+            << "in" << grabMs << "ms — encoding in background";
+    encodeAndSave(img, gameName, g.executablePath);
+}
+
+// Save a caller-supplied image (a clip frame from the QML video surface) as a
+// screenshot. Same feedback + encode path as capture(), minus the GDI grab and
+// foreground gate — the caller already holds the pixels for a specific game.
+void ScreenshotService::saveImage(const QImage& img, const QString& gameName,
+                                  const QString& executablePath)
+{
+    if (img.isNull()) {
+        emit failed(QStringLiteral("no video frame available to save"));
+        return;
+    }
+    emit grabbed();
+    const QString game = gameName.isEmpty() ? QStringLiteral("Unknown Game") : gameName;
+    qInfo() << "Frame grab:" << img.width() << "x" << img.height()
+            << "for" << game << "— encoding in background";
+    encodeAndSave(img, game, executablePath);
+}
+
+void ScreenshotService::encodeAndSave(const QImage& img, const QString& gameName,
+                                      const QString& executablePath)
+{
     const QString dir = m_locations->screenshotDir(gameName);
     // Read format/quality on the calling thread (ConfigManager is not meant for
     // concurrent access) and hand plain values to the worker.
@@ -68,8 +92,6 @@ void ScreenshotService::capture()
     const int jpegQuality = m_config
         ? qBound(1, m_config->value(ConfigKeys::CaptureJpegQuality, 90).toInt(), 100)
         : 90;
-    qInfo() << "Screenshot: grabbed" << img.width() << "x" << img.height()
-            << "in" << grabMs << "ms — encoding in background";
 
     QThreadPool::globalInstance()->start(QRunnable::create(
         [this, img, gameName, executablePath, dir, jpeg, ext, jpegQuality]() {

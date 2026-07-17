@@ -30,6 +30,8 @@ release after consumed      → nothing
 
 Threshold options: 1.0 / 1.5 / 2.0 / 3.0 s / custom. Implemented in the binding runtime's gesture handling (`BindingRuntime`).
 
+**Frame grab while a clip is focused.** In the Playback scope (a clip focused in the overlay or the desktop lightbox), a **Share tap** is bound to `playback.frame_grab` instead of the global screenshot. It grabs the exact frame currently shown on the video surface — paused or mid-playback — and saves it as a screenshot for the clip's game through the normal screenshot pipeline. Because it is a Playback-scope binding, it overrides the global screenshot only while a clip is focused; everywhere else Share tap stays the global screenshot. Keyboard equivalent: **S** (Playback scope only, so it never collides with the global `Ctrl+Shift+S`). Share **hold** is unbound in Playback scope, so it still falls through to the global save-replay action.
+
 ## Default mapping
 
 See [product-spec.md §6](product-spec.md#6-controller-mapping-default). PS button is frequently intercepted (Steam, DS4Windows, Game Bar) → treat as optional; fallback overlay toggle: **Share double-tap** and `Ctrl+Shift+G`.

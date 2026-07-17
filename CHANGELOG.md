@@ -4,6 +4,21 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-07-18
+
+### Added
+
+- Save a still frame from a recorded clip. While a clip is focused for playback
+  in the overlay or the desktop lightbox, pressing **Share** (or **S** on the
+  keyboard) now grabs the exact frame currently on screen — paused on a chosen
+  frame or mid-playback — and saves it as a screenshot, instead of capturing the
+  whole desktop. The frame is taken at the clip's native resolution from the
+  video surface, attributed to the clip's game, and written through the normal
+  screenshot pipeline (same folder, format/quality, shutter sound, toast and
+  gallery row). New `playback.frame_grab` action (Playback scope), so Share only
+  changes meaning while a clip is focused and stays the global screenshot
+  everywhere else.
+
 ## [0.5.99] - 2026-07-17
 
 ### Changed

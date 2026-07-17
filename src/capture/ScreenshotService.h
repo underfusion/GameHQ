@@ -23,6 +23,12 @@ public:
 
 public slots:
     void capture();   // grab per capture.mode; emits exactly one result signal
+    // Save an already-grabbed image (e.g. a clip frame from the QML video
+    // surface) as a screenshot under the given game, reusing the same encode +
+    // feedback path as capture(). No foreground gating — the caller owns the
+    // pixels already.
+    void saveImage(const QImage& img, const QString& gameName,
+                   const QString& executablePath = QString());
 
 signals:
     void grabbed();                        // pixels are in hand — play shutter NOW
@@ -33,6 +39,10 @@ signals:
 
 private:
     QImage grabRect(void* hwnd, int x, int y, int w, int h) const;
+    // Shared tail of capture()/saveImage(): read format/quality on this thread,
+    // then encode + write on a pool thread and emit captured()/failed().
+    void encodeAndSave(const QImage& img, const QString& gameName,
+                       const QString& executablePath);
 
     ConfigManager* m_config;
     CaptureLocations* m_locations;

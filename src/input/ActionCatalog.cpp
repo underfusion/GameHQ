@@ -75,6 +75,8 @@ const QVector<ActionCatalog::Action>& buildCatalog()
           QStringLiteral("Step the focused clip backward."), true },
         { QStringLiteral("playback.seek_forward"),Scope::Playback, QStringLiteral("Seek Forward"),
           QStringLiteral("Step the focused clip forward."), true },
+        { QStringLiteral("playback.frame_grab"), Scope::Playback, QStringLiteral("Save Frame"),
+          QStringLiteral("Save the frame currently shown in the focused clip as a screenshot."), true },
     };
     return actions;
 }

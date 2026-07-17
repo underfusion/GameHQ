@@ -325,6 +325,12 @@ Window {
                 overlayWindow.usingGamepad = true
                 content.seekVideo(direction * previewStage.seekStepMs)
             }
+            // Share while a clip is focused: grab the on-screen frame as a
+            // screenshot instead of the global foreground screenshot.
+            function onFrameGrabRequested() {
+                overlayWindow.usingGamepad = true
+                previewStage.saveCurrentFrame()
+            }
         }
 
         // Body: sidebar (categories/games) on the left, strip + preview on

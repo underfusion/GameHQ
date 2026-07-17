@@ -76,6 +76,9 @@ bool App::init()
     // Screenshot capture (0.4): GDI grab of the foreground game → DB/gallery.
     m_screenshots = std::make_unique<ScreenshotService>(m_config.get(),
                                                         m_locations.get());
+    // Let the QML bridge save clip frames (Share on a focused clip) through the
+    // same screenshot pipeline — same folder, format, sound and toast.
+    m_controller->setScreenshotService(m_screenshots.get());
     // Shutter plays the instant the pixels are grabbed (before the async encode),
     // so the feedback is immediate even though the PNG lands a moment later.
     connect(m_screenshots.get(), &ScreenshotService::grabbed, this,

@@ -1,5 +1,6 @@
 #include "ui/AppController.h"
 #include "app/StartupManager.h"
+#include "capture/ScreenshotService.h"
 #include "config/CaptureLocations.h"
 #include "config/ConfigKeys.h"
 #include "config/ConfigManager.h"
@@ -19,7 +20,10 @@
 #include <QDebug>
 #include <QGuiApplication>
 #include <QHash>
+#include <QImage>
 #include <QVariantMap>
+#include <QVideoFrame>
+#include <QVideoSink>
 
 namespace
 {
@@ -351,6 +355,24 @@ void AppController::syncOverlayToForegroundGame()
         const int gameId = m_currentGame->currentGameAvailable() ? m_currentGame->currentGameId() : -1;
         m_overlayGallery->setFilter(QStringLiteral("all"), gameId);
     }
+}
+
+void AppController::saveVideoFrame(QObject* videoSink, const QString& gameName,
+                                   const QString& executablePath)
+{
+    if (!m_screenshots) {
+        qWarning() << "saveVideoFrame: no screenshot service wired";
+        return;
+    }
+    auto* sink = qobject_cast<QVideoSink*>(videoSink);
+    if (!sink) {
+        qWarning() << "saveVideoFrame: argument is not a QVideoSink";
+        return;
+    }
+    // QVideoSink retains the last presented frame, so this works whether the
+    // clip is paused on a chosen frame or grabbed mid-playback.
+    const QImage frame = sink->videoFrame().toImage();
+    m_screenshots->saveImage(frame, gameName, executablePath);
 }
 
 void AppController::updateForegroundGame(const QString& gameName, const QString& executablePath)

@@ -42,6 +42,14 @@ Item {
         mediaStage.player.stop()
     }
 
+    // Save the frame currently shown by the focused clip as a screenshot,
+    // attributed to the clip's game. No-op unless a video is actually focused.
+    function saveCurrentFrame() {
+        if (!(root.videoFocused && root.displayedIsVideo))
+            return
+        app.saveVideoFrame(mediaStage.videoSink, root.displayedRecord.gameName || "")
+    }
+
     function revealControls() {
         playerControls.revealControls()
     }

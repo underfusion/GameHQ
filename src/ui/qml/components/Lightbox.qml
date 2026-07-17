@@ -78,6 +78,13 @@ Window {
         playerControls.revealControls()
         player.position = Math.max(0, Math.min(player.duration, player.position + deltaMs))
     }
+    // Save the frame currently shown by the focused clip as a screenshot,
+    // attributed to the clip's game. No-op unless the current item is a video.
+    function saveCurrentFrame() {
+        if (root.current.captureType !== "video")
+            return
+        app.saveVideoFrame(mediaStage.videoSink, root.current.gameName || "")
+    }
     function toggleVideoPlayback() {
         if (root.current.captureType !== "video")
             return

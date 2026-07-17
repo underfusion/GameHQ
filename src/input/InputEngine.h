@@ -94,6 +94,10 @@ signals:
     void desktopBulkToggle();             // Cross held: enter/leave bulk selection
     void playbackPlayPause();
     void playbackSeek(int direction);
+    // Share while a clip is focused: grab the frame on screen and save it as a
+    // screenshot. Consumed in QML (OverlayWindow.qml / Main.qml) because the
+    // live video frame lives in the QML video surface, not in C++.
+    void frameGrabRequested();
 
     void lastInputChanged();
     void controllerStatusChanged();
@@ -153,6 +157,7 @@ private:
     void handlePlaybackPlayPause(const QString&)       { emit playbackPlayPause(); }
     void handlePlaybackSeekBack(const QString& tc)     { startNavRepeat(tc, -1, [this](int d) { emit playbackSeek(d); }); }
     void handlePlaybackSeekForward(const QString& tc)  { startNavRepeat(tc,  1, [this](int d) { emit playbackSeek(d); }); }
+    void handleFrameGrab(const QString&)               { emit frameGrabRequested(); }
 
     // Hold-to-repeat for navigation buttons (D-pad ↑↓←→, L1, R1). The pad
     // only delivers press edges to QML, so the repeat lives here: the signal

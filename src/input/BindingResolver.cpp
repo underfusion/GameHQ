@@ -93,6 +93,10 @@ QVector<BindingResolver::Binding> BindingResolver::defaultBindings(int captureHo
         k("playback.play_pause", 2, "Return"),
         k("playback.seek_back", 1, "Left"),
         k("playback.seek_forward", 1, "Right"),
+        // S grabs the on-screen clip frame while playback is focused. Only
+        // resolves in Playback scope (nothing else binds a bare S there), so it
+        // never collides with the global Ctrl+Shift+S screenshot hotkey.
+        k("playback.frame_grab", 1, "S"),
 
         c("global.screenshot", 1, Capture, "tap"),
         c("global.save_replay", 1, Capture, "hold", captureHoldMs),
@@ -140,6 +144,10 @@ QVector<BindingResolver::Binding> BindingResolver::defaultBindings(int captureHo
         c("playback.play_pause", 1, FaceSouth),
         c("playback.seek_back", 1, DpadLeft),
         c("playback.seek_forward", 1, DpadRight),
+        // Share (Create) grabs the current clip frame while playback is focused.
+        // In every other scope Share tap is global.screenshot; the Playback
+        // binding wins over that fallback only while a clip is focused.
+        c("playback.frame_grab", 1, Capture, "tap"),
     };
 }
 

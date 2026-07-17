@@ -633,6 +633,11 @@ ApplicationWindow {
             if (lightbox.visible)
                 lightbox.padNavigate(direction)
         }
+        // Share on a focused clip in the lightbox: save the on-screen frame.
+        function onFrameGrabRequested() {
+            if (lightbox.visible)
+                lightbox.saveCurrentFrame()
+        }
     }
 
     Connections {

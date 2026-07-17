@@ -421,6 +421,7 @@ void InputEngine::dispatchAction(const QString& actionId, const QString& trigger
         { "playback.play_pause",    &Self::handlePlaybackPlayPause },
         { "playback.seek_back",     &Self::handlePlaybackSeekBack },
         { "playback.seek_forward",  &Self::handlePlaybackSeekForward },
+        { "playback.frame_grab",     &Self::handleFrameGrab },
     };
 
     for (const auto& entry : table) {

@@ -36,6 +36,9 @@ Item {
     property url committedUrl: ""
 
     readonly property alias player: clipPlayer
+    // The video surface's sink holds the live frame — callers hand this to
+    // AppController.saveVideoFrame to grab a still of the clip on screen.
+    readonly property alias videoSink: videoSurface.videoSink
     readonly property real sourceWidth: still.implicitWidth
     readonly property real sourceHeight: still.implicitHeight
 
