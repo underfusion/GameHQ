@@ -19,7 +19,9 @@ continuously keeps the most recent gameplay in a rolling buffer. When something
 worth saving happens, press one button **after the moment** to turn the previous
 configurable minutes into a normal MP4 video clip — there is no need to start
 recording beforehand. You can also take instant screenshots and browse everything
-in a controller-friendly gallery without leaving your game.
+in a controller-friendly gallery without leaving your game. GameHQ 0.6.3 adds a
+full theme system, stronger overlay behavior, clip-frame screenshots, and clear
+recovery when controller-filtering software hides a connected pad.
 
 ## Highlights
 
@@ -29,11 +31,20 @@ in a controller-friendly gallery without leaving your game.
   audio when you press the replay button. Duration, quality, frame rate, and
   resolution are configurable.
 - **In-game overlay** for browsing, playing, favoriting, revealing, and deleting
-  captures without alt-tabbing.
+  captures without alt-tabbing. It refreshes immediately after a new capture and
+  closes cleanly when Windows focus moves to another app, Start, or the task switcher.
+- **Save a frame from any clip**: while a recorded clip is focused, press Share
+  or `S` to turn the exact displayed frame into a normal screenshot assigned to
+  the same game.
 - **Controller-first controls** with DualSense, XInput, WinMM, keyboard, and safe
-  extra mouse-button support.
+  extra mouse-button support. Settings can detect Sony controllers hidden by
+  HidHide and safely add GameHQ to its application allow-list.
 - **Fully configurable bindings** with primary/secondary slots, tap, hold,
   double-tap, conflict handling, per-controller profiles, and restore controls.
+- **Thirteen themes**, with Obsidian as the fresh-install default, live theme
+  switching, textured backdrops, and adjustable in-game overlay dimming.
+- **Controller-friendly library tools** including thumbnail zoom on L2/R2 and
+  bulk selection by holding Cross or opening the capture action menu.
 - **Unified library** for GameHQ captures plus read-only watched folders from
   tools such as Steam, Xbox Game Bar, NVIDIA, and OBS.
 - **Portable and private**: no account, telemetry, game-process injection, or
@@ -41,11 +52,12 @@ in a controller-friendly gallery without leaving your game.
 
 ## Download
 
-Download `GameHQ-0.5.55-win64.zip` from the
+The latest version is **GameHQ 0.6.3**. Download
+`GameHQ-0.6.3-win64.zip` from the
 [latest release](https://github.com/underfusion/GameHQ/releases/latest), extract
 it anywhere writable, and run `GameHQ.exe`.
 
-The first release is not code-signed, so Windows SmartScreen may ask for
+The application is not code-signed, so Windows SmartScreen may ask for
 confirmation. Verify that the download comes from this repository's Releases
 page before choosing **More info → Run anyway**.
 
@@ -59,6 +71,9 @@ page before choosing **More info → Run anyway**.
 | D-pad / left stick | Navigate |
 | Cross / south button | Confirm or open |
 | Circle / east button | Back |
+| L2 / R2 | Decrease or increase gallery thumbnail size |
+| Cross / south button — hold | Enter bulk selection in the desktop gallery |
+| Share / `S` while playing a clip | Save the displayed video frame as a screenshot |
 | `Ctrl+Shift+S` | Take a screenshot |
 | `Ctrl+Shift+E` | Save a replay clip |
 | `Ctrl+Shift+G` | Toggle the overlay |
