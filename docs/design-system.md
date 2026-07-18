@@ -19,9 +19,10 @@ A skin restyles the app; it must never re-lay-it-out. If a token would move
 things rather than restyle them, it stays fixed — nothing should shift under the
 user when they switch skin.
 
-- `themes/Skin.qml` declares the whole skinnable surface with the **Dark values
-  as defaults**. `DarkSkin` overrides nothing; every other skin overrides only
-  what differs — so a token a skin forgets falls back to Dark instead of
+- `themes/Skin.qml` declares the whole skinnable surface with the **Blue values
+  as defaults**. `DarkSkin` is the compatibility-named implementation of the
+  visible Blue theme and overrides nothing; every other skin overrides only
+  what differs — so a token a skin forgets falls back to Blue instead of
   resolving to an invalid value. Add a token here first, then bind it in
   `Theme.qml`.
 - `Theme.skins` maps config key → skin and `Theme.skinOrder` fixes the order
@@ -30,7 +31,7 @@ user when they switch skin.
 - `Theme.activeSkin` is seeded from `theme.active_skin` and re-assigned on
   `AppController::configChanged`, which re-evaluates every binding above — that
   is what makes the switch live, with no reload path. An unknown value resolves
-  to Dark.
+  to Obsidian.
 - `Theme.overlayScrim` is the in-game overlay's backdrop: the active skin's
   `scrim` with its alpha scaled by `theme.overlay_scrim_strength` (percent,
   25–150, Settings → General → Appearance → "Overlay dimming"), capped at 0.95
