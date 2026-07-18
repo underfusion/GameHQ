@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GameHQ — PlayStation-style capture gallery for PC</title>
-<meta name="description" content="GameHQ brings the PlayStation capture experience to PC: tap Share for a screenshot, hold it to save the last 5 minutes, press PS to browse your captures in an in-game overlay — a portable, native C++/Qt6 Windows app with a rolling replay buffer, per-game organization and full DualSense support.">
+<title>GameHQ — Controller-first game capture for Windows</title>
+<meta name="description" content="GameHQ is a portable Windows capture app for screenshots, configurable recent-gameplay clips, clip-frame grabs, and a controller-friendly in-game gallery, with themes and DualSense, XInput, WinMM, keyboard, and mouse support.">
 <style>
   :root {
     --bg:#0b0f20; --bg2:#131a33; --card:#171f3d; --text:#e8eaf0; --muted:#8b93a7;
@@ -22,6 +22,8 @@
   .hero pre { font-family:Consolas,monospace; font-size:15px; line-height:1.9; color:#c7cde0; overflow-x:auto; }
   .hero pre b { color:var(--text); }
   .hero pre em { color:var(--accent2); font-style:normal; }
+  .download { margin:-18px 0 40px; color:var(--muted); text-align:center; font-size:14px; }
+  .download a { display:inline-block; padding:10px 18px; margin-right:8px; border-radius:10px; color:#fff; text-decoration:none; font-weight:600; background:linear-gradient(90deg,var(--accent1),var(--accent2)); }
   h2 { font-size:22px; margin:40px 0 16px; }
   .about p { color:#c7cde0; font-size:15px; line-height:1.75; margin-bottom:14px; max-width:70ch; }
   .about b { color:var(--text); }
@@ -62,60 +64,63 @@
       <circle cx="366" cy="146" r="17" fill="#ff5d73"/>
     </svg>
     <div>
-      <h1>Play<span>HQ</span></h1>
-      <p class="tag">The PlayStation capture experience — on your PC. Native C++, portable, controller-first.</p>
+      <h1>Game<span>HQ</span></h1>
+      <p class="tag">Capture what just happened. Native C++, portable, controller-first.</p>
     </div>
   </header>
 
   <div class="hero">
     <pre>
 <b>Tap Share</b>            <em>→</em> take a screenshot
-<b>Hold Share (2 s)</b>     <em>→</em> save the last 5 minutes of gameplay
-<b>PS button</b>            <em>→</em> open the GameHQ overlay above your game
-<b>PS again / Circle</b>    <em>→</em> back to the game, exactly where you were
+<b>Hold Share</b>           <em>→</em> save recent gameplay as an MP4 clip
+<b>PS / Guide</b>           <em>→</em> open the GameHQ overlay above your game
+<b>Share / S on a clip</b>  <em>→</em> save the displayed frame as a screenshot
 </pre>
   </div>
 
+  <p class="download"><a href="https://github.com/underfusion/GameHQ/releases/latest">Download GameHQ 0.6.3</a> Windows 10 1903+ · x64 portable ZIP</p>
+
   <h2>What is GameHQ?</h2>
   <div class="about">
-    <p><b>GameHQ is the missing capture system for PC gaming.</b> Consoles solved this years ago: one button saves the moment, another opens a gallery right on top of the game, and everything is neatly filed per title. On PC you get a patchwork instead — Game Bar popups, Steam screenshots in one folder, NVIDIA clips in another, and an alt-tab every time you want to check what you just recorded. GameHQ replaces that patchwork with a single, console-grade experience.</p>
-    <p>At its heart is an <b>always-on replay buffer</b>: while you play, GameHQ quietly encodes the last five minutes of gameplay (1080p30, H.264, system audio) into a rolling ring of segments on disk — low RAM, crash-safe, nothing to start or stop. Something great happens? <b>Hold Share for two seconds</b> and the moment is already saved, exported as a clean MP4, thumbnailed, and filed under the game you were playing. A quick <b>tap of Share</b> grabs a full-quality screenshot the same way.</p>
-    <p>Reviewing captures never pulls you out of the game. <b>Press the PS button</b> and GameHQ's overlay slides in above the running game — a couch-readable gallery you drive entirely with the controller: D-pad to browse, X to play, Triangle to favorite, Circle to go straight back to the action with focus restored exactly where it was. Favorites are protected from cleanup forever, storage limits keep clip folders from swallowing your disk, and GameHQ can watch your existing Game Bar, Steam, NVIDIA and OBS folders so every capture you already own lives in the same gallery.</p>
-    <p>Technically, GameHQ is deliberately old-school in the best way: a <b>portable native C++20/Qt 6 app</b> — no Electron, no services, no account. It uses Windows Graphics Capture and Media Foundation directly, never injects into game processes (anti-cheat safe), runs from a folder if you want it to, and sits in the tray with subtle, PlayStation-style sounds as its only presence.</p>
+    <p><b>GameHQ brings one coherent capture workflow to PC gaming.</b> Tap one button for a screenshot, hold it after something memorable happens to save recent gameplay, and open a gallery above the running game without alt-tabbing. Captures are identified, grouped, and filed automatically per game.</p>
+    <p>At its heart is a <b>configurable rolling replay buffer</b>: while you play, GameHQ encodes recent gameplay with system audio into crash-safe segments on disk. Hold Share and those previous minutes become a normal H.264 MP4 with a thumbnail and game metadata. Tap Share for an instant PNG or JPEG, or focus a recorded clip and press Share or <b>S</b> to save the exact displayed video frame as a screenshot.</p>
+    <p>The <b>in-game overlay</b> supports browsing, playback, favorites, reveal, and deletion from a controller. It refreshes immediately after new captures and automatically closes when Windows focus moves to Start, the task switcher, or another application. The desktop gallery adds thumbnail zoom, bulk selection, watched folders, and a unified view of Game Bar, Steam, NVIDIA, and OBS captures without modifying imported files.</p>
+    <p>GameHQ 0.6.3 includes <b>thirteen live-switchable themes</b> with Obsidian as the fresh-install default and adjustable overlay dimming. Input supports DualSense, XInput, WinMM, keyboard, and safe extra mouse buttons with fully configurable bindings. If HidHide makes a connected Sony controller invisible to applications, Settings explains the cause and can safely add GameHQ to the existing allow-list.</p>
+    <p>GameHQ is a <b>portable native C++20/Qt 6 app</b> — no Electron, account, telemetry, background service, or game-process injection. It uses Windows Graphics Capture, Media Foundation, and WASAPI directly, and can keep its settings, database, logs, and captures beside the executable.</p>
   </div>
 
   <h2>How it works</h2>
   <div class="steps">
     <div class="step"><span class="n">1</span><h3>Play</h3><p>GameHQ detects the game and spins up the rolling replay buffer in the background.</p></div>
-    <div class="step"><span class="n">2</span><h3>Capture</h3><p>Tap Share for a screenshot, hold it two seconds to save the last five minutes.</p></div>
-    <div class="step"><span class="n">3</span><h3>Browse</h3><p>Press PS — the overlay gallery opens above the game, fully controller-driven.</p></div>
+    <div class="step"><span class="n">2</span><h3>Capture</h3><p>Tap Share for a screenshot or hold it to save the configured recent-play window.</p></div>
+    <div class="step"><span class="n">3</span><h3>Browse</h3><p>Press PS or Guide — the overlay gallery opens above the game, fully controller-driven.</p></div>
     <div class="step"><span class="n">4</span><h3>Return</h3><p>Circle closes the overlay and hands focus back to the game, right where you left it.</p></div>
   </div>
 
   <h2>Why GameHQ</h2>
   <div class="grid">
     <div class="card"><h3>In-game overlay gallery</h3><p>Browse screenshots and clips above the running game with your controller — no alt-tab, no desktop app in your face.</p></div>
-    <div class="card"><h3>Always-ready replay buffer</h3><p>A rolling 1080p30 buffer records the last 5 minutes. One hold of the Share button saves the moment — after it happened.</p></div>
+    <div class="card"><h3>Always-ready replay buffer</h3><p>Configurable duration, quality, frame rate, and resolution. One hold of Share saves the moment after it happened.</p></div>
     <div class="card"><h3>Organized around games</h3><p>Captures are grouped per game automatically, with favorites that are never auto-deleted and clean per-game folders.</p></div>
     <div class="card"><h3>Native & portable</h3><p>C++20 + Qt 6, no Electron. Runs from a folder, sits quietly in the tray, plays subtle console-style sounds.</p></div>
-    <div class="card"><h3>DualSense-first input</h3><p>Share tap/hold, PS toggle, full pad navigation — plus rebindable keyboard hotkeys as a reliable fallback.</p></div>
+    <div class="card"><h3>Flexible input</h3><p>DualSense, XInput, WinMM, keyboard, and extra mouse buttons with rebindable actions, gestures, and controller profiles.</p></div>
     <div class="card"><h3>Your existing captures too</h3><p>Watches Game Bar, Steam, NVIDIA and OBS folders so everything lives in one gallery — without touching your files.</p></div>
+    <div class="card"><h3>Themes & accessibility</h3><p>Thirteen themes, Obsidian by default, live switching, textured backdrops, high contrast, and adjustable overlay dimming.</p></div>
+    <div class="card"><h3>Controller recovery</h3><p>Detects supported Sony pads hidden by HidHide and offers a safe allow-list fix without disabling remapping software.</p></div>
   </div>
 
-  <h2>Roadmap</h2>
+  <h2>Current release</h2>
   <div class="status">
-    <span class="pill now">0.5.55 — first public release</span>
-    <span class="pill">0.2 Overlay shell</span>
-    <span class="pill">0.3 Input system</span>
-    <span class="pill">0.4 Screenshots</span>
-    <span class="pill">0.5 Replay buffer</span>
-    <span class="pill">0.6 Overlay gallery</span>
-    <span class="pill">0.7 Storage</span>
-    <span class="pill">1.0 Release</span>
+    <span class="pill now">0.6.3 — latest release</span>
+    <span class="pill">Recent-gameplay clips</span>
+    <span class="pill">In-game gallery</span>
+    <span class="pill">13 themes</span>
+    <span class="pill">Clip-frame screenshots</span>
+    <span class="pill">HidHide recovery</span>
   </div>
 
   <footer>
-    GameHQ 0.5.55 · <a href="https://github.com/underfusion/GameHQ">GitHub</a> · MIT licensed · Windows 10 1903+ · No game-process injection.
+    GameHQ 0.6.3 · <a href="https://github.com/underfusion/GameHQ">GitHub</a> · <a href="https://github.com/underfusion/GameHQ/releases/latest">Download</a> · MIT licensed · Windows 10 1903+ · No telemetry or game-process injection.
   </footer>
 
 </div>
