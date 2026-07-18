@@ -1,8 +1,8 @@
 import QtQuick
 
-// Base for every skin: declares the full skinnable surface with the Dark values
+// Base for every skin: declares the full skinnable surface with the Blue values
 // as defaults. A skin overrides only what it changes, so a token a skin forgets
-// falls back to Dark rather than resolving to an invalid value.
+// falls back to Blue rather than resolving to an invalid value.
 //
 // WHAT IS SKINNABLE: style — color, font family, roundness, border weight,
 // motion, glow, backdrop treatment.
@@ -15,9 +15,9 @@ import QtQuick
 // See docs/design-system.md §0.
 QtObject {
     // ── Identity ──────────────────────────────────────────────────
-    property string label: "Dark"
+    property string label: "Blue"
     // One line, shown under the Settings picker.
-    property string blurb: "The original palette."
+    property string blurb: "Deep navy surfaces with violet-to-blue accents."
 
     // ── Surfaces ──────────────────────────────────────────────────
     property color bg0:        "#0B0F20"

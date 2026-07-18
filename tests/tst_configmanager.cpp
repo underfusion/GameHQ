@@ -41,7 +41,9 @@ private slots:
         QVERIFY(cfg.load());   // a missing file is not an error — it is a first run
         QCOMPARE(cfg.value(ConfigKeys::CaptureMode).toString(), QStringLiteral("only_in_games"));
         QCOMPARE(cfg.value(ConfigKeys::ReplayLengthSeconds).toInt(), 300);
+        QCOMPARE(cfg.value(ConfigKeys::ThemeActiveSkin).toString(), QStringLiteral("obsidian"));
         QVERIFY(cfg.isDefault(ConfigKeys::CaptureMode));
+        QVERIFY(cfg.isDefault(ConfigKeys::ThemeActiveSkin));
     }
 
     void unknownKeyFallsBackToTheCallersValue()

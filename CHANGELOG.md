@@ -24,9 +24,14 @@ All notable public releases of GameHQ are documented here. The format follows
 
 - The overlay sidebar now centers the GameHQ brand lockup and uses the same
   larger icon, bright label, and semibold typography as the desktop sidebar.
+- The original navy theme is now named **Blue** in Settings; its internal
+  `dark` key remains supported so existing preferences keep working.
 
 ### Fixed
 
+- Fresh installations now actually start with Obsidian. The QML fallback and
+  Settings reset already selected Obsidian, but the C++ configuration defaults
+  still returned `dark` and overrode both on first launch.
 - Raw Input no longer tracks non-gamepad HID collections on supported
   hardware IDs. The PlayStation Link adapter (054C:0ECC) exposes four
   vendor-defined collections that were logged as four tracked "DualSense"
