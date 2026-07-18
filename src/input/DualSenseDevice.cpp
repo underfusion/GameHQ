@@ -1,5 +1,6 @@
 #include "input/DualSenseDevice.h"
 
+#include "input/HidCloakMonitor.h"
 #include "input/StickNav.h"
 
 #include <QByteArray>
@@ -213,14 +214,21 @@ DualSenseDevice::DeviceState* DualSenseDevice::probeDevice(void* handle)
     // XInput backend — skip them here so one pad can't drive both backends.
     const bool xinputDevice = path.contains(QLatin1String("IG_"), Qt::CaseInsensitive);
     const int layout = supportedReportLayout(info.hid.dwVendorId, info.hid.dwProductId);
+    const bool gamepadUsage = isGamepadUsage(info.hid);
 
-    if (layout == LayoutUnknown || xinputDevice) {
-        if (isGamepadUsage(info.hid) && !m_loggedIgnored.contains(path)) {
+    // A supported VID/PID alone is NOT enough: the same hardware IDs appear
+    // on non-input collections (the PlayStation Link adapter exposes
+    // 054C:0ECC vendor-defined pages). Tracking those produced phantom
+    // "DualSense" entries that never send a report — require a real
+    // Joystick/Gamepad/MultiAxis collection.
+    if (layout == LayoutUnknown || xinputDevice || !gamepadUsage) {
+        if ((gamepadUsage || layout != LayoutUnknown) && !m_loggedIgnored.contains(path)) {
             m_loggedIgnored.insert(path);
             qInfo() << "Gamepad: ignoring HID device VID"
                     << Qt::hex << info.hid.dwVendorId << "PID" << info.hid.dwProductId
-                    << (xinputDevice ? "(XInput device — XInput backend handles it)"
-                                     : "(unsupported report layout)");
+                    << (xinputDevice     ? "(XInput device — XInput backend handles it)"
+                        : !gamepadUsage  ? "(non-gamepad collection on supported hardware)"
+                                         : "(unsupported report layout)");
         }
         return nullptr;
     }
@@ -275,6 +283,7 @@ void DualSenseDevice::removeDevice(void* handle)
 void DualSenseDevice::reconcileDevices()
 {
     QSet<void*> present;
+    QSet<QString> rawPathsLower;   // every HID interface Raw Input can see
 
     UINT count = 0;
     if (GetRawInputDeviceList(nullptr, &count, sizeof(RAWINPUTDEVICELIST)) == 0 && count > 0) {
@@ -286,6 +295,7 @@ void DualSenseDevice::reconcileDevices()
                 if (devices[i].dwType != RIM_TYPEHID)
                     continue;
                 present.insert(devices[i].hDevice);
+                rawPathsLower.insert(devicePath(devices[i].hDevice).toLower());
                 probeDevice(devices[i].hDevice);
             }
         }
@@ -310,6 +320,41 @@ void DualSenseDevice::reconcileDevices()
 
     if (m_devices.isEmpty())
         qInfo() << "Gamepad: no Sony/DS4 Raw Input devices present";
+
+    // Cross-check Windows PnP against what Raw Input just enumerated: a
+    // supported pad present in PnP but absent here is being cloaked by a HID
+    // filter driver (HidHide, installed with DSX/DS4Windows/reWASD) — the app
+    // can't read it, but it CAN tell the user exactly what is wrong.
+    auto cloak = HidCloakMonitor::scan(rawPathsLower);
+    // Only alarm the user when the cloak explains an actual absence: with a
+    // working pad tracked, hidden *additional* devices (e.g. DSX's parked
+    // virtual pads) are expected and not worth a Settings warning.
+    if (!m_devices.isEmpty() && !cloak.hiddenPads.isEmpty()) {
+        qInfo() << "Gamepad: cloaked device(s) ignored while a pad is tracked:"
+                << cloak.hiddenPads.join(QLatin1String(", "));
+        cloak.hiddenPads.clear();
+    }
+    if (cloak.hiddenPads != m_lastHiddenPads) {
+        if (!cloak.hiddenPads.isEmpty()) {
+            qWarning() << "Gamepad:" << cloak.hiddenPads.join(QLatin1String(", "))
+                       << "present in Windows PnP but INVISIBLE to Raw Input —"
+                       << (cloak.hidHidePresent
+                               ? "HidHide filter driver detected; whitelist GameHQ or disable hiding"
+                               : "a HID filter driver is cloaking it");
+        } else if (!m_lastHiddenPads.isEmpty()) {
+            qInfo() << "Gamepad: previously hidden pad(s) now visible to Raw Input";
+        }
+        m_lastHiddenPads = cloak.hiddenPads;
+        emit hiddenPadsChanged(cloak.hiddenPads, cloak.hidHidePresent);
+    }
+}
+
+// Public nudge used after the HidHide whitelist fix: re-run the debounced
+// full-list sync so a newly-visible pad is picked up without a replug where
+// possible.
+void DualSenseDevice::rescan()
+{
+    m_reconcileTimer->start();
 }
 
 // The active pad is gone. If another tracked pad has streamed reports

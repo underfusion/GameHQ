@@ -24,6 +24,7 @@ qt_add_executable(GameHQ
     input/BindingEditorModel.cpp input/BindingEditorModel.h
     input/ControlId.cpp input/ControlId.h
     input/DualSenseDevice.cpp input/DualSenseDevice.h
+    input/HidCloakMonitor.cpp input/HidCloakMonitor.h
     input/XInputDevice.cpp input/XInputDevice.h
     input/WinMMDevice.cpp input/WinMMDevice.h
     input/MouseHookDevice.cpp input/MouseHookDevice.h
@@ -153,7 +154,7 @@ target_compile_definitions(GameHQ PRIVATE
 target_link_libraries(GameHQ PRIVATE
     Qt6::Core Qt6::Gui Qt6::Quick Qt6::Sql Qt6::Widgets Qt6::Svg
     Qt6::Multimedia
-    user32 gdi32 version winmm
+    user32 gdi32 version winmm cfgmgr32
     # 0.5 Windows Graphics Capture frame pump (WinRT raw-ABI path, no cppwinrt).
     windowsapp runtimeobject ole32 oleaut32 d3d11 dxgi dxguid uuid
     # 0.5 Step 4 H.264 encode via Media Foundation SinkWriter (fragmented MP4).

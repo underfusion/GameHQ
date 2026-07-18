@@ -38,6 +38,11 @@ class InputEngine : public QObject
     Q_OBJECT
     Q_PROPERTY(QString lastInput READ lastInput NOTIFY lastInputChanged)
     Q_PROPERTY(QString controllerStatus READ controllerStatus NOTIFY controllerStatusChanged)
+    // Non-empty when a supported pad is connected to Windows but cloaked from
+    // applications by a HID filter driver (HidHide). controllerFixAvailable
+    // gates the one-click self-whitelist remedy (UAC prompt).
+    Q_PROPERTY(QString controllerWarning READ controllerWarning NOTIFY controllerWarningChanged)
+    Q_PROPERTY(bool controllerFixAvailable READ controllerFixAvailable NOTIFY controllerWarningChanged)
     Q_PROPERTY(QObject* bindingEditor READ bindingEditor CONSTANT)
 public:
     InputEngine(ConfigManager* config, CaptureDatabase* db, HotkeyManager* hotkeys,
@@ -48,7 +53,14 @@ public:
 
     QString lastInput() const { return m_lastInput; }
     QString controllerStatus() const { return m_controllerStatus; }
+    QString controllerWarning() const { return m_controllerWarning; }
+    bool controllerFixAvailable() const { return m_controllerFixAvailable; }
     QObject* bindingEditor() const;
+
+    // One-click HidHide remedy: relaunches GameHQ elevated to add itself to
+    // HidHide's application allow-list, then rescans. Progress/outcome is
+    // reported through controllerWarning.
+    Q_INVOKABLE void fixHiddenController();
 
 public slots:
     void setOverlayVisible(bool visible);
@@ -101,6 +113,7 @@ signals:
 
     void lastInputChanged();
     void controllerStatusChanged();
+    void controllerWarningChanged();
 
 private:
     void onControlPressed(const QString& controlId, int family,
@@ -192,6 +205,11 @@ private:
     bool m_playbackActive = false;
     QString m_lastInput;
     QString m_controllerStatus;
+    QString m_controllerWarning;
+    bool m_controllerFixAvailable = false;
+    void setControllerWarning(const QString& text, bool fixAvailable);
+    QTimer* m_fixWatch = nullptr;        // polls the elevated helper process
+    void* m_fixProcess = nullptr;        // HANDLE of the elevated helper (or null)
 
     QTimer* m_repeatTick = nullptr;      // accelerating repeat timer
     QString m_repeatTrigger;             // canonical control currently held

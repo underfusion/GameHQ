@@ -61,33 +61,32 @@ Rectangle {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.margins: Theme.s12
-        // The entry list above is inset twice: s12 by the Column, then a further
-        // s16 by SidebarItem's own content row. Match both so the brand icon
-        // shares the icon column with every entry rather than hanging left of it.
-        anchors.leftMargin: Theme.s12 + Theme.s16
-        height: Math.max(brandIcon.height, brandLabel.implicitHeight)
+        height: brandRow.implicitHeight
 
-        Image {
-            id: brandIcon
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            source: "qrc:/icons/gamehq.svg"
-            width: Theme.fontH3
-            height: Theme.fontH3
-            sourceSize.width: Theme.fontH3
-            sourceSize.height: Theme.fontH3
-        }
+        Row {
+            id: brandRow
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: Theme.s8
 
-        Text {
-            id: brandLabel
-            anchors.left: brandIcon.right
-            anchors.leftMargin: Theme.s8
-            anchors.verticalCenter: parent.verticalCenter
-            text: Brand.name
-            color: Theme.textMuted
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontH3
-            font.weight: Font.Light
+            Image {
+                id: brandIcon
+                anchors.verticalCenter: parent.verticalCenter
+                source: "qrc:/icons/gamehq.svg"
+                width: Theme.fontTitle
+                height: Theme.fontTitle
+                sourceSize.width: Theme.fontTitle
+                sourceSize.height: Theme.fontTitle
+            }
+
+            Text {
+                id: brandLabel
+                anchors.verticalCenter: parent.verticalCenter
+                text: Brand.name
+                color: Theme.text
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontTitle
+                font.weight: Font.DemiBold
+            }
         }
     }
 }

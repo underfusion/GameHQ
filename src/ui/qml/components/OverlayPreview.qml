@@ -11,8 +11,17 @@ Item {
     property bool videoFocused: false
 
     readonly property int displayedIndex: _displayedIndex
-    readonly property var displayedRecord: (_displayedIndex >= 0 && galleryModel && galleryModel.rowCount() > 0)
-        ? galleryModel.get(_displayedIndex) : ({})
+    // galleryModel.get() is an imperative call, so the binding has no way to
+    // know the row moved under it — touching _modelRevision (same rule as
+    // _targetUrl below) re-reads the record whenever the model changes. A
+    // fresh capture is PREPENDED, so without this the record for row 0 stays
+    // the previous capture: X refuses to play a just-saved clip and a
+    // just-saved screenshot inherits the old clip's play badge.
+    readonly property var displayedRecord: {
+        root._modelRevision
+        return (root._displayedIndex >= 0 && root.galleryModel && root.galleryModel.rowCount() > 0)
+            ? root.galleryModel.get(root._displayedIndex) : ({})
+    }
     readonly property bool displayedIsVideo: displayedRecord.captureType === "video"
     readonly property bool isPlaying: mediaStage.player.playbackState === MediaPlayer.PlayingState
     readonly property bool canSeek: mediaStage.player.duration > 0
@@ -76,6 +85,10 @@ Item {
         target: root.galleryModel
         function onModelReset() { root._modelRevision += 1 }
         function onRowsInserted() { root._modelRevision += 1 }
+        // Removal/move shifts rows exactly like an insert does, so the
+        // record bindings have to be re-read for those too.
+        function onRowsRemoved() { root._modelRevision += 1 }
+        function onRowsMoved() { root._modelRevision += 1 }
         function onDataChanged() { root._modelRevision += 1 }
     }
 

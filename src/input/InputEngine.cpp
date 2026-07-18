@@ -6,6 +6,7 @@
 #include "input/BindingEditorModel.h"
 #include "input/DualSenseDevice.h"
 #include "input/Gamepad.h"
+#include "input/HidCloakMonitor.h"
 #include "input/HotkeyManager.h"
 #include "input/MouseHookDevice.h"
 #include "input/WinMMDevice.h"
@@ -98,6 +99,30 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
         m_xinputPad->rescan();
         m_winmmPad->rescan();
     });
+
+    // Surface cloaked pads (present in Windows, hidden from apps by a HID
+    // filter driver) in Settings instead of silently detecting nothing.
+    connect(m_sonyPad, &DualSenseDevice::hiddenPadsChanged, this,
+            [this](const QStringList& pads, bool hidHidePresent) {
+                if (pads.isEmpty()) {
+                    setControllerWarning({}, false);
+                    return;
+                }
+                const QString names = pads.join(QStringLiteral(", "));
+                if (hidHidePresent) {
+                    setControllerWarning(
+                        tr("%1 is connected but hidden from applications by the "
+                           "HidHide driver (installed with DSX, DS4Windows, or "
+                           "reWASD).").arg(names),
+                        true);
+                } else {
+                    setControllerWarning(
+                        tr("%1 is connected to Windows but invisible to "
+                           "applications — a HID filter driver is hiding it.")
+                            .arg(names),
+                        false);
+                }
+            });
 
     // Hold-to-repeat tick for pad navigation (D-pad + L1/R1). Built once and
     // reused for whichever direction is currently held — only one pad button
@@ -451,6 +476,65 @@ void InputEngine::setControllerStatus(const QString& text)
         return;
     m_controllerStatus = text;
     emit controllerStatusChanged();
+}
+
+void InputEngine::setControllerWarning(const QString& text, bool fixAvailable)
+{
+    if (m_controllerWarning == text && m_controllerFixAvailable == fixAvailable)
+        return;
+    m_controllerWarning = text;
+    m_controllerFixAvailable = fixAvailable;
+    emit controllerWarningChanged();
+}
+
+void InputEngine::fixHiddenController()
+{
+    if (m_fixProcess)
+        return;   // helper already in flight
+
+    void* process = HidCloakMonitor::launchElevatedWhitelistHelper();
+    if (!process) {
+        setControllerWarning(
+            tr("Administrator approval was declined — the controller stays "
+               "hidden. You can whitelist GameHQ manually in the HidHide "
+               "Configuration Client."),
+            true);
+        return;
+    }
+    m_fixProcess = process;
+    setControllerWarning(tr("Applying the fix (administrator prompt)..."), false);
+
+    if (!m_fixWatch) {
+        m_fixWatch = new QTimer(this);
+        m_fixWatch->setInterval(500);
+        connect(m_fixWatch, &QTimer::timeout, this, [this] {
+            HANDLE h = static_cast<HANDLE>(m_fixProcess);
+            if (WaitForSingleObject(h, 0) != WAIT_OBJECT_0)
+                return;   // still running
+            DWORD code = 1;
+            GetExitCodeProcess(h, &code);
+            CloseHandle(h);
+            m_fixProcess = nullptr;
+            m_fixWatch->stop();
+            if (code == 0) {
+                qInfo() << "Input: GameHQ whitelisted in HidHide";
+                setControllerWarning(
+                    tr("GameHQ is now whitelisted in HidHide. Unplug and replug "
+                       "the controller if it does not appear within a few "
+                       "seconds."),
+                    false);
+                m_sonyPad->rescan();
+            } else {
+                qWarning() << "Input: HidHide whitelist helper failed, code" << code;
+                setControllerWarning(
+                    tr("Automatic whitelisting failed (code %1). Add GameHQ.exe "
+                       "on the Applications tab of the HidHide Configuration "
+                       "Client instead.").arg(code),
+                    true);
+            }
+        });
+    }
+    m_fixWatch->start();
 }
 
 bool InputEngine::desktopCanReceiveInput() const

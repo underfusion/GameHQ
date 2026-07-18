@@ -51,3 +51,35 @@ In the main app gallery, Select mode uses the standard batch-action mapping: **C
 ## Keyboard fallback (global hotkeys, `RegisterHotKey`)
 
 `Ctrl+Shift+S` screenshot · `Ctrl+Shift+E` save replay · `Ctrl+Shift+G` overlay toggle. The replay buffer itself has no hotkey — it auto-arms while a game is focused (`replay.auto`, Settings → Replay).
+
+## Hidden pads (HidHide cloak detection, 0.6.3)
+
+Remapping tools (DSX, DS4Windows, reWASD) ship the **Nefarius HidHide** kernel
+filter, whose job is hiding the physical pad from every application except the
+whitelisted remapper. The cloak lives in the driver, so it can outlast the
+remapper's own session — a pad then exists in Device Manager but is invisible
+to Raw Input, DirectInput, `joy.cpl`, Steam, and GameHQ alike. No user-mode
+enumeration strategy can bypass it, so GameHQ detects and explains it instead:
+
+- **Cross-check.** Every debounced device reconciliation compares present
+  `HID\VID_xxxx&PID_xxxx` devnodes from the PnP tree (`CM_Get_Device_ID_ListW`)
+  against the interfaces `GetRawInputDeviceList` returns. A supported Sony/DS4
+  ID present in PnP but absent from Raw Input means a filter driver is cloaking
+  it (`HidCloakMonitor::scan`, called from `DualSenseDevice::reconcileDevices`).
+  054C:0ECC is excluded — on PlayStation Link hardware that PID carries only
+  vendor-defined collections and cannot be cross-checked meaningfully.
+- **Surfacing.** `input.controllerWarning` (Settings → Input, "Controller
+  hidden" row) names the pad and the cause; the log gets a matching warning.
+- **One-click fix.** When the HidHide class filter is registered
+  (`UpperFilters` on the HID class GUID), `input.fixHiddenController()`
+  relaunches `GameHQ.exe --hidhide-allow-self` elevated (one UAC prompt). The
+  helper appends the exe's NT image path to HidHide's application whitelist
+  via the documented `\.\HidHide` control device (IOCTLs 2048/2049, device
+  type 32769) and exits; the main instance polls the helper, reports the
+  outcome through the same warning row, and rescans. Nothing is installed or
+  removed and the remapper keeps working. Changes may require replugging the
+  pad — HidHide applies cloak decisions when a device (re)connects.
+- **Collection filter.** `probeDevice` requires a Joystick/Gamepad/MultiAxis
+  usage before tracking a supported VID/PID; vendor-defined collections on
+  Sony hardware (PS Link adapter) are ignored instead of being logged as
+  phantom "tracked DualSense" devices.

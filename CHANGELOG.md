@@ -4,6 +4,64 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.3] - 2026-07-18
+
+### Added
+
+- Hidden-controller detection: the app now cross-checks the Windows PnP
+  device tree against Raw Input on every device change. A supported Sony/DS4
+  pad that Windows sees but applications cannot (the signature of the
+  HidHide filter driver installed alongside DSX / DS4Windows / reWASD) is
+  reported in Settings → Input with a clear explanation instead of the app
+  silently detecting nothing.
+- One-click remedy for HidHide-hidden pads: a "Fix automatically" button in
+  Settings → Input relaunches GameHQ elevated (single UAC prompt) and adds
+  the app to HidHide's application allow-list through the driver's documented
+  control interface — no third-party tools, nothing installed or removed;
+  DSX setups keep working.
+
+### Changed
+
+- The overlay sidebar now centers the GameHQ brand lockup and uses the same
+  larger icon, bright label, and semibold typography as the desktop sidebar.
+
+### Fixed
+
+- Raw Input no longer tracks non-gamepad HID collections on supported
+  hardware IDs. The PlayStation Link adapter (054C:0ECC) exposes four
+  vendor-defined collections that were logged as four tracked "DualSense"
+  devices which could never send input, masking real detection problems.
+
+## [0.6.2] - 2026-07-18
+
+### Fixed
+
+- Overlay preview no longer reads a stale gallery record after a fresh
+  capture. `OverlayPreview` resolved the displayed record with an imperative
+  `galleryModel.get()` call that no model signal re-evaluated, so a
+  just-saved capture — which is prepended at row 0 — left the binding
+  pointing at the previous capture. Two visible symptoms, one cause: X
+  refused to start playback on a clip recorded moments earlier (the stale
+  record reported a screenshot, so `toggleVideoPlayback` bailed out), and a
+  fresh screenshot painted a play badge over the stage (the stale record
+  reported a video). The record binding now tracks the same
+  `_modelRevision` counter the target-URL binding already used, and that
+  counter also advances on row removal and moves.
+
+## [0.6.1] - 2026-07-18
+
+### Added
+
+- Overlay auto-hides on any OS foreground-focus change — pressing the Windows
+  key, Alt-Tab, opening the task switcher, or clicking another app now closes
+  the overlay automatically, the same way Circle or click-outside does.
+  Implemented generically via a `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`
+  watcher in `OverlayManager` rather than special-casing individual key
+  combos, so it catches every system focus-changing operation. Unlike a
+  normal close, this auto-hide does not force focus back onto the
+  previously-focused game, since that would fight whatever the user just
+  opened (Start menu, task switcher).
+
 ## [0.6.0] - 2026-07-18
 
 ### Added

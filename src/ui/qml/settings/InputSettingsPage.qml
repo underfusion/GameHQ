@@ -32,6 +32,17 @@ SettingsPage {
             }
         }
         SettingsRow {
+            visible: input.controllerWarning.length > 0
+            label: "Controller hidden"
+            description: input.controllerWarning
+            AccentButton {
+                visible: input.controllerFixAvailable
+                label: "Fix automatically"
+                primary: true
+                onClicked: input.fixHiddenController()
+            }
+        }
+        SettingsRow {
             visible: editor.deviceGroup === "controller"
             label: "Controller profile"
             description: editor.controllerSpecific
