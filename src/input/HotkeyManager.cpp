@@ -55,13 +55,6 @@ bool HotkeyManager::registerScreenshot()
                            QStringLiteral("Ctrl+Shift+S"), QStringLiteral("screenshot"));
 }
 
-bool HotkeyManager::registerFramePump()
-{
-    return registerDefault(QStringLiteral("global.toggle_buffer"),
-                           MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 'R',
-                           QStringLiteral("Ctrl+Shift+R"), QStringLiteral("WGC frame-pump toggle"));
-}
-
 bool HotkeyManager::registerSaveReplay()
 {
     return registerDefault(QStringLiteral("global.save_replay"),
@@ -233,8 +226,6 @@ void HotkeyManager::dispatch(const QString& bindingKey)
         emit overlayTogglePressed();
     else if (actionId == QLatin1String("global.screenshot"))
         emit screenshotPressed();
-    else if (actionId == QLatin1String("global.toggle_buffer"))
-        emit framePumpTogglePressed();
     else if (actionId == QLatin1String("global.save_replay"))
         emit saveReplayPressed();
     emit hotkeyTriggered(actionId);

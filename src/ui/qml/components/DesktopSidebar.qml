@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import GameHQ
+import "../helpers/SidebarCategories.js" as SidebarCategories
 
 Rectangle {
     id: root
@@ -64,12 +65,8 @@ Rectangle {
                 sidebarHovered: root.sidebarFocused && root.sidebarHoverIndex === index
                 onClicked: {
                     root.pageClosed()
-                    if (modelData.key === "game")
-                        app.setGame(app.currentGameId)
-                    else if (modelData.key === "game_favorites")
-                        app.setGameCategory("favorites", app.currentGameId)
-                    else
-                        app.setCategory(modelData.key)
+                    const f = SidebarCategories.resolveFilter(modelData.key, app.currentGameId)
+                    app.setGameCategory(f.category, f.gameId)
                 }
             }
         }
@@ -79,7 +76,7 @@ Rectangle {
             color: Theme.textFaint
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontCaption
-            font.letterSpacing: 1
+            font.letterSpacing: Theme.letterSpacingWide
             Layout.margins: Theme.s8
             Layout.topMargin: Theme.s16
         }

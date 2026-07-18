@@ -17,6 +17,7 @@ Raw Input / HID for Sony pads (vendor 0x054C): DualSense `0x0CE6`, DualSense Edg
 - **Empty XInput slots are never hot-polled** (documented pitfall: `XInputGetState` on an empty slot can stall for milliseconds). Connected slots poll at 33 ms; empty slots are probed only on the Raw Input backend's debounced device-topology hint plus a 3 s safety-net timer. WinMM works the same way: 50 ms polling while connected, arrival scans only on topology hints plus a 2 s safety net.
 - **Exactly one backend routes input.** `InputEngine` picks the active backend (Sony HID > XInput > WinMM among the connected ones); events from the others are dropped, since they are usually the same physical pad seen through another API. Switching or losing the active backend cancels held navigation repeat and Share tap/hold state, and XInput/WinMM synthesize release events for held buttons before reporting a disconnect — no stuck buttons or accidental screenshot/replay triggers across transitions.
 - **Settings shows live status**: `input.controllerStatus` (green/grey dot row in the input-test card) reports the active backend independently of the last-input line.
+- **The left stick doubles as the D-pad, and the rule lives in one place.** `input/StickNav.h` maps a stick's raw x/y onto `Dpad*` bits for every backend; each one only supplies an `AxisConfig`. Deadzone values stay per-backend on purpose — they are tuned against each pad's raw range and are not interchangeable: DualSense `center 128, deadzone 60, return 30`, XInput `center 0, deadzone 12000`, WinMM `center 32767, deadzone 16000`. What is shared is the structure, and it encodes the three traps: **Y polarity is not universal** (DualSense/WinMM report positive = down, XInput positive = up), the two directions on an axis are **mutually exclusive**, and **hysteresis is opt-in** (`returnZone < deadzone` keeps an axis active until the stick returns well inside center; set `returnZone == deadzone` and the rule collapses to a plain threshold). Only the DualSense backend runs hysteresis today — XInput and WinMM never had it and still don't.
 
 ## Tap vs Hold (Share)
 
@@ -27,7 +28,9 @@ held ≥ threshold (def. 2 s) → HOLD action (save replay), mark consumed
 release after consumed      → nothing
 ```
 
-Threshold options: 1.0 / 1.5 / 2.0 / 3.0 s / custom. Implemented in `TapHoldDetector`, unit-testable, no Qt deps.
+Threshold options: 1.0 / 1.5 / 2.0 / 3.0 s / custom. Implemented in the binding runtime's gesture handling (`BindingRuntime`).
+
+**Frame grab while a clip is focused.** In the Playback scope (a clip focused in the overlay or the desktop lightbox), a **Share tap** is bound to `playback.frame_grab` instead of the global screenshot. It grabs the exact frame currently shown on the video surface — paused or mid-playback — and saves it as a screenshot for the clip's game through the normal screenshot pipeline. Because it is a Playback-scope binding, it overrides the global screenshot only while a clip is focused; everywhere else Share tap stays the global screenshot. Keyboard equivalent: **S** (Playback scope only, so it never collides with the global `Ctrl+Shift+S`). Share **hold** is unbound in Playback scope, so it still falls through to the global save-replay action.
 
 ## Default mapping
 
@@ -47,4 +50,36 @@ In the main app gallery, Select mode uses the standard batch-action mapping: **C
 
 ## Keyboard fallback (global hotkeys, `RegisterHotKey`)
 
-`Ctrl+Shift+S` screenshot · `Ctrl+Shift+R` save replay · `Ctrl+Shift+G` overlay toggle.
+`Ctrl+Shift+S` screenshot · `Ctrl+Shift+E` save replay · `Ctrl+Shift+G` overlay toggle. The replay buffer itself has no hotkey — it auto-arms while a game is focused (`replay.auto`, Settings → Replay).
+
+## Hidden pads (HidHide cloak detection, 0.6.3)
+
+Remapping tools (DSX, DS4Windows, reWASD) ship the **Nefarius HidHide** kernel
+filter, whose job is hiding the physical pad from every application except the
+whitelisted remapper. The cloak lives in the driver, so it can outlast the
+remapper's own session — a pad then exists in Device Manager but is invisible
+to Raw Input, DirectInput, `joy.cpl`, Steam, and GameHQ alike. No user-mode
+enumeration strategy can bypass it, so GameHQ detects and explains it instead:
+
+- **Cross-check.** Every debounced device reconciliation compares present
+  `HID\VID_xxxx&PID_xxxx` devnodes from the PnP tree (`CM_Get_Device_ID_ListW`)
+  against the interfaces `GetRawInputDeviceList` returns. A supported Sony/DS4
+  ID present in PnP but absent from Raw Input means a filter driver is cloaking
+  it (`HidCloakMonitor::scan`, called from `DualSenseDevice::reconcileDevices`).
+  054C:0ECC is excluded — on PlayStation Link hardware that PID carries only
+  vendor-defined collections and cannot be cross-checked meaningfully.
+- **Surfacing.** `input.controllerWarning` (Settings → Input, "Controller
+  hidden" row) names the pad and the cause; the log gets a matching warning.
+- **One-click fix.** When the HidHide class filter is registered
+  (`UpperFilters` on the HID class GUID), `input.fixHiddenController()`
+  relaunches `GameHQ.exe --hidhide-allow-self` elevated (one UAC prompt). The
+  helper appends the exe's NT image path to HidHide's application whitelist
+  via the documented `\.\HidHide` control device (IOCTLs 2048/2049, device
+  type 32769) and exits; the main instance polls the helper, reports the
+  outcome through the same warning row, and rescans. Nothing is installed or
+  removed and the remapper keeps working. Changes may require replugging the
+  pad — HidHide applies cloak decisions when a device (re)connects.
+- **Collection filter.** `probeDevice` requires a Joystick/Gamepad/MultiAxis
+  usage before tracking a supported VID/PID; vendor-defined collections on
+  Sony hardware (PS Link adapter) are ignored instead of being logged as
+  phantom "tracked DualSense" devices.

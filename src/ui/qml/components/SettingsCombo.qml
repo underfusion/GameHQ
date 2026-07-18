@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic as QC
+import QtQuick.Effects
 import GameHQ
 
 // Reusable Settings dropdown bound to a config.json key.
@@ -33,6 +34,25 @@ QC.ComboBox {
         for (var i = 0; i < options.length; ++i)
             if (options[i].value === cur) { currentIndex = i; break }
     }
+
+    // ── Pad-driven dropdown ──
+    // ComboBox.highlightedIndex is read-only and only tracks the mouse/keys, so
+    // a gamepad cannot move it. This mirrors it: while padHighlight is >= 0 the
+    // popup highlights that row instead, and nothing is written to config until
+    // Cross commits — so Circle can back out without changing the setting.
+    property int padHighlight: -1
+    function padBeginHighlight() { padHighlight = currentIndex }
+    function padStep(direction) {
+        if (options.length === 0)
+            return
+        padHighlight = (padHighlight + direction + options.length) % options.length
+    }
+    function padCommitHighlighted() {
+        if (padHighlight >= 0 && padHighlight < options.length)
+            commit(padHighlight)
+        padHighlight = -1
+    }
+    onVisibleChanged: if (!visible) padHighlight = -1
     Component.onCompleted: refresh()
     onActivated: commit(currentIndex)
 
@@ -59,8 +79,10 @@ QC.ComboBox {
         implicitHeight: Theme.fontBody + Theme.s16
         radius: Theme.radiusM
         color: Theme.surfaceAlt
-        border.width: 1
-        border.color: (combo.pressed || combo.popup.visible)
+        border.width: combo.activeFocus ? Theme.borderWidth + 1 : Theme.borderWidth
+        // activeFocus matters as much as pressed/open: a pad or Tab lands here
+        // without ever pressing it, and an unlit control reads as unreachable.
+        border.color: (combo.pressed || combo.popup.visible || combo.activeFocus)
                       ? Theme.accent : Theme.stroke
         Behavior on border.color { ColorAnimation { duration: Theme.durFast } }
     }
@@ -76,11 +98,43 @@ QC.ComboBox {
         width: combo.width
         implicitHeight: Math.min(contentItem.implicitHeight, Theme.s48 * 6)
         padding: 1
-        contentItem: ListView {
-            clip: true
-            implicitHeight: contentHeight
-            model: combo.popup.visible ? combo.delegateModel : null
-            currentIndex: combo.highlightedIndex
+        // `clip: true` on the ListView only clips to the plain bounding box — it
+        // does not respect the background's `radius`, so a highlighted row at
+        // either end painted its square corners over the rounded ones. Mask the
+        // list's rendered output to the same rounded shape (the CaptureTile
+        // idiom), inset by the background's border so that border stays visible.
+        contentItem: Item {
+            implicitHeight: list.contentHeight
+
+            Item {
+                id: listLayer
+                anchors.fill: parent
+                layer.enabled: true
+                layer.effect: MultiEffect {
+                    maskEnabled: true
+                    maskSource: listMask
+                }
+
+                ListView {
+                    id: list
+                    anchors.fill: parent
+                    clip: true
+                    model: combo.popup.visible ? combo.delegateModel : null
+                    // Follow the pad's highlight when it is driving, so the list
+                    // scrolls to the row the user is on.
+                    currentIndex: combo.padHighlight >= 0 ? combo.padHighlight
+                                                          : combo.highlightedIndex
+                }
+            }
+
+            Rectangle {
+                id: listMask
+                anchors.fill: listLayer
+                radius: Math.max(0, Theme.radiusM - 1)   // popup radius less its border
+                visible: false
+                layer.enabled: true   // visible:false alone skips the scene graph,
+                                      // leaving the mask empty (masks everything away)
+            }
         }
         background: Rectangle {
             radius: Theme.radiusM
@@ -91,7 +145,8 @@ QC.ComboBox {
     }
     delegate: QC.ItemDelegate {
         width: combo.width
-        highlighted: combo.highlightedIndex === index
+        highlighted: combo.padHighlight >= 0 ? combo.padHighlight === index
+                                             : combo.highlightedIndex === index
         contentItem: Text {
             text: modelData.label
             color: Theme.text

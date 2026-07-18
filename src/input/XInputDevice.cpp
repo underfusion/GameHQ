@@ -1,5 +1,7 @@
 #include "input/XInputDevice.h"
 
+#include "input/StickNav.h"
+
 #include <QDebug>
 #include <QTimer>
 
@@ -26,6 +28,12 @@ quint32 mapButtons(const XINPUT_GAMEPAD& pad)
     if (pad.wButtons & XINPUT_GAMEPAD_X) set(Gamepad::Square);
     if (pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) set(Gamepad::L1);
     if (pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) set(Gamepad::R1);
+    // XInput reports the triggers as 0..255 analog, with no digital edge, so
+    // they are thresholded into buttons here — every action bound to a trigger
+    // is a discrete step. XINPUT_GAMEPAD_TRIGGER_THRESHOLD (30) is Microsoft's
+    // own "pressed" floor.
+    if (pad.bLeftTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD) set(Gamepad::L2);
+    if (pad.bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD) set(Gamepad::R2);
     if (pad.wButtons & XINPUT_GAMEPAD_DPAD_UP) set(Gamepad::DpadUp);
     if (pad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) set(Gamepad::DpadDown);
     if (pad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT) set(Gamepad::DpadLeft);
@@ -35,11 +43,10 @@ quint32 mapButtons(const XINPUT_GAMEPAD& pad)
     if (pad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB) set(Gamepad::GenericButtonBase + 0);
     if (pad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) set(Gamepad::GenericButtonBase + 1);
 
-    constexpr SHORT kDeadzone = 12000;
-    if (pad.sThumbLX < -kDeadzone) set(Gamepad::DpadLeft);
-    else if (pad.sThumbLX > kDeadzone) set(Gamepad::DpadRight);
-    if (pad.sThumbLY < -kDeadzone) set(Gamepad::DpadDown);
-    else if (pad.sThumbLY > kDeadzone) set(Gamepad::DpadUp);
+    // Signed axes centered on 0, Y growing upward. No hysteresis here (return
+    // zone == deadzone), matching how this backend has always behaved.
+    constexpr StickNav::AxisConfig kNav{ 0, 12000, 12000, true };
+    s |= StickNav::bits(kNav, pad.sThumbLX, pad.sThumbLY);
 
     return s;
 }

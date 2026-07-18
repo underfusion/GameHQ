@@ -20,6 +20,16 @@ Changing a root affects new writes only. GameHQ never auto-moves or deletes exis
 
 `gamehq-data/`: `config.json`, `gamehq.db`, `thumbnails/`, `game-icons/` (cached foreground executable icons, including icons recovered from historical detector logs), `logs/`, `replay-cache/`, `sound-packs/`.
 
+## Legacy name adoption (`LegacyMigration.cpp`)
+
+The app was previously called SavePlay, then PlayHQ ([branding.md](branding.md)). Old installs are adopted on first start, and all of it lives in `LegacyMigration`:
+
+- **Data folder** — `saveplay-data`/`playhq-data` (portable) or `%APPDATA%\SavePlay\SavePlay`/`%APPDATA%\PlayHQ\PlayHQ` (installed) is renamed to the current path, but only when the current one does not exist. If the rename fails (e.g. the folder is locked), the legacy folder is used in place rather than starting empty.
+- **Database** — a `saveplay.db`/`playhq.db` next to it is renamed to `gamehq.db` under the same condition; `Paths::databasePath()` is the only way in.
+- **Capture root** — resolved read-only: an existing `Videos\SavePlay`/`Videos\PlayHQ` keeps being used as-is. User media is never moved.
+
+Each helper is a no-op once the current path exists, so later starts cost only an existence check. Registry Run-key entries under the old names are cleaned up separately by `StartupManager`.
+
 ## Watched/import folders
 
 Game Bar Captures, Steam Screenshots, NVIDIA Gallery, OBS, custom — rows in `folders` table, captures tagged with `source`. **Imported folders are read-only unless the user explicitly enables management.**

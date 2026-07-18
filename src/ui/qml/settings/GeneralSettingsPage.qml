@@ -4,6 +4,43 @@ import "../components"
 
 SettingsPage {
     SettingsSection {
+        title: "Appearance"
+        description: "Choose the color scheme " + Brand.name + " uses. The change applies immediately."
+        SettingsRow {
+            id: themeRow
+            label: "Theme"
+            // Track the picker rather than the live skin: this should describe
+            // what is selected in the combo, which is the same thing, but the
+            // intent is the selection, not whatever is currently painting.
+            description: {
+                const match = Theme.availableSkins.filter(function (s) {
+                    return s.key === Theme.activeSkin
+                })
+                return match.length ? match[0].blurb
+                                    : "Choose how " + Brand.name + " looks."
+            }
+            SettingsCombo {
+                configKey: "theme.active_skin"
+                defaultValue: "obsidian"
+                options: Theme.availableSkins.map(function (s) {
+                    return { label: s.label, value: s.key }
+                })
+            }
+        }
+        SettingsRow {
+            label: "Overlay dimming"
+            description: "How strongly the in-game overlay darkens the game behind it. 100% is the theme's own dimming; lower keeps more of the game visible."
+            SettingsSlider {
+                configKey: "theme.overlay_scrim_strength"
+                defaultValue: 100
+                from: 25
+                to: 150
+                stepSize: 5
+            }
+        }
+    }
+
+    SettingsSection {
         title: "Startup"
         description: "Choose how " + Brand.name + " starts and whether it follows your Windows sign-in."
         SettingsRow {
@@ -12,8 +49,8 @@ SettingsPage {
             SettingsToggle { configKey: "startup.enabled"; defaultValue: false }
         }
         SettingsRow {
-            label: "Start minimized"
-            description: "Open directly in the tray on the next launch."
+            label: "Launch minimized"
+            description: "Launch directly in the system tray without opening the main window."
             SettingsToggle { configKey: "startup.minimized"; defaultValue: false }
         }
     }

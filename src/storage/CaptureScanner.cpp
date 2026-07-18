@@ -2,6 +2,7 @@
 #include "storage/CaptureDatabase.h"
 #include "storage/ThumbnailService.h"
 #include "config/CaptureLocations.h"
+#include "core/GameIdentity.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -35,18 +36,24 @@ CaptureScanner::CaptureScanner(CaptureDatabase* db, CaptureLocations* locations,
 
 int CaptureScanner::scanAll()
 {
+    // One snapshot of the captures table up front; the walk below then diffs
+    // against memory instead of issuing two queries per file on disk.
+    QHash<QString, CaptureIndexEntry> index = m_db->captureIndex();
+
     int added = 0;
     for (const QString& root : m_locations->managedRoots())
-        added += scanFolder(root, QStringLiteral("GameHQ"));
+        added += scanFolder(root, QStringLiteral("GameHQ"), index);
     const QStringList watched = m_db->watchedFolders();
     for (const QString& folder : watched)
-        added += scanFolder(folder, QStringLiteral("Imported"));
-    qInfo() << "Scan: finished," << added << "new capture(s)";
+        added += scanFolder(folder, QStringLiteral("Imported"), index);
+    qInfo() << "Scan: finished," << added << "new capture(s), indexed" << index.size()
+            << "known path(s)";
     emit scanFinished(added);
     return added;
 }
 
-int CaptureScanner::scanFolder(const QString& root, const QString& source)
+int CaptureScanner::scanFolder(const QString& root, const QString& source,
+                               QHash<QString, CaptureIndexEntry>& index)
 {
     if (root.isEmpty() || !QDir(root).exists())
         return 0;
@@ -60,17 +67,18 @@ int CaptureScanner::scanFolder(const QString& root, const QString& source)
         if (type.isEmpty())
             continue;
 
-        if (m_db->hasCapture(path)) {
-            const QString existingThumb = m_db->thumbnailForCapture(path);
-            if (!QFileInfo::exists(existingThumb)) {
+        const QString key = CaptureDatabase::storedPathKey(path);
+        const auto known = index.constFind(key);
+        if (known != index.constEnd()) {
+            if (!QFileInfo::exists(known->thumbnailPath)) {
                 const QString thumb = ThumbnailService::ensureThumbnail(path, type, m_thumbnailsDir);
-                if (!thumb.isEmpty())
-                    m_db->setThumbnailForCapture(path, thumb);
+                if (!thumb.isEmpty() && m_db->setThumbnailForCapture(path, thumb))
+                    index[key].thumbnailPath = thumb;
             }
             continue;
         }
 
-        const QString game = inferGameName(root, path);
+        const QString game = GameIdentity::inferFromPath(root, path);
         const QString createdAt =
             info.birthTime().isValid() ? info.birthTime().toUTC().toString(Qt::ISODate)
                                        : info.lastModified().toUTC().toString(Qt::ISODate);
@@ -81,22 +89,11 @@ int CaptureScanner::scanFolder(const QString& root, const QString& source)
         const QString thumb = ThumbnailService::ensureThumbnail(path, type, m_thumbnailsDir);
         if (!thumb.isEmpty())
             m_db->setThumbnail(id, thumb);
+        // Keep the snapshot authoritative for the rest of the walk, so a path
+        // reachable from two roots is not inserted twice.
+        index.insert(key, { thumb, false });
         ++added;
     }
     return added;
 }
 
-QString CaptureScanner::inferGameName(const QString& root, const QString& filePath) const
-{
-    const QDir rootDir(root);
-    const QString relative = rootDir.relativeFilePath(filePath);
-    const QStringList parts = relative.split(QLatin1Char('/'), Qt::SkipEmptyParts);
-
-    // "<Game>/Screenshots/file.png" or "<Game>/Clips/file.mp4"
-    if (parts.size() >= 3)
-        return parts.first();
-    // "<Game>/file.png"
-    if (parts.size() == 2)
-        return parts.first();
-    return QStringLiteral("Unknown Game");
-}

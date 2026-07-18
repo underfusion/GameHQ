@@ -11,8 +11,6 @@ const QVector<ActionCatalog::Action>& buildCatalog()
           QStringLiteral("Capture a screenshot of the current game."), true },
         { QStringLiteral("global.save_replay"),    Scope::Global,   QStringLiteral("Save Replay"),
           QStringLiteral("Save the rolling replay buffer as a clip."), true },
-        { QStringLiteral("global.toggle_buffer"),  Scope::Global,   QStringLiteral("Toggle Replay Buffer"),
-          QStringLiteral("Start or stop the rolling replay buffer."), true },
         { QStringLiteral("global.toggle_overlay"), Scope::Global,   QStringLiteral("Toggle Overlay"),
           QStringLiteral("Show or hide the in-game overlay."), true },
 
@@ -61,6 +59,14 @@ const QVector<ActionCatalog::Action>& buildCatalog()
           QStringLiteral("Step to the previous sidebar category."), true },
         { QStringLiteral("desktop.tab_next"),       Scope::Desktop, QStringLiteral("Next Tab"),
           QStringLiteral("Step to the next sidebar category."), true },
+        { QStringLiteral("desktop.settings"),       Scope::Desktop, QStringLiteral("Open Settings"),
+          QStringLiteral("Open the Settings panel from anywhere in the gallery."), true },
+        { QStringLiteral("desktop.zoom_out"),       Scope::Desktop, QStringLiteral("Zoom Out"),
+          QStringLiteral("Make the gallery thumbnails smaller."), true },
+        { QStringLiteral("desktop.zoom_in"),        Scope::Desktop, QStringLiteral("Zoom In"),
+          QStringLiteral("Make the gallery thumbnails larger."), true },
+        { QStringLiteral("desktop.bulk_toggle"),    Scope::Desktop, QStringLiteral("Bulk Select"),
+          QStringLiteral("Enter or leave bulk selection mode."), true },
 
         // Playback — a clip is focused/playing in the overlay or gallery lightbox.
         { QStringLiteral("playback.play_pause"),  Scope::Playback, QStringLiteral("Play / Pause"),
@@ -69,6 +75,8 @@ const QVector<ActionCatalog::Action>& buildCatalog()
           QStringLiteral("Step the focused clip backward."), true },
         { QStringLiteral("playback.seek_forward"),Scope::Playback, QStringLiteral("Seek Forward"),
           QStringLiteral("Step the focused clip forward."), true },
+        { QStringLiteral("playback.frame_grab"), Scope::Playback, QStringLiteral("Save Frame"),
+          QStringLiteral("Save the frame currently shown in the focused clip as a screenshot."), true },
     };
     return actions;
 }

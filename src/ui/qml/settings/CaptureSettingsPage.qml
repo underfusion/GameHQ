@@ -84,24 +84,8 @@ SettingsPage {
             ColumnLayout {
                 Layout.preferredWidth: Theme.s48 * 7
                 spacing: Theme.s8
-                Rectangle {
-                    Layout.fillWidth: true
-                    implicitHeight: screenshotsPathText.implicitHeight + Theme.s8 * 2
-                    radius: Theme.radiusM
-                    color: Theme.bg1
-                    border.width: 1
-                    border.color: Theme.borderLight
-                    Text {
-                        id: screenshotsPathText
-                        anchors.fill: parent
-                        anchors.margins: Theme.s8
-                        text: app.screenshotsRoot
-                        color: Theme.textMuted
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontCaption
-                        horizontalAlignment: Text.AlignRight
-                        elide: Text.ElideMiddle
-                    }
+                SettingsPathField {
+                    text: app.screenshotsRoot
                 }
                 RowLayout {
                     Layout.alignment: Qt.AlignRight
@@ -133,24 +117,8 @@ SettingsPage {
             ColumnLayout {
                 Layout.preferredWidth: Theme.s48 * 7
                 spacing: Theme.s8
-                Rectangle {
-                    Layout.fillWidth: true
-                    implicitHeight: clipsPathText.implicitHeight + Theme.s8 * 2
-                    radius: Theme.radiusM
-                    color: Theme.bg1
-                    border.width: 1
-                    border.color: Theme.borderLight
-                    Text {
-                        id: clipsPathText
-                        anchors.fill: parent
-                        anchors.margins: Theme.s8
-                        text: app.clipsRoot
-                        color: Theme.textMuted
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontCaption
-                        horizontalAlignment: Text.AlignRight
-                        elide: Text.ElideMiddle
-                    }
+                SettingsPathField {
+                    text: app.clipsRoot
                 }
                 RowLayout {
                     Layout.alignment: Qt.AlignRight

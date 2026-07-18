@@ -1,10 +1,12 @@
 #include "input/InputEngine.h"
 
+#include "config/ConfigKeys.h"
 #include "config/ConfigManager.h"
 #include "input/BindingRuntime.h"
 #include "input/BindingEditorModel.h"
 #include "input/DualSenseDevice.h"
 #include "input/Gamepad.h"
+#include "input/HidCloakMonitor.h"
 #include "input/HotkeyManager.h"
 #include "input/MouseHookDevice.h"
 #include "input/WinMMDevice.h"
@@ -41,10 +43,10 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
     , m_controllerStatus(QStringLiteral("No controller detected"))
 {
     m_runtime->setDefaultHoldMs(
-        m_config->value(QStringLiteral("input.share_hold_ms"), 2000).toInt());
+        m_config->value(ConfigKeys::InputShareHoldMs, 2000).toInt());
     connect(m_config, &ConfigManager::valueChanged, this,
             [this](const QString& key, const QVariant& value) {
-                if (key != QStringLiteral("input.share_hold_ms"))
+                if (key != ConfigKeys::InputShareHoldMs)
                     return;
                 const int threshold = qBound(250, value.toInt(), 10000);
                 m_runtime->setDefaultHoldMs(threshold);
@@ -97,6 +99,30 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
         m_xinputPad->rescan();
         m_winmmPad->rescan();
     });
+
+    // Surface cloaked pads (present in Windows, hidden from apps by a HID
+    // filter driver) in Settings instead of silently detecting nothing.
+    connect(m_sonyPad, &DualSenseDevice::hiddenPadsChanged, this,
+            [this](const QStringList& pads, bool hidHidePresent) {
+                if (pads.isEmpty()) {
+                    setControllerWarning({}, false);
+                    return;
+                }
+                const QString names = pads.join(QStringLiteral(", "));
+                if (hidHidePresent) {
+                    setControllerWarning(
+                        tr("%1 is connected but hidden from applications by the "
+                           "HidHide driver (installed with DSX, DS4Windows, or "
+                           "reWASD).").arg(names),
+                        true);
+                } else {
+                    setControllerWarning(
+                        tr("%1 is connected to Windows but invisible to "
+                           "applications — a HID filter driver is hiding it.")
+                            .arg(names),
+                        false);
+                }
+            });
 
     // Hold-to-repeat tick for pad navigation (D-pad + L1/R1). Built once and
     // reused for whichever direction is currently held — only one pad button
@@ -302,11 +328,10 @@ void InputEngine::setPlaybackActive(bool active)
 
 void InputEngine::onControlPressed(const QString& controlId, int family,
                                    const QString&, const QString& fingerprint,
-                                   const QString&, int legacyButton)
+                                   const QString&)
 {
     if (sender() != m_activeBackend)
         return;
-    Q_UNUSED(legacyButton);
     setLastInput(ControlId::label(controlId, static_cast<ControlId::ControllerFamily>(family))
                  + QStringLiteral(" pressed"));
     if (m_bindingEditor->captureInput(
@@ -318,11 +343,10 @@ void InputEngine::onControlPressed(const QString& controlId, int family,
 }
 
 void InputEngine::onControlReleased(const QString& controlId, int, const QString&,
-                                    const QString& fingerprint, const QString&, int legacyButton)
+                                    const QString& fingerprint, const QString&)
 {
     if (sender() != m_activeBackend)
         return;
-    Q_UNUSED(legacyButton);
     m_runtime->release(QStringLiteral("controller"), fingerprint, controlId);
     if (controlId == m_repeatTrigger)
         stopNavRepeat();
@@ -380,62 +404,61 @@ void InputEngine::dispatchAction(const QString& actionId, const QString& trigger
     if (const auto* action = ActionCatalog::find(actionId))
         setLastInput(action->label);
 
-    if (actionId == QLatin1String("global.screenshot"))
-        emit screenshotRequested();
-    else if (actionId == QLatin1String("global.save_replay"))
-        emit replayRequested();
-    else if (actionId == QLatin1String("global.toggle_buffer"))
-        emit bufferToggleRequested();
-    else if (actionId == QLatin1String("global.toggle_overlay"))
-        emit overlayToggleRequested();
-    else if (actionId == QLatin1String("overlay.navigate_left"))
-        startNavRepeat(triggerCode, -1, [this](int d) { emit overlayNavigate(d); });
-    else if (actionId == QLatin1String("overlay.navigate_right"))
-        startNavRepeat(triggerCode, 1, [this](int d) { emit overlayNavigate(d); });
-    else if (actionId == QLatin1String("overlay.navigate_up"))
-        startNavRepeat(triggerCode, -1, [this](int d) { emit overlayNavigateVertical(d); });
-    else if (actionId == QLatin1String("overlay.navigate_down"))
-        startNavRepeat(triggerCode, 1, [this](int d) { emit overlayNavigateVertical(d); });
-    else if (actionId == QLatin1String("overlay.confirm"))
-        emit overlayConfirm();
-    else if (actionId == QLatin1String("overlay.back"))
-        emit overlayHideRequested();
-    else if (actionId == QLatin1String("overlay.favorite"))
-        emit overlayFavorite();
-    else if (actionId == QLatin1String("overlay.menu"))
-        emit overlayMenu();
-    else if (actionId == QLatin1String("overlay.sidebar_toggle"))
-        emit overlaySidebarToggle();
-    else if (actionId == QLatin1String("overlay.game_prev"))
-        startNavRepeat(triggerCode, -1, [this](int d) { emit overlayGameStep(d); });
-    else if (actionId == QLatin1String("overlay.game_next"))
-        startNavRepeat(triggerCode, 1, [this](int d) { emit overlayGameStep(d); });
-    else if (actionId == QLatin1String("desktop.navigate_left"))
-        startNavRepeat(triggerCode, -1, [this](int d) { emit desktopNavigate(d); });
-    else if (actionId == QLatin1String("desktop.navigate_right"))
-        startNavRepeat(triggerCode, 1, [this](int d) { emit desktopNavigate(d); });
-    else if (actionId == QLatin1String("desktop.navigate_up"))
-        startNavRepeat(triggerCode, -1, [this](int d) { emit desktopNavigateVertical(d); });
-    else if (actionId == QLatin1String("desktop.navigate_down"))
-        startNavRepeat(triggerCode, 1, [this](int d) { emit desktopNavigateVertical(d); });
-    else if (actionId == QLatin1String("desktop.confirm"))
-        emit desktopConfirm();
-    else if (actionId == QLatin1String("desktop.back"))
-        emit desktopBack();
-    else if (actionId == QLatin1String("desktop.favorite"))
-        emit desktopFavorite();
-    else if (actionId == QLatin1String("desktop.menu"))
-        emit desktopMenu();
-    else if (actionId == QLatin1String("desktop.tab_prev"))
-        emit desktopTabStep(-1);
-    else if (actionId == QLatin1String("desktop.tab_next"))
-        emit desktopTabStep(1);
-    else if (actionId == QLatin1String("playback.play_pause"))
-        emit playbackPlayPause();
-    else if (actionId == QLatin1String("playback.seek_back"))
-        startNavRepeat(triggerCode, -1, [this](int d) { emit playbackSeek(d); });
-    else if (actionId == QLatin1String("playback.seek_forward"))
-        startNavRepeat(triggerCode, 1, [this](int d) { emit playbackSeek(d); });
+    // Dispatch table: every bindable action maps to a handler. When a new action
+    // is added to ActionCatalog, a matching entry must appear below — a missing
+    // entry compiles and runs but is a silent no-op (caught by the qWarning at
+    // the end).  The table is local-static: built once, never rebuilt.
+    using Handler = void (InputEngine::*)(const QString& triggerCode);
+    struct Entry { const char* actionId; Handler handler; };
+    static const Entry table[] = {
+        // Global
+        { "global.screenshot",     &Self::handleScreenshot },
+        { "global.save_replay",    &Self::handleSaveReplay },
+        { "global.toggle_overlay", &Self::handleToggleOverlay },
+        // Overlay
+        { "overlay.navigate_left",  &Self::handleOverlayNavigateLeft },
+        { "overlay.navigate_right", &Self::handleOverlayNavigateRight },
+        { "overlay.navigate_up",    &Self::handleOverlayNavigateUp },
+        { "overlay.navigate_down",  &Self::handleOverlayNavigateDown },
+        { "overlay.confirm",        &Self::handleOverlayConfirm },
+        { "overlay.back",           &Self::handleOverlayBack },
+        { "overlay.favorite",       &Self::handleOverlayFavorite },
+        { "overlay.menu",           &Self::handleOverlayMenu },
+        { "overlay.sidebar_toggle", &Self::handleOverlaySidebarToggle },
+        { "overlay.game_prev",      &Self::handleOverlayGamePrev },
+        { "overlay.game_next",      &Self::handleOverlayGameNext },
+        // Desktop
+        { "desktop.navigate_left",  &Self::handleDesktopNavigateLeft },
+        { "desktop.navigate_right", &Self::handleDesktopNavigateRight },
+        { "desktop.navigate_up",    &Self::handleDesktopNavigateUp },
+        { "desktop.navigate_down",  &Self::handleDesktopNavigateDown },
+        { "desktop.confirm",        &Self::handleDesktopConfirm },
+        { "desktop.back",           &Self::handleDesktopBack },
+        { "desktop.favorite",       &Self::handleDesktopFavorite },
+        { "desktop.menu",           &Self::handleDesktopMenu },
+        { "desktop.tab_prev",       &Self::handleDesktopTabPrev },
+        { "desktop.tab_next",       &Self::handleDesktopTabNext },
+        { "desktop.settings",       &Self::handleDesktopSettings },
+        { "desktop.zoom_out",       &Self::handleDesktopZoomOut },
+        { "desktop.zoom_in",        &Self::handleDesktopZoomIn },
+        { "desktop.bulk_toggle",    &Self::handleDesktopBulkToggle },
+        // Playback
+        { "playback.play_pause",    &Self::handlePlaybackPlayPause },
+        { "playback.seek_back",     &Self::handlePlaybackSeekBack },
+        { "playback.seek_forward",  &Self::handlePlaybackSeekForward },
+        { "playback.frame_grab",     &Self::handleFrameGrab },
+    };
+
+    for (const auto& entry : table) {
+        if (actionId == QLatin1String(entry.actionId)) {
+            (this->*entry.handler)(triggerCode);
+            return;
+        }
+    }
+
+    qWarning().noquote()
+        << QStringLiteral("Input: unknown action %1 — missing dispatch table entry?")
+               .arg(actionId);
 }
 
 void InputEngine::setLastInput(const QString& text)
@@ -453,6 +476,65 @@ void InputEngine::setControllerStatus(const QString& text)
         return;
     m_controllerStatus = text;
     emit controllerStatusChanged();
+}
+
+void InputEngine::setControllerWarning(const QString& text, bool fixAvailable)
+{
+    if (m_controllerWarning == text && m_controllerFixAvailable == fixAvailable)
+        return;
+    m_controllerWarning = text;
+    m_controllerFixAvailable = fixAvailable;
+    emit controllerWarningChanged();
+}
+
+void InputEngine::fixHiddenController()
+{
+    if (m_fixProcess)
+        return;   // helper already in flight
+
+    void* process = HidCloakMonitor::launchElevatedWhitelistHelper();
+    if (!process) {
+        setControllerWarning(
+            tr("Administrator approval was declined — the controller stays "
+               "hidden. You can whitelist GameHQ manually in the HidHide "
+               "Configuration Client."),
+            true);
+        return;
+    }
+    m_fixProcess = process;
+    setControllerWarning(tr("Applying the fix (administrator prompt)..."), false);
+
+    if (!m_fixWatch) {
+        m_fixWatch = new QTimer(this);
+        m_fixWatch->setInterval(500);
+        connect(m_fixWatch, &QTimer::timeout, this, [this] {
+            HANDLE h = static_cast<HANDLE>(m_fixProcess);
+            if (WaitForSingleObject(h, 0) != WAIT_OBJECT_0)
+                return;   // still running
+            DWORD code = 1;
+            GetExitCodeProcess(h, &code);
+            CloseHandle(h);
+            m_fixProcess = nullptr;
+            m_fixWatch->stop();
+            if (code == 0) {
+                qInfo() << "Input: GameHQ whitelisted in HidHide";
+                setControllerWarning(
+                    tr("GameHQ is now whitelisted in HidHide. Unplug and replug "
+                       "the controller if it does not appear within a few "
+                       "seconds."),
+                    false);
+                m_sonyPad->rescan();
+            } else {
+                qWarning() << "Input: HidHide whitelist helper failed, code" << code;
+                setControllerWarning(
+                    tr("Automatic whitelisting failed (code %1). Add GameHQ.exe "
+                       "on the Applications tab of the HidHide Configuration "
+                       "Client instead.").arg(code),
+                    true);
+            }
+        });
+    }
+    m_fixWatch->start();
 }
 
 bool InputEngine::desktopCanReceiveInput() const

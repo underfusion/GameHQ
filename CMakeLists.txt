@@ -43,3 +43,11 @@ qt_standard_project_setup(REQUIRES 6.5)
 qt_policy(SET QTP0004 NEW)
 
 add_subdirectory(src)
+
+# Tests are opt-in so a normal build/run stays as fast as it was; start.bat does
+# not enable them. See docs/dev-setup.md.
+option(GAMEHQ_BUILD_TESTS "Build the automated test target" OFF)
+if(GAMEHQ_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()

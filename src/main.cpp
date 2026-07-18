@@ -6,9 +6,20 @@
 #include <QLockFile>
 #include "app/App.h"
 #include "Brand.h"
+#include "input/HidCloakMonitor.h"
+
+#include <cstring>
 
 int main(int argc, char* argv[])
 {
+    // Elevated helper mode (no GUI, no single-instance lock): the Settings
+    // "Fix automatically" button relaunches this exe with "runas" so the
+    // HidHide whitelist IOCTL runs with admin rights (docs/controller-input.md).
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--hidhide-allow-self") == 0)
+            return HidCloakMonitor::applyWhitelistSelfElevated();
+    }
+
     QApplication qtApp(argc, argv);
 
     // Single-instance guard: a second launch would lose the fight for the

@@ -1,5 +1,7 @@
 #include "capture/ScreenshotService.h"
 
+#include "capture/CaptureUtil.h"
+#include "config/ConfigKeys.h"
 #include "config/ConfigManager.h"
 #include "config/CaptureLocations.h"
 #include "core/GameIdentity.h"
@@ -28,7 +30,7 @@ ScreenshotService::ScreenshotService(ConfigManager* config, CaptureLocations* lo
 void ScreenshotService::capture()
 {
     const QString mode = m_config
-        ? m_config->value(QStringLiteral("capture.mode"),
+        ? m_config->value(ConfigKeys::CaptureMode,
                           QStringLiteral("only_in_games")).toString()
         : QStringLiteral("only_in_games");
 
@@ -55,19 +57,41 @@ void ScreenshotService::capture()
 
     const QString gameName = g.gameName.isEmpty() ? QStringLiteral("Unknown Game")
                                                   : g.gameName;
-    const QString executablePath = g.executablePath;
+    qInfo() << "Screenshot: grabbed" << img.width() << "x" << img.height()
+            << "in" << grabMs << "ms — encoding in background";
+    encodeAndSave(img, gameName, g.executablePath);
+}
+
+// Save a caller-supplied image (a clip frame from the QML video surface) as a
+// screenshot. Same feedback + encode path as capture(), minus the GDI grab and
+// foreground gate — the caller already holds the pixels for a specific game.
+void ScreenshotService::saveImage(const QImage& img, const QString& gameName,
+                                  const QString& executablePath)
+{
+    if (img.isNull()) {
+        emit failed(QStringLiteral("no video frame available to save"));
+        return;
+    }
+    emit grabbed();
+    const QString game = gameName.isEmpty() ? QStringLiteral("Unknown Game") : gameName;
+    qInfo() << "Frame grab:" << img.width() << "x" << img.height()
+            << "for" << game << "— encoding in background";
+    encodeAndSave(img, game, executablePath);
+}
+
+void ScreenshotService::encodeAndSave(const QImage& img, const QString& gameName,
+                                      const QString& executablePath)
+{
     const QString dir = m_locations->screenshotDir(gameName);
     // Read format/quality on the calling thread (ConfigManager is not meant for
     // concurrent access) and hand plain values to the worker.
     const bool jpeg = m_config
-        && m_config->value(QStringLiteral("capture.screenshot_format"), QStringLiteral("png"))
+        && m_config->value(ConfigKeys::CaptureScreenshotFormat, QStringLiteral("png"))
                .toString().compare(QStringLiteral("jpg"), Qt::CaseInsensitive) == 0;
     const QString ext = jpeg ? QStringLiteral(".jpg") : QStringLiteral(".png");
     const int jpegQuality = m_config
-        ? qBound(1, m_config->value(QStringLiteral("capture.jpeg_quality"), 90).toInt(), 100)
+        ? qBound(1, m_config->value(ConfigKeys::CaptureJpegQuality, 90).toInt(), 100)
         : 90;
-    qInfo() << "Screenshot: grabbed" << img.width() << "x" << img.height()
-            << "in" << grabMs << "ms — encoding in background";
 
     QThreadPool::globalInstance()->start(QRunnable::create(
         [this, img, gameName, executablePath, dir, jpeg, ext, jpegQuality]() {
@@ -78,10 +102,9 @@ void ScreenshotService::capture()
             return;
         }
 
-        const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
-        QString path = dir + QLatin1Char('/') + stamp + ext;
-        for (int n = 2; QFileInfo::exists(path); ++n)   // avoid same-second clobber
-            path = dir + QLatin1Char('/') + stamp + QStringLiteral("_%1").arg(n) + ext;
+        // Timestamped name with same-second clobber protection.
+        const QString path = CaptureUtil::uniqueTimestampedPath(
+            dir, QStringLiteral("yyyy-MM-dd_HH-mm-ss"), ext);
 
         QImageWriter writer(path, jpeg ? "JPG" : "PNG");
         if (jpeg)

@@ -1,4 +1,5 @@
 #include "sound/SoundEngine.h"
+#include "config/ConfigKeys.h"
 #include "config/ConfigManager.h"
 
 #include <QSoundEffect>
@@ -28,14 +29,14 @@ SoundEngine::SoundEngine(ConfigManager* config, QObject* parent)
 
 void SoundEngine::play(const QString& event)
 {
-    if (!m_config->value(QStringLiteral("sounds.enabled"), true).toBool())
+    if (!m_config->value(ConfigKeys::SoundsEnabled, true).toBool())
         return;
     QSoundEffect* effect = m_effects.value(event);
     if (!effect) {
         qWarning() << "Sounds: unknown event" << event;
         return;
     }
-    const qreal volume = m_config->value(QStringLiteral("sounds.volume"), 80).toInt() / 100.0;
+    const qreal volume = m_config->value(ConfigKeys::SoundsVolume, 80).toInt() / 100.0;
     effect->setVolume(qBound(0.0, volume, 1.0));
     effect->play();
 }

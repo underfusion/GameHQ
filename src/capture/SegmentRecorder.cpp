@@ -1,4 +1,5 @@
 #include "capture/SegmentRecorder.h"
+#include "capture/CaptureUtil.h"
 
 #include <windows.h>
 #include <d3d11.h>
@@ -43,10 +44,7 @@ void mfRelease()
 
 inline bool ok(const char* what, HRESULT hr)
 {
-    if (FAILED(hr))
-        qWarning().nospace() << "SegmentRecorder: " << what
-                             << " failed hr=0x" << Qt::hex << quint32(hr);
-    return SUCCEEDED(hr);
+    return CaptureUtil::ok("SegmentRecorder", what, hr);
 }
 
 QString uniqueSegmentPath(const QString& cacheDir)
@@ -54,14 +52,8 @@ QString uniqueSegmentPath(const QString& cacheDir)
     // Include milliseconds because snapshotForSave() closes one segment and
     // opens the next immediately; second-resolution names can collide and
     // overwrite the segment the exporter is about to read.
-    const QString stamp = QDateTime::currentDateTime().toString(
-        QStringLiteral("yyyy-MM-dd_HH-mm-ss-zzz"));
-    QString path = cacheDir + QLatin1Char('/') + stamp + QStringLiteral("_clip.mp4");
-    for (int i = 2; QFile::exists(path); ++i) {
-        path = cacheDir + QLatin1Char('/') + stamp
-             + QStringLiteral("_%1_clip.mp4").arg(i);
-    }
-    return path;
+    return CaptureUtil::uniqueTimestampedPath(
+        cacheDir, QStringLiteral("yyyy-MM-dd_HH-mm-ss-zzz"), QStringLiteral("_clip.mp4"));
 }
 
 } // namespace
@@ -141,7 +133,7 @@ bool SegmentRecorder::begin(int sourceWidth, int sourceHeight, int encodeWidth, 
     // a previous play session; the ring trim below enforces the segment cap.
     {
         const qint64 lengthSecs = qint64(m_keepSegments) * (m_segTicks / 10000000LL);
-        const qint64 staleSecs  = 600;   // 10 min — see note above
+        const qint64 staleSecs  = CaptureUtil::kStaleSegmentMaxAgeSecs;   // 10 min — see note above
         const qint64 nowSecs    = QDateTime::currentSecsSinceEpoch();
         const QStringList files = QDir(m_cacheDir).entryList(
             QStringList() << QStringLiteral("*_clip.mp4"), QDir::Files, QDir::Name);
@@ -290,38 +282,33 @@ void SegmentRecorder::releaseGpuScaler()
     m_scaleOnGpu = false;
 }
 
-// Build one segment's sink writer at `path`: fMP4 container, H.264 stream
-// (+ optional AAC), input types set, BeginWriting done. Runs on the worker
-// OR the prep thread, so it must not touch mutable recorder state; on AAC
-// input rejection it retries video-only and returns out.audioStream == 0.
-bool SegmentRecorder::buildWriter(const QString& path, PendingWriter& out, bool wantAudio) const
+// Writer attributes: fragmented MP4 (crash-safe within a segment), no
+// throttling (we push in real time), low latency, allow a HW encoder MFT.
+IMFSinkWriter* SegmentRecorder::createSegmentSink(const std::wstring& wpath) const
 {
-    const std::wstring wpath = path.toStdWString();
-
-    // Writer attributes: fragmented MP4 (crash-safe within a segment), no
-    // throttling (we push in real time), low latency, allow a HW encoder MFT.
     IMFAttributes* attrs = nullptr;
     if (!ok("MFCreateAttributes", MFCreateAttributes(&attrs, 4)))
-        return false;
+        return nullptr;
     attrs->SetGUID  (MF_TRANSCODE_CONTAINERTYPE, MFTranscodeContainerType_FMPEG4);
     attrs->SetUINT32(MF_SINK_WRITER_DISABLE_THROTTLING, TRUE);
     attrs->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, TRUE);
     attrs->SetUINT32(MF_LOW_LATENCY, TRUE);
 
     IMFSinkWriter* writer = nullptr;
-    unsigned long videoStream = 0;
-    unsigned long audioStream = 0;
-
-    HRESULT hr = MFCreateSinkWriterFromURL(wpath.c_str(), nullptr, attrs, &writer);
+    const HRESULT hr = MFCreateSinkWriterFromURL(wpath.c_str(), nullptr, attrs, &writer);
     attrs->Release();
     if (!ok("MFCreateSinkWriterFromURL", hr))
-        return false;
+        return nullptr;
+    return writer;
+}
 
+// H.264 output stream + RGB32 input type on the video stream.
+bool SegmentRecorder::addVideoStream(IMFSinkWriter* writer, unsigned long& videoStream) const
+{
     // OUTPUT: H.264.
     IMFMediaType* outType = nullptr;
-    if (!ok("MFCreateMediaType(out)", MFCreateMediaType(&outType))) {
-        writer->Release(); return false;
-    }
+    if (!ok("MFCreateMediaType(out)", MFCreateMediaType(&outType)))
+        return false;
     outType->SetGUID  (MF_MT_MAJOR_TYPE,      MFMediaType_Video);
     outType->SetGUID  (MF_MT_SUBTYPE,         MFVideoFormat_H264);
     outType->SetUINT32(MF_MT_AVG_BITRATE,     m_bitrate);
@@ -330,15 +317,14 @@ bool SegmentRecorder::buildWriter(const QString& path, PendingWriter& out, bool 
     MFSetAttributeSize (outType, MF_MT_FRAME_SIZE,         m_w, m_h);
     MFSetAttributeRatio(outType, MF_MT_FRAME_RATE,         UINT32(m_fps), 1);
     MFSetAttributeRatio(outType, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
-    hr = writer->AddStream(outType, &videoStream);
+    HRESULT hr = writer->AddStream(outType, &videoStream);
     outType->Release();
-    if (!ok("AddStream(video)", hr)) { writer->Release(); return false; }
+    if (!ok("AddStream(video)", hr)) return false;
 
     // INPUT: RGB32 (== BGRA), top-down (positive default stride == the flip fix).
     IMFMediaType* inType = nullptr;
-    if (!ok("MFCreateMediaType(in)", MFCreateMediaType(&inType))) {
-        writer->Release(); return false;
-    }
+    if (!ok("MFCreateMediaType(in)", MFCreateMediaType(&inType)))
+        return false;
     inType->SetGUID  (MF_MT_MAJOR_TYPE,      MFMediaType_Video);
     inType->SetGUID  (MF_MT_SUBTYPE,         MFVideoFormat_RGB32);
     inType->SetUINT32(MF_MT_INTERLACE_MODE,  MFVideoInterlace_Progressive);
@@ -354,65 +340,91 @@ bool SegmentRecorder::buildWriter(const QString& path, PendingWriter& out, bool 
     hr = writer->SetInputMediaType(videoStream, inType, encParams);
     inType->Release();
     if (encParams) encParams->Release();
-    if (!ok("SetInputMediaType(video)", hr)) { writer->Release(); return false; }
+    if (!ok("SetInputMediaType(video)", hr)) return false;
+    return true;
+}
 
-    // --- Audio stream (AAC) — Step 7 ---
-    if (wantAudio) {
-        IMFMediaType* aOutType = nullptr;
-        if (ok("MFCreateMediaType(audio out)", MFCreateMediaType(&aOutType))) {
-            aOutType->SetGUID  (MF_MT_MAJOR_TYPE,   MFMediaType_Audio);
-            aOutType->SetGUID  (MF_MT_SUBTYPE,      MFAudioFormat_AAC);
-            aOutType->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
-            aOutType->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, m_audioRate);
-            aOutType->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS,       m_audioChannels);
-            aOutType->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, m_audioBitrate / 8);
-            aOutType->SetUINT32(MF_MT_AAC_AUDIO_PROFILE_LEVEL_INDICATION, 0x29); // AAC-LC
-            hr = writer->AddStream(aOutType, &audioStream);
-            aOutType->Release();
-            if (ok("AddStream(audio)", hr)) {
-                // INPUT: PCM-16 (the AAC encoder MFT accepts it natively; WASAPI's
-                // float32 is converted to int16 in writeAudio before reaching here).
-                IMFMediaType* aInType = nullptr;
-                if (ok("MFCreateMediaType(audio in)", MFCreateMediaType(&aInType))) {
-                    aInType->SetGUID  (MF_MT_MAJOR_TYPE,   MFMediaType_Audio);
-                    aInType->SetGUID  (MF_MT_SUBTYPE,      MFAudioFormat_PCM);  // AAC encoder wants PCM-16
-                    aInType->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
-                    aInType->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, m_audioRate);
-                    aInType->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS,       m_audioChannels);
-
-                    IMFAttributes* aEncParams = nullptr;
-                    if (SUCCEEDED(MFCreateAttributes(&aEncParams, 1)))
-                        aEncParams->SetUINT32(CODECAPI_AVEncCommonRealTime, TRUE);
-                    hr = writer->SetInputMediaType(audioStream, aInType, aEncParams);
-                    aInType->Release();
-                    if (aEncParams) aEncParams->Release();
-                    if (!ok("SetInputMediaType(audio)", hr)) {
-                        qWarning() << "SegmentRecorder: audio input rejected, video-only";
-                        audioStream = 0;
-                    }
-                } else {
-                    audioStream = 0;
-                }
-            } else {
-                audioStream = 0;
-            }
-        }
+// AAC output stream + PCM-16 input type — Step 7. Returns true only when the
+// audio stream is fully wired (AddStream AND SetInputMediaType accepted); any
+// rejection leaves audioStream == 0 and the caller rebuilds video-only.
+bool SegmentRecorder::addAudioStream(IMFSinkWriter* writer, unsigned long& audioStream) const
+{
+    audioStream = 0;
+    IMFMediaType* aOutType = nullptr;
+    if (!ok("MFCreateMediaType(audio out)", MFCreateMediaType(&aOutType)))
+        return false;
+    aOutType->SetGUID  (MF_MT_MAJOR_TYPE,   MFMediaType_Audio);
+    aOutType->SetGUID  (MF_MT_SUBTYPE,      MFAudioFormat_AAC);
+    aOutType->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
+    aOutType->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, m_audioRate);
+    aOutType->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS,       m_audioChannels);
+    aOutType->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, m_audioBitrate / 8);
+    aOutType->SetUINT32(MF_MT_AAC_AUDIO_PROFILE_LEVEL_INDICATION, 0x29); // AAC-LC
+    HRESULT hr = writer->AddStream(aOutType, &audioStream);
+    aOutType->Release();
+    if (!ok("AddStream(audio)", hr)) {
+        audioStream = 0;
+        return false;
     }
 
-    // If audio was requested but its input type was rejected, the sink writer
-    // already has a dangling audio OUTPUT stream (added via AddStream above but
-    // never given an input media type). That produces a malformed fragmented-MP4
-    // the export reader cannot open, breaking EVERY clip save. Rebuild as pure
-    // video-only so each segment stays well-formed; the caller sees
-    // audioStream == 0 and disables audio for the rest of this recorder.
-    if (wantAudio && audioStream == 0) {
+    // INPUT: PCM-16 (the AAC encoder MFT accepts it natively; WASAPI's
+    // float32 is converted to int16 in writeAudio before reaching here).
+    IMFMediaType* aInType = nullptr;
+    if (!ok("MFCreateMediaType(audio in)", MFCreateMediaType(&aInType))) {
+        audioStream = 0;
+        return false;
+    }
+    aInType->SetGUID  (MF_MT_MAJOR_TYPE,   MFMediaType_Audio);
+    aInType->SetGUID  (MF_MT_SUBTYPE,      MFAudioFormat_PCM);  // AAC encoder wants PCM-16
+    aInType->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
+    aInType->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, m_audioRate);
+    aInType->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS,       m_audioChannels);
+
+    IMFAttributes* aEncParams = nullptr;
+    if (SUCCEEDED(MFCreateAttributes(&aEncParams, 1)))
+        aEncParams->SetUINT32(CODECAPI_AVEncCommonRealTime, TRUE);
+    hr = writer->SetInputMediaType(audioStream, aInType, aEncParams);
+    aInType->Release();
+    if (aEncParams) aEncParams->Release();
+    if (!ok("SetInputMediaType(audio)", hr)) {
+        qWarning() << "SegmentRecorder: audio input rejected, video-only";
+        audioStream = 0;
+        return false;
+    }
+    return true;
+}
+
+// Build one segment's sink writer at `path`: fMP4 container, H.264 stream
+// (+ optional AAC), input types set, BeginWriting done. Runs on the worker
+// OR the prep thread, so it must not touch mutable recorder state; on AAC
+// input rejection it retries video-only and returns out.audioStream == 0.
+bool SegmentRecorder::buildWriter(const QString& path, PendingWriter& out, bool wantAudio) const
+{
+    IMFSinkWriter* writer = createSegmentSink(path.toStdWString());
+    if (!writer)
+        return false;
+
+    unsigned long videoStream = 0;
+    unsigned long audioStream = 0;
+    if (!addVideoStream(writer, videoStream)) {
+        writer->Release();
+        return false;
+    }
+
+    // If audio was requested but rejected, the sink writer may already have a
+    // dangling audio OUTPUT stream (added via AddStream but never given an
+    // input media type). That produces a malformed fragmented-MP4 the export
+    // reader cannot open, breaking EVERY clip save. Rebuild as pure video-only
+    // so each segment stays well-formed; the caller sees audioStream == 0 and
+    // disables audio for the rest of this recorder.
+    if (wantAudio && !addAudioStream(writer, audioStream)) {
         qWarning() << "SegmentRecorder: audio rejected — rebuilding segment video-only";
         writer->Release();
         QFile::remove(path);             // discard the empty/poisoned file
         return buildWriter(path, out, false);
     }
 
-    hr = writer->BeginWriting();
+    const HRESULT hr = writer->BeginWriting();
     if (!ok("BeginWriting", hr)) { writer->Release(); QFile::remove(path); return false; }
 
     out.writer      = writer;

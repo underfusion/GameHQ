@@ -11,6 +11,8 @@ class CaptureLibraryService;
 class CaptureLocations;
 class ConfigManager;
 class CurrentGameService;
+class ScreenshotService;
+class SettingsRouter;
 class StartupManager;
 
 // The single QML-facing bridge ("app" context property). QML never talks to
@@ -88,6 +90,14 @@ public:
     Q_INVOKABLE void showInFolderFrom(GalleryModel* model, int row);
     Q_INVOKABLE void syncOverlayToForegroundGame();
 
+    // Save the frame currently shown by a QML video surface (its QVideoSink) as
+    // a screenshot under the clip's game. Called from the overlay/lightbox when
+    // Share is pressed while a clip is focused — the live frame lives in QML, so
+    // C++ receives the sink and extracts the image from it.
+    Q_INVOKABLE void saveVideoFrame(QObject* videoSink, const QString& gameName,
+                                    const QString& executablePath = QString());
+    void setScreenshotService(ScreenshotService* screenshots) { m_screenshots = screenshots; }
+
     Q_INVOKABLE void addWatchedFolder(const QUrl& folderUrl);
     Q_INVOKABLE void removeWatchedFolder(const QString& path);
     Q_INVOKABLE QString setCaptureRoot(const QString& kind, const QUrl& folderUrl);
@@ -147,8 +157,10 @@ private:
     ConfigManager* m_config;
     CaptureLocations* m_locations;
     StartupManager* m_startup;
+    ScreenshotService* m_screenshots = nullptr;   // owned by App; set post-construction
     std::unique_ptr<CaptureLibraryService> m_captureLibrary;
     std::unique_ptr<CurrentGameService> m_currentGame;
+    std::unique_ptr<SettingsRouter> m_settings;
     QString m_category = QStringLiteral("all");
     int m_gameId = -1;
     bool m_replayBufferActive = false;

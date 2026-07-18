@@ -8,17 +8,36 @@ Item {
     Layout.fillWidth: true
     Layout.fillHeight: true
 
-    property var host
+    // The grid is told what to show and asks for what it wants done; it does
+    // not reach into the window it happens to be parented to. Everything the
+    // host used to expose arrives as a property, every host call leaves as a
+    // signal. Signal handlers run synchronously, so the emit order below IS
+    // the old call order — that matters on the key path, where the
+    // usingGamepad write has to land before input.handleKeyPressed() runs.
+    property int columns: 1
+    property real zoomLevel: 0
+    property bool bulkMode: false
+    // Predicate, not a window: (filePath) -> bool. Kept callable rather than
+    // turned into a signal so the delegate's `checked` stays a real binding
+    // that re-evaluates when the selection changes.
+    property var bulkIsChecked: (filePath) => false
     property var deleteDialog
     property var bulkDeleteDialog
     property alias currentIndex: galleryGrid.currentIndex
     property alias count: galleryGrid.count
     property alias cellWidth: galleryGrid.cellWidth
+    // The view is inset from this Item, so the host cannot derive the column
+    // count from root.width — it needs the width the cells actually divide.
+    property alias viewWidth: galleryGrid.width
     property alias _navLockUntil: galleryGrid._navLockUntil
 
     signal captureActivated(int index)
     signal deleteRequested(int index, string gameName, string dateText)
     signal addFolderRequested()
+    signal keyboardActivity()
+    signal bulkToggleRequested(int index, bool extendRange)
+    signal bulkDeleteRequested()
+    signal bulkSelectAllRequested()
 
     function forceActiveFocus() { galleryGrid.forceActiveFocus() }
     function moveCurrentIndexLeft() { galleryGrid.moveCurrentIndexLeft() }
@@ -40,8 +59,8 @@ Item {
         HoverHandler { id: gridHover }
 
         cellWidth: galleryGrid.width > 0
-            ? galleryGrid.width / root.host.gridColumns(galleryGrid.width)
-            : root.host.zoomLevel
+            ? galleryGrid.width / root.columns
+            : root.zoomLevel
         cellHeight: galleryGrid.cellWidth * 9 / 16 + Theme.s32
         focus: true
         keyNavigationEnabled: false
@@ -73,8 +92,8 @@ Item {
                 dateText: model.dateText
                 favorite: model.favorite
                 selected: galleryGrid.currentIndex === index
-                bulkMode: root.host.bulkMode
-                checked: root.host.bulkIsChecked(model.filePath)
+                bulkMode: root.bulkMode
+                checked: root.bulkIsChecked(model.filePath)
                 onActivated: {
                     galleryGrid.currentIndex = index
                     galleryGrid.forceActiveFocus()
@@ -83,7 +102,7 @@ Item {
                 onCheckToggled: function(extendRange) {
                     galleryGrid.currentIndex = index
                     galleryGrid.forceActiveFocus()
-                    root.host.bulkToggle(index, extendRange)
+                    root.bulkToggleRequested(index, extendRange)
                 }
                 onOpenRequested: {
                     sounds.play("confirm")
@@ -99,33 +118,33 @@ Item {
         }
 
         Keys.onPressed: (event) => {
-            root.host.usingGamepad = false
+            root.keyboardActivity()
             if (input.handleKeyPressed(event.key, event.modifiers,
                                        event.isAutoRepeat)) {
                 event.accepted = true
                 return
             }
 
-            if (root.host.bulkMode && !root.bulkDeleteDialog.visible) {
+            if (root.bulkMode && !root.bulkDeleteDialog.visible) {
                 if (event.key === Qt.Key_Space) {
                     const rec = app.gallery.get(currentIndex)
                     if (rec.filePath)
-                        root.host.bulkToggle(currentIndex,
-                                             !!(event.modifiers & Qt.ShiftModifier))
+                        root.bulkToggleRequested(currentIndex,
+                                                 !!(event.modifiers & Qt.ShiftModifier))
                     event.accepted = true
                     return
                 } else if (event.key === Qt.Key_Delete || event.key === Qt.Key_Backspace) {
-                    root.host.bulkAskDelete()
+                    root.bulkDeleteRequested()
                     event.accepted = true
                     return
                 } else if (event.key === Qt.Key_A && (event.modifiers & Qt.ControlModifier)) {
-                    root.host.bulkSelectAll()
+                    root.bulkSelectAllRequested()
                     event.accepted = true
                     return
                 }
             }
 
-            if (!root.host.bulkMode && event.key === Qt.Key_E) {
+            if (!root.bulkMode && event.key === Qt.Key_E) {
                 app.showInFolder(currentIndex)
                 event.accepted = true
             }

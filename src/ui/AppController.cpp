@@ -1,12 +1,16 @@
 #include "ui/AppController.h"
 #include "app/StartupManager.h"
+#include "capture/ScreenshotService.h"
 #include "config/CaptureLocations.h"
+#include "config/ConfigKeys.h"
 #include "config/ConfigManager.h"
+#include "config/SettingsCategories.h"
 #include "config/Paths.h"
 #include "storage/CaptureDatabase.h"
 #include "storage/CaptureScanner.h"
 #include "ui/CaptureLibraryService.h"
 #include "ui/CurrentGameService.h"
+#include "ui/SettingsRouter.h"
 #include "ui/GalleryModel.h"
 #include "ui/ShellActions.h"
 
@@ -16,7 +20,10 @@
 #include <QDebug>
 #include <QGuiApplication>
 #include <QHash>
+#include <QImage>
 #include <QVariantMap>
+#include <QVideoFrame>
+#include <QVideoSink>
 
 namespace
 {
@@ -39,9 +46,9 @@ bool parseCaptureKind(const QString& value, CaptureLocations::Kind& kind)
 // recording parameter and must re-arm a running buffer to take effect.
 bool isReplayBufferParamKey(const QString& key)
 {
-    if (key == QStringLiteral("replay.clip_sound") || key == QStringLiteral("replay.clip_notify"))
+    if (key == ConfigKeys::ReplayClipSound || key == ConfigKeys::ReplayClipNotify)
         return false;
-    return key.startsWith(QStringLiteral("replay.")) || key == QStringLiteral("audio.enabled");
+    return key.startsWith(QStringLiteral("replay.")) || key == ConfigKeys::AudioEnabled;
 }
 }
 
@@ -60,6 +67,7 @@ AppController::AppController(CaptureDatabase* db, CaptureScanner* scanner,
     , m_startup(startup)
     , m_captureLibrary(std::make_unique<CaptureLibraryService>(db, gallery, overlayGallery))
     , m_currentGame(std::make_unique<CurrentGameService>(db))
+    , m_settings(std::make_unique<SettingsRouter>(startup, locations))
 {
     connect(m_config, &ConfigManager::valueChanged,
             this, &AppController::configChanged);
@@ -101,7 +109,7 @@ QStringList AppController::managedRoots() const
 
 bool AppController::startMinimized() const
 {
-    return m_config->value(QStringLiteral("startup.minimized"), false).toBool();
+    return m_config->value(ConfigKeys::StartupMinimized, false).toBool();
 }
 
 bool AppController::portableMode() const
@@ -188,24 +196,17 @@ QVariant AppController::config(const QString& key, const QVariant& fallback) con
 
 void AppController::setConfig(const QString& key, const QVariant& value)
 {
-    if (key == QStringLiteral("startup.enabled")
-        && !m_startup->setEnabled(value.toBool())) {
-        qWarning() << "Startup: setting change was rejected";
+    switch (m_settings->change(key, value)) {
+    case SettingsRouter::Outcome::Rejected:
         emit configChanged(key, m_config->value(key, false));
         return;
-    }
-    CaptureLocations::Kind locationKind;
-    if (key == QStringLiteral("storage.screenshots_root")
-        || key == QStringLiteral("storage.clips_root")) {
-        const QString kindValue = key == QStringLiteral("storage.screenshots_root")
-            ? QStringLiteral("screenshots") : QStringLiteral("clips");
-        parseCaptureKind(kindValue, locationKind);
-        QString error;
-        if (!m_locations->setBaseRoot(locationKind, value.toString(), &error))
-            qWarning() << "Capture location:" << error;
-        else
-            rescan();
+    case SettingsRouter::Outcome::Rescan:
+        rescan();
         return;
+    case SettingsRouter::Outcome::Consumed:
+        return;
+    case SettingsRouter::Outcome::Plain:
+        break;
     }
     m_config->setValue(key, value);
     m_config->save();
@@ -227,17 +228,17 @@ bool AppController::configIsDefault(const QString& key) const
 
 void AppController::resetConfig(const QString& key)
 {
-    if (key == QStringLiteral("startup.enabled") && !m_startup->setEnabled(false)) {
+    switch (m_settings->reset(key)) {
+    case SettingsRouter::Outcome::Rejected:
         emit configChanged(key, m_config->value(key, false));
         return;
-    }
-    if (key == QStringLiteral("storage.screenshots_root")) {
-        resetCaptureRoot(QStringLiteral("screenshots"));
+    case SettingsRouter::Outcome::Rescan:
+        rescan();
         return;
-    }
-    if (key == QStringLiteral("storage.clips_root")) {
-        resetCaptureRoot(QStringLiteral("clips"));
+    case SettingsRouter::Outcome::Consumed:
         return;
+    case SettingsRouter::Outcome::Plain:
+        break;
     }
     if (!m_config->resetValue(key))
         return;
@@ -275,23 +276,11 @@ void AppController::resetAllConfig()
 
 void AppController::resetCategory(const QString& category)
 {
-    // Each entry lists every config prefix that page actually reads/writes.
-    // Input bindings have their own database-backed restore path. Library has
-    // no config group of its own (watched folders are DB rows). The screenshot/clip
-    // folder pickers live on the Capture page even though the clip root also
-    // feeds Replay, so both single-key resets (not the shared "storage."
-    // group, which would silently affect both) belong to "Capture" here.
-    static const QHash<QString, QStringList> kCategoryGroups = {
-        { QStringLiteral("General"),               { QStringLiteral("startup"), QStringLiteral("tray") } },
-        { QStringLiteral("Capture"),                { QStringLiteral("capture") } },
-        { QStringLiteral("Replay"),                 { QStringLiteral("replay"), QStringLiteral("audio") } },
-        { QStringLiteral("Notifications & Sound"),  { QStringLiteral("sounds"), QStringLiteral("notifications") } },
-    };
-    for (const QString& prefix : kCategoryGroups.value(category))
+    for (const QString& prefix : SettingsCategories::groups().value(category))
         resetConfigGroup(prefix);
-    if (category == QStringLiteral("Capture")) {
-        resetConfig(QStringLiteral("storage.screenshots_root"));
-        resetConfig(QStringLiteral("storage.clips_root"));
+    if (category == SettingsCategories::CaptureCategory) {
+        for (const QString& key : SettingsCategories::captureOnlyKeys())
+            resetConfig(key);
     }
 }
 
@@ -366,6 +355,24 @@ void AppController::syncOverlayToForegroundGame()
         const int gameId = m_currentGame->currentGameAvailable() ? m_currentGame->currentGameId() : -1;
         m_overlayGallery->setFilter(QStringLiteral("all"), gameId);
     }
+}
+
+void AppController::saveVideoFrame(QObject* videoSink, const QString& gameName,
+                                   const QString& executablePath)
+{
+    if (!m_screenshots) {
+        qWarning() << "saveVideoFrame: no screenshot service wired";
+        return;
+    }
+    auto* sink = qobject_cast<QVideoSink*>(videoSink);
+    if (!sink) {
+        qWarning() << "saveVideoFrame: argument is not a QVideoSink";
+        return;
+    }
+    // QVideoSink retains the last presented frame, so this works whether the
+    // clip is paused on a chosen frame or grabbed mid-playback.
+    const QImage frame = sink->videoFrame().toImage();
+    m_screenshots->saveImage(frame, gameName, executablePath);
 }
 
 void AppController::updateForegroundGame(const QString& gameName, const QString& executablePath)

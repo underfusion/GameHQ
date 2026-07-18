@@ -5,6 +5,7 @@
 #include <QHash>
 #include <QSet>
 #include <QString>
+#include <QStringList>
 #include <QtGlobal>
 
 class QTimer;
@@ -36,6 +37,10 @@ public:
     bool start() override;
     ControlId::DeviceProfile profile() const override;
 
+    // Re-run the debounced device reconciliation (used after the HidHide
+    // whitelist fix so a newly-visible pad is picked up promptly).
+    void rescan();
+
     // Called from the window procedure — not for general use.
     void onRawInput(void* hRawInput);
     void onDeviceChange(bool arrived, void* deviceHandle);
@@ -48,6 +53,11 @@ signals:
     // polling empty slots (XInputGetState on an empty slot can stall for
     // milliseconds — see docs/controller-input.md).
     void deviceTopologyChanged();
+
+    // Fired (on change only) when supported pads exist in Windows PnP but are
+    // invisible to Raw Input — i.e. cloaked by a HID filter driver such as
+    // HidHide. Empty list = previously hidden pads are visible again.
+    void hiddenPadsChanged(const QStringList& padNames, bool hidHidePresent);
 
 private:
     struct DeviceState {
@@ -68,6 +78,13 @@ private:
     void failoverOrScheduleDisconnect();
     void finishDisconnect();
     void parseReport(void* handle, DeviceState& st, const unsigned char* data, int len);
+    // parseReport stages, in call order. The decoders are pure (static);
+    // routeReport owns the active-pad selection/steal side effects.
+    static int buttonBlockBase(unsigned char reportId, bool ds4, int len);
+    static quint32 decodeButtons(const unsigned char* d, int base);
+    static quint32 decodeStickNav(const DeviceState& st, const unsigned char* d, int base, int len);
+    void routeReport(void* handle, const DeviceState& st, quint32 s, bool changed,
+                     unsigned char reportId, const unsigned char* d, int len);
     void emitEdges(quint32 buttons);
 
     void* m_hwnd = nullptr;                  // HWND of the message-only window
@@ -81,4 +98,5 @@ private:
     quint32 m_emittedButtons = 0;            // bitmask InputEngine has seen so far
     bool m_connectedState = false;           // connected(bool) as last emitted
     bool m_sawInput = false;                 // first WM_INPUT diagnostic logged?
+    QStringList m_lastHiddenPads;            // last cloak-scan result (change detection)
 };

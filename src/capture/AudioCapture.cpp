@@ -1,4 +1,5 @@
 #include "capture/AudioCapture.h"
+#include "capture/CaptureUtil.h"
 #include "capture/wasapi_shims.h"
 
 #include <windows.h>
@@ -15,20 +16,12 @@ namespace {
 
 bool ok(const char* what, HRESULT hr)
 {
-    if (FAILED(hr)) {
-        qWarning().nospace() << "AudioCapture: " << what
-                             << " failed hr=0x" << Qt::hex << quint32(hr);
-    }
-    return SUCCEEDED(hr);
+    return CaptureUtil::ok("AudioCapture", what, hr);
 }
 
 long long qpc100nsNow()
 {
-    LARGE_INTEGER qpc{};
-    LARGE_INTEGER freq{};
-    QueryPerformanceCounter(&qpc);
-    QueryPerformanceFrequency(&freq);
-    return (qpc.QuadPart * 10000000LL) / freq.QuadPart;
+    return CaptureUtil::qpcNow100ns();
 }
 
 class AudioActivateHandler : public IActivateAudioInterfaceCompletionHandler
@@ -368,6 +361,10 @@ unsigned AudioCapture::poll(float* outBuf, unsigned maxFrames, long long* outTim
     }
 
     const unsigned copied = std::min<unsigned>(packetFrames, maxFrames);
+    if (packetFrames > maxFrames)
+        qWarning() << "AudioCapture: packet larger than caller buffer —"
+                   << (packetFrames - maxFrames) << "of" << packetFrames
+                   << "frames dropped (buffer stall?)";
     const size_t bytes = size_t(copied) * m_frameSize;
     if (flags & AUDCLNT_BUFFERFLAGS_SILENT)
         memset(outBuf, 0, bytes);

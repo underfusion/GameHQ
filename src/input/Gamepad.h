@@ -16,6 +16,10 @@ public:
         Cross, Circle, Triangle, Square,
         L1, R1,
         DpadUp, DpadDown, DpadLeft, DpadRight,
+        // Appended, not inserted: backends build a quint32 edge bitmask keyed
+        // on these indices, so renumbering the existing entries would silently
+        // remap every pad's buttons.
+        L2, R2,
         ButtonCount
     };
     Q_ENUM(Button)
@@ -51,6 +55,8 @@ public:
         case Square:    return QStringLiteral("Square");
         case L1:        return QStringLiteral("L1");
         case R1:        return QStringLiteral("R1");
+        case L2:        return QStringLiteral("L2");
+        case R2:        return QStringLiteral("R2");
         case DpadUp:    return QStringLiteral("D-Up");
         case DpadDown:  return QStringLiteral("D-Down");
         case DpadLeft:  return QStringLiteral("D-Left");
@@ -76,6 +82,8 @@ public:
         case Square:    return ControlId::FaceWest;
         case L1:        return ControlId::ShoulderLeft;
         case R1:        return ControlId::ShoulderRight;
+        case L2:        return ControlId::TriggerLeft;
+        case R2:        return ControlId::TriggerRight;
         case DpadUp:    return ControlId::DpadUp;
         case DpadDown:  return ControlId::DpadDown;
         case DpadLeft:  return ControlId::DpadLeft;
@@ -91,16 +99,13 @@ public:
     }
 
 signals:
-    // Canonical backend events consumed by the binding runtime. The legacy
-    // integer signals remain available during the incremental migration.
+    // Canonical backend events consumed by the binding runtime.
     void controlPressed(const QString& controlId, int family,
                         const QString& backend, const QString& fingerprint,
-                        const QString& displayName, int legacyButton);
+                        const QString& displayName);
     void controlReleased(const QString& controlId, int family,
                          const QString& backend, const QString& fingerprint,
-                         const QString& displayName, int legacyButton);
-    void buttonPressed(int button);
-    void buttonReleased(int button);
+                         const QString& displayName);
     void connected(bool isConnected);
 
 protected:
@@ -108,15 +113,13 @@ protected:
     {
         const auto device = profile();
         emit controlPressed(controlIdFor(button), static_cast<int>(device.family),
-                            device.backend, device.fingerprint, device.displayName, button);
-        emit buttonPressed(button);
+                            device.backend, device.fingerprint, device.displayName);
     }
 
     void publishButtonReleased(int button)
     {
         const auto device = profile();
         emit controlReleased(controlIdFor(button), static_cast<int>(device.family),
-                             device.backend, device.fingerprint, device.displayName, button);
-        emit buttonReleased(button);
+                             device.backend, device.fingerprint, device.displayName);
     }
 };

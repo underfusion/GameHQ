@@ -57,6 +57,13 @@ bool CaptureDatabase::migrate()
     if (!ensureGameMetadataColumns())
         return false;
 
+    // Run the whole startup repair pass (brand paths, duplicate collapse, path
+    // renormalization, game-row and metadata repair) inside one transaction so
+    // a mid-run crash cannot leave the library half-repaired.
+    const bool repairTx = m_db.transaction();
+    if (!repairTx)
+        qWarning() << "DB: could not open repair transaction:" << m_db.lastError().text();
+
     // One-time brand-path compatibility for databases created by earlier brands.
     // The filesystem migration renames the managed roots; keep absolute paths
     // in existing gallery rows aligned with their new locations.
@@ -75,6 +82,8 @@ bool CaptureDatabase::migrate()
         QSqlQuery q(m_db);
         if (!q.exec(statement)) {
             qWarning() << "DB: brand-path migration failed:" << q.lastError().text();
+            if (repairTx)
+                m_db.rollback();
             return false;
         }
     }
@@ -157,8 +166,24 @@ bool CaptureDatabase::migrate()
             update.exec();
         }
     }
-    GameRowRepair::normalizeDuplicateNames(m_db);
-    GameMetadataBackfill::run(m_db);
+    // The remaining repairs are heavy one-time passes: a full O(n²) duplicate
+    // display-name scan and a full gamehq.log rescan. Gate both behind a
+    // completion sentinel so they run once after an upgrade, then skip forever.
+    // The sentinel is written inside this same repair transaction, so it only
+    // sticks if the repairs themselves commit.
+    if (!repairsV1Done()) {
+        qInfo() << "DB: running one-time game-row/metadata repairs (repairs_v1)";
+        GameRowRepair::normalizeDuplicateNames(m_db);
+        GameMetadataBackfill::run(m_db);
+        markRepairsV1Done();
+    } else {
+        qInfo() << "DB: one-time game-row/metadata repairs already done, skipping (repairs_v1)";
+    }
+    if (repairTx && !m_db.commit()) {
+        qWarning() << "DB: repair transaction commit failed:" << m_db.lastError().text();
+        m_db.rollback();
+        return false;
+    }
     qInfo() << "DB: schema version" << schemaVersion();
     return true;
 }
@@ -171,6 +196,16 @@ QVector<CaptureRecord> CaptureDatabase::listCaptures(const QString& category, in
 bool CaptureDatabase::hasCapture(const QString& filePath) const
 {
     return CaptureQueries::hasCapture(m_db, filePath);
+}
+
+QHash<QString, CaptureIndexEntry> CaptureDatabase::captureIndex() const
+{
+    return CaptureQueries::captureIndex(m_db);
+}
+
+QString CaptureDatabase::storedPathKey(const QString& filePath)
+{
+    return Paths::toStoredPath(filePath);
 }
 
 bool CaptureDatabase::hasCapturesForGame(int gameId) const
@@ -497,6 +532,25 @@ bool CaptureDatabase::ensureGameMetadataColumns()
         qInfo() << "DB: added games." << c.name;
     }
     return true;
+}
+
+bool CaptureDatabase::repairsV1Done() const
+{
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral("SELECT value FROM settings WHERE key = :k"));
+    q.bindValue(QStringLiteral(":k"), QStringLiteral("internal.repairs_v1_done"));
+    return q.exec() && q.next() && q.value(0).toString() == QLatin1String("1");
+}
+
+void CaptureDatabase::markRepairsV1Done()
+{
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral(
+        "INSERT INTO settings (key, value) VALUES (:k, '1') "
+        "ON CONFLICT(key) DO UPDATE SET value = '1'"));
+    q.bindValue(QStringLiteral(":k"), QStringLiteral("internal.repairs_v1_done"));
+    if (!q.exec())
+        qWarning() << "DB: could not record repairs_v1 sentinel:" << q.lastError().text();
 }
 
 int CaptureDatabase::findOrCreateGame(const QString& displayName, const QString& executablePath)

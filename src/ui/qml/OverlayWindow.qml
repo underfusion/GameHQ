@@ -57,7 +57,7 @@ Window {
     Rectangle {
         id: scrim
         anchors.fill: parent
-        color: Theme.scrim
+        color: Theme.overlayScrim
         opacity: overlayWindow.visible ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: Theme.durSlow; easing.type: Easing.OutQuint } }
 
@@ -90,13 +90,9 @@ Window {
         // instant-feedback feel as Left/Right on the strip.
         function selectSidebarEntryAt(idx, playSound) {
             if (idx < content.categories.length) {
-                const category = content.categories[idx].key
-                if (category === "game")
-                    overlayGallery.setFilter("all", app.currentGameId)
-                else if (category === "game_favorites")
-                    overlayGallery.setFilter("favorites", app.currentGameId)
-                else
-                    overlayGallery.setFilter(category, -1)
+                const f = SidebarCategories.resolveFilter(content.categories[idx].key,
+                                                          app.currentGameId)
+                overlayGallery.setFilter(f.category, f.gameId)
             } else {
                 const game = app.games[idx - content.categories.length]
                 if (!game)
@@ -328,6 +324,12 @@ Window {
             function onPlaybackSeek(direction) {
                 overlayWindow.usingGamepad = true
                 content.seekVideo(direction * previewStage.seekStepMs)
+            }
+            // Share while a clip is focused: grab the on-screen frame as a
+            // screenshot instead of the global foreground screenshot.
+            function onFrameGrabRequested() {
+                overlayWindow.usingGamepad = true
+                previewStage.saveCurrentFrame()
             }
         }
 

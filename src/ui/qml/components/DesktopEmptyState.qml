@@ -12,7 +12,7 @@ Column {
     Text {
         text: "\u25a6"
         color: Theme.textFaint
-        font.pixelSize: 48
+        font.pixelSize: Theme.fontHero
         anchors.horizontalCenter: parent.horizontalCenter
     }
 

@@ -1,5 +1,7 @@
 #include "config/Paths.h"
 
+#include "config/LegacyMigration.h"
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
@@ -42,31 +44,23 @@ bool isPortable()
 QString dataDir()
 {
     if (isPortable()) {
-        const QString current = portableRoot() + QStringLiteral("/gamehq-data");
-        const QStringList legacyCandidates = {
-            portableRoot() + QStringLiteral("/saveplay-data"),
-            portableRoot() + QStringLiteral("/playhq-data")
-        };
-        for (const QString& legacy : legacyCandidates) {
-            if (!QFileInfo::exists(current) && QFileInfo::exists(legacy))
-                QDir().rename(legacy, current);
-            if (!QFileInfo::exists(current) && QFileInfo::exists(legacy))
-                return legacy;
-        }
-        return current;
+        return LegacyMigration::adoptDirectory(
+            portableRoot() + QStringLiteral("/gamehq-data"),
+            { portableRoot() + QStringLiteral("/saveplay-data"),
+              portableRoot() + QStringLiteral("/playhq-data") });
     }
-    const QString current = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     const QString appData = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
-    const QStringList legacyCandidates = {
-        appData + QStringLiteral("/SavePlay/SavePlay"),
-        appData + QStringLiteral("/PlayHQ/PlayHQ")
-    };
-    for (const QString& legacy : legacyCandidates) {
-        if (!QFileInfo::exists(current) && QFileInfo::exists(legacy))
-            QDir().rename(legacy, current);
-        if (!QFileInfo::exists(current) && QFileInfo::exists(legacy))
-            return legacy;
-    }
+    return LegacyMigration::adoptDirectory(
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation),
+        { appData + QStringLiteral("/SavePlay/SavePlay"),
+          appData + QStringLiteral("/PlayHQ/PlayHQ") });
+}
+
+QString databasePath()
+{
+    const QString current = dataDir() + QStringLiteral("/gamehq.db");
+    LegacyMigration::adoptFile(current, { dataDir() + QStringLiteral("/saveplay.db"),
+                                          dataDir() + QStringLiteral("/playhq.db") });
     return current;
 }
 
@@ -81,15 +75,12 @@ QString capturesRoot()
     if (isPortable())
         return portableRoot() + QStringLiteral("/Captures");
     const QString movies = QStandardPaths::writableLocation(QStandardPaths::MoviesLocation);
-    const QString current = movies + QStringLiteral("/GameHQ");
-    const QString savePlayRoot = movies + QStringLiteral("/SavePlay");
-    const QString playHqRoot = movies + QStringLiteral("/PlayHQ");
     // Existing capture roots remain where they are: capture paths are persisted
     // absolutely and user media is never moved automatically. New installs use
     // the GameHQ root; CaptureLocations keeps historical roots scanned.
-    if (!QFileInfo::exists(current) && QFileInfo::exists(savePlayRoot))
-        return savePlayRoot;
-    return !QFileInfo::exists(current) && QFileInfo::exists(playHqRoot) ? playHqRoot : current;
+    return LegacyMigration::preferExisting(movies + QStringLiteral("/GameHQ"),
+                                           { movies + QStringLiteral("/SavePlay"),
+                                             movies + QStringLiteral("/PlayHQ") });
 }
 
 QString toStoredPath(const QString& path)

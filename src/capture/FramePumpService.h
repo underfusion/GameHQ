@@ -8,7 +8,8 @@ class QTimer;
 
 // Milestone 0.5, Step 3 — Windows Graphics Capture frame pump (log-only, no encode).
 //
-// Toggled by Ctrl+Shift+R. On start it captures the current foreground game window
+// Auto-armed while a game is foreground (replay.auto, master switch in
+// Settings → Replay). On start it captures the current foreground game window
 // (gated by capture.mode, same as the screenshot path) via a free-threaded WGC
 // Direct3D11CaptureFramePool, polls TryGetNextFrame on a ~16 ms timer, reads each
 // frame's ID3D11Texture2D description and logs size/format + a per-second fps count.
@@ -55,6 +56,25 @@ private:
     struct Pipeline;                 // all WGC/D3D pointers + timer + fps state (.cpp)
     void teardown();                 // delete m_pipe (releases everything, reverse order)
 
+    // startPump bring-up, one phase per step, in call order. Each reports its own
+    // failure via failStep() and returns false; startPump owns the single
+    // `delete pipe` cleanup, so no phase frees anything it did not create.
+    bool createDevices(Pipeline* pipe);                        // D3D11 + WinRT bridge
+    bool createCaptureItem(Pipeline* pipe, void* hwnd, int* outW, int* outH);
+    void attachRecorder(Pipeline* pipe, unsigned long pid, int srcW, int srcH,
+                        int encodeWidth, int encodeHeight, int fps, int bitrateMbps,
+                        int segmentSeconds, int lengthSeconds, bool audioEnabled);
+    bool createSession(Pipeline* pipe, int srcW, int srcH);    // frame pool + session
+
+    // saveReplayOnWorker stages, in call order.
+    bool saveGuard(const QString& saveId);                     // preflight: pipe/ring/busy
+    QStringList freezeRing(const QString& saveId);             // pin + snapshot (empty = refused)
+    QString instantThumbnail(const QString& lastSegment, const QString& thumbPath,
+                             const QString& saveId);
+    void runExport(const QStringList& segs, const QString& outPath,
+                   const QString& thumbPath, const QString& instantThumb,
+                   const QString& game, const QString& exePath, const QString& saveId);
+
     Pipeline* m_pipe = nullptr;
     bool m_apartmentReady = false;
     bool m_exportBusy = false;       // one async clip export at a time
@@ -70,7 +90,6 @@ public:
     ~FramePumpService() override;
 
 public slots:
-    void toggle();                   // Ctrl+Shift+R: master on/off for always-on recording
     void saveReplay();               // Share-hold: save the last N seconds as one clip
     // Replay settings changed (fps/resolution/length): disarm a running
     // buffer so the auto-arm tick re-arms it with the new parameters.

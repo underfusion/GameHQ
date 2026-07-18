@@ -57,7 +57,7 @@ RowLayout {
             text: "\u2212"
             color: Theme.text
             font.family: Theme.fontFamily
-            font.pixelSize: 16
+            font.pixelSize: Theme.fontH3
             font.weight: Font.DemiBold
         }
 
@@ -114,7 +114,7 @@ RowLayout {
             text: "+"
             color: Theme.text
             font.family: Theme.fontFamily
-            font.pixelSize: 16
+            font.pixelSize: Theme.fontH3
             font.weight: Font.DemiBold
         }
 

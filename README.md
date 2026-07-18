@@ -61,7 +61,6 @@ page before choosing **More info → Run anyway**.
 | Circle / east button | Back |
 | `Ctrl+Shift+S` | Take a screenshot |
 | `Ctrl+Shift+E` | Save a replay clip |
-| `Ctrl+Shift+R` | Toggle the replay buffer |
 | `Ctrl+Shift+G` | Toggle the overlay |
 
 Bindings and gesture timing can be changed from **Settings → Input**.

@@ -25,7 +25,14 @@ ApplicationWindow {
     minimumWidth: 1024
     minimumHeight: 640
     title: Brand.name
+    // ThemeBackdrop paints the window; this stays as the fill behind it so a
+    // resize never flashes the default white.
     color: Theme.bg0
+
+    ThemeBackdrop {
+        anchors.fill: parent
+        z: -1
+    }
 
     // Debounce timer for geometry persistence (avoid writing config.json on
     // every pixel of a drag). Fires 500ms after the last resize/move.
@@ -34,6 +41,11 @@ ApplicationWindow {
         interval: 500
         repeat: false
         onTriggered: window.doPersistGeometry()
+    }
+
+    BulkSelection {
+        id: bulkSelection
+        galleryModel: app.gallery
     }
 
     onWidthChanged: window.persistGeometry()
@@ -58,11 +70,6 @@ ApplicationWindow {
     property bool menuOpen: false
     property int menuIndex: 0
     property bool bulkMode: false
-    property var bulkSelected: ({})
-    property int bulkAnchorIndex: -1
-    property bool bulkRangeActive: false
-    property bool bulkRangeSelecting: true
-    property var bulkRangeBase: ({})
     // Tracks which input source was used last so the footer hint bar can
     // render matching labels (keyboard glyphs vs DualSense button names).
     // Flipped to true on any pad input, false on any key press.
@@ -177,85 +184,27 @@ ApplicationWindow {
         return idx >= 0 ? idx : 0
     }
 
+    // The selection algebra lives in BulkSelection.qml; these stay as the window
+    // API every caller (grid, header, pad handlers) already binds to.
     function bulkCount() {
-        var n = 0
-        for (var path in window.bulkSelected)
-            if (window.bulkSelected[path])
-                ++n
-        return n
+        return bulkSelection.count()
     }
 
     function bulkIsChecked(path) {
-        return !!window.bulkSelected[path]
+        return bulkSelection.isChecked(path)
     }
 
     function bulkAllSelected() {
-        return app.gallery.rowCount() > 0 && window.bulkCount() === app.gallery.rowCount()
+        return bulkSelection.allSelected()
     }
 
     function bulkToggle(index, extendRange) {
-        if (index < 0 || index >= app.gallery.rowCount())
-            return
-
-        var record = app.gallery.get(index)
-        var path = record.filePath
-        if (!path)
-            return
-
-        if (extendRange && window.bulkAnchorIndex >= 0
-                && window.bulkAnchorIndex < app.gallery.rowCount()) {
-            if (!window.bulkRangeActive) {
-                var base = {}
-                for (var basePath in window.bulkSelected)
-                    if (window.bulkSelected[basePath])
-                        base[basePath] = true
-                window.bulkRangeBase = base
-                window.bulkRangeSelecting = !window.bulkSelected[path]
-                window.bulkRangeActive = true
-            }
-
-            var first = Math.min(window.bulkAnchorIndex, index)
-            var last = Math.max(window.bulkAnchorIndex, index)
-            var rangePaths = {}
-            for (var i = first; i <= last; ++i) {
-                var rangeRecord = app.gallery.get(i)
-                if (!rangeRecord.filePath)
-                    continue
-                rangePaths[rangeRecord.filePath] = true
-            }
-
-            var copy = {}
-            for (var key in window.bulkRangeBase)
-                if (window.bulkRangeBase[key]
-                        && (window.bulkRangeSelecting || !rangePaths[key]))
-                    copy[key] = true
-            if (window.bulkRangeSelecting)
-                for (var rangePath in rangePaths)
-                    copy[rangePath] = true
-
-            window.bulkSelected = copy
-        } else {
-            var toggled = {}
-            for (var selectedPath in window.bulkSelected)
-                if (selectedPath !== path && window.bulkSelected[selectedPath])
-                    toggled[selectedPath] = true
-            if (!window.bulkSelected[path])
-                toggled[path] = true
-            window.bulkSelected = toggled
-            window.bulkAnchorIndex = index
-            window.bulkRangeActive = false
-            window.bulkRangeSelecting = true
-            window.bulkRangeBase = ({})
-        }
-        sounds.play("nav_tick")
+        if (bulkSelection.toggle(index, extendRange))
+            sounds.play("nav_tick")
     }
 
     function bulkClear() {
-        window.bulkSelected = ({})
-        window.bulkAnchorIndex = -1
-        window.bulkRangeActive = false
-        window.bulkRangeSelecting = true
-        window.bulkRangeBase = ({})
+        bulkSelection.clear()
     }
 
     function bulkEnter() {
@@ -274,34 +223,34 @@ ApplicationWindow {
         grid.forceActiveFocus()
     }
 
-    function bulkSelectAll() {
-        if (window.bulkAllSelected()) {
-            window.bulkClear()
-            sounds.play("nav_tick")
+    // Settings from a button rather than the sidebar row: same end state the
+    // sidebar produces, minus the sidebar cursor.
+    function openSettings() {
+        if (window.settingsOpen)
             return
-        }
-        var copy = {}
-        for (var i = 0; i < app.gallery.rowCount(); ++i) {
-            var rec = app.gallery.get(i)
-            if (rec.filePath)
-                copy[rec.filePath] = true
-        }
-        window.bulkSelected = copy
-        window.bulkAnchorIndex = -1
-        window.bulkRangeActive = false
-        window.bulkRangeSelecting = true
-        window.bulkRangeBase = ({})
-        sounds.play("favorite")
+        if (window.bulkMode)
+            window.bulkExit()
+        window.menuOpen = false
+        window.helpOpen = false
+        window.settingsOpen = true
+        window.sidebarFocused = false
+        sounds.play("nav_tick")
+    }
+
+    function padBulkToggle() {
+        if (window.bulkMode)
+            window.bulkExit()
+        else
+            window.bulkEnter()
+        sounds.play("nav_tick")
+    }
+
+    function bulkSelectAll() {
+        sounds.play(bulkSelection.selectAll() ? "nav_tick" : "favorite")
     }
 
     function bulkRows() {
-        var rows = []
-        for (var i = 0; i < app.gallery.rowCount(); ++i) {
-            var rec = app.gallery.get(i)
-            if (rec.filePath && window.bulkSelected[rec.filePath])
-                rows.push(i)
-        }
-        return rows
+        return bulkSelection.rows()
     }
 
     function bulkAskDelete() {
@@ -344,14 +293,11 @@ ApplicationWindow {
     function activateSidebarRow(i) {
         const catCount = window.sidebarCategories.length
         const gameCount = app.games.length
-            if (i < catCount) {
-                window.settingsOpen = false; window.helpOpen = false
-                if (window.sidebarCategories[i].key === "game")
-                    app.setGame(app.currentGameId)
-                else if (window.sidebarCategories[i].key === "game_favorites")
-                    app.setGameCategory("favorites", app.currentGameId)
-                else
-                    app.setCategory(window.sidebarCategories[i].key)
+        if (i < catCount) {
+            window.settingsOpen = false; window.helpOpen = false
+            const f = SidebarCategories.resolveFilter(window.sidebarCategories[i].key,
+                                                      app.currentGameId)
+            app.setGameCategory(f.category, f.gameId)
         } else if (i < catCount + gameCount) {
             window.settingsOpen = false; window.helpOpen = false
             app.setGame(app.games[i - catCount].id)
@@ -411,8 +357,22 @@ ApplicationWindow {
     }
 
     function padNavigate(direction) {
+        // Settings is three panels — sidebar │ categories │ options — and
+        // Left/Right walks between them. Right off the sidebar enters the
+        // categories; Left past the categories returns to the sidebar.
         if (window.settingsOpen) {
-            settingsView.padCategoryStep(direction)
+            if (window.sidebarFocused) {
+                if (direction > 0) {
+                    window.sidebarFocused = false
+                    settingsView.enterPanel(settingsView.panelCategories)
+                }
+                return
+            }
+            if (!settingsView.padPanelStep(direction)) {
+                window.sidebarFocused = true
+                window.refreshSidebarHoverIndex()
+                sounds.play("nav_tick")
+            }
             return
         }
         if (window.menuOpen || window.helpOpen)
@@ -451,7 +411,11 @@ ApplicationWindow {
 
     function padNavigateVertical(direction) {
         if (window.settingsOpen) {
-            settingsView.padFocusStep(direction)
+            // Up/Down moves inside whichever panel is focused, never across.
+            if (window.sidebarFocused)
+                window.sidebarStepVertical(direction)
+            else
+                settingsView.padFocusStep(direction)
             return
         }
         if (window.helpOpen)
@@ -459,7 +423,8 @@ ApplicationWindow {
         if (deleteDialog.visible || bulkDeleteDialog.visible)
             return
         if (window.menuOpen) {
-            window.menuIndex = (window.menuIndex + direction + 2) % 2
+            const menuCount = padMenu.entries.length
+            window.menuIndex = (window.menuIndex + direction + menuCount) % menuCount
             sounds.play("nav_tick")
         } else if (window.sidebarFocused) {
             window.sidebarStepVertical(direction)
@@ -490,7 +455,12 @@ ApplicationWindow {
         if (deleteDialog.visible) { deleteDialog.confirmed(); deleteDialog.close(); return }
         if (bulkDeleteDialog.visible) { window.bulkConfirmDelete(); bulkDeleteDialog.close(); return }
         if (window.settingsOpen) {
-            settingsView.padConfirm()
+            // On the sidebar, Cross still activates the sidebar row (it is the
+            // app's nav, not a settings control).
+            if (window.sidebarFocused)
+                window.activateSidebarRow(window.sidebarHoverIndex)
+            else
+                settingsView.padConfirm()
             return
         }
         if (window.helpOpen)
@@ -539,11 +509,17 @@ ApplicationWindow {
     }
 
     function padMenuConfirm() {
+        // Index order mirrors padMenu.entries.
         if (window.menuIndex === 0) {
             app.showInFolder(grid.currentIndex)
-        } else {
+        } else if (window.menuIndex === 1) {
             const rec = app.gallery.get(grid.currentIndex)
             window.askDelete(grid.currentIndex, rec.gameName, rec.dateText)
+        } else {
+            window.menuOpen = false
+            window.bulkEnter()
+            sounds.play("confirm")
+            return
         }
         sounds.play("confirm")
         window.menuOpen = false
@@ -553,7 +529,17 @@ ApplicationWindow {
         if (deleteDialog.visible) { deleteDialog.canceled(); deleteDialog.close(); return }
         if (bulkDeleteDialog.visible) { bulkDeleteDialog.canceled(); bulkDeleteDialog.close(); return }
         if (window.settingsOpen) {
+            // Circle unwinds one step at a time: dropdown → options →
+            // categories → sidebar → out of Settings entirely.
+            if (!window.sidebarFocused && settingsView.padBack())
+                return
+            if (!window.sidebarFocused) {
+                window.sidebarFocused = true
+                window.refreshSidebarHoverIndex()
+                return
+            }
             window.settingsOpen = false
+            window.sidebarFocused = false
             grid.forceActiveFocus()
         } else if (window.bulkMode) {
             window.bulkExit()
@@ -618,6 +604,27 @@ ApplicationWindow {
             window.padTabStep(direction)
         }
         function onDesktopBack() { window.usingGamepad = true; window.padBack() }
+        function onDesktopSettings() {
+            window.usingGamepad = true
+            if (lightbox.visible)
+                return
+            window.openSettings()
+        }
+        function onDesktopZoom(direction) {
+            window.usingGamepad = true
+            if (lightbox.visible || window.settingsOpen || window.helpOpen)
+                return
+            if (direction > 0)
+                window.zoomIn()
+            else
+                window.zoomOut()
+        }
+        function onDesktopBulkToggle() {
+            window.usingGamepad = true
+            if (lightbox.visible || window.settingsOpen || window.helpOpen)
+                return
+            window.padBulkToggle()
+        }
         function onPlaybackPlayPause() {
             if (lightbox.visible)
                 lightbox.toggleVideoPlayback()
@@ -625,6 +632,11 @@ ApplicationWindow {
         function onPlaybackSeek(direction) {
             if (lightbox.visible)
                 lightbox.padNavigate(direction)
+        }
+        // Share on a focused clip in the lightbox: save the on-screen frame.
+        function onFrameGrabRequested() {
+            if (lightbox.visible)
+                lightbox.saveCurrentFrame()
         }
     }
 
@@ -723,12 +735,19 @@ ApplicationWindow {
             }
             DesktopGalleryGrid {
                 id: grid
-                host: window
+                columns: window.gridColumns(grid.viewWidth)
+                zoomLevel: window.zoomLevel
+                bulkMode: window.bulkMode
+                bulkIsChecked: window.bulkIsChecked
                 deleteDialog: deleteDialog
                 bulkDeleteDialog: bulkDeleteDialog
                 onCaptureActivated: (index) => lightbox.openAt(index)
                 onDeleteRequested: (index, gameName, dateText) => window.askDelete(index, gameName, dateText)
                 onAddFolderRequested: folderDialog.open()
+                onKeyboardActivity: window.usingGamepad = false
+                onBulkToggleRequested: (index, extendRange) => window.bulkToggle(index, extendRange)
+                onBulkDeleteRequested: window.bulkAskDelete()
+                onBulkSelectAllRequested: window.bulkSelectAll()
             }
 
             DesktopGalleryFooter {
@@ -797,6 +816,9 @@ ApplicationWindow {
     // equivalent that doesn't require hovering.
     OverlayActionMenu {
         id: padMenu
+        // Bulk select is desktop-only, so it is added here rather than in the
+        // shared component. padMenuConfirm() maps these by index.
+        entries: ["Show in folder", "Delete", "Bulk select"]
         open: window.menuOpen
         currentIndex: window.menuIndex
         onCloseRequested: window.menuOpen = false

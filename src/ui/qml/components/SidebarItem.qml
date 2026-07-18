@@ -21,7 +21,7 @@ Rectangle {
     height: 40
     radius: Theme.radiusS
     color: active || sidebarHovered ? Theme.surfaceAlt
-         : mouse.containsMouse || root.activeFocus ? Qt.rgba(1, 1, 1, 0.03)
+         : mouse.containsMouse || root.activeFocus ? Theme.hoverTint
          : "transparent"
 
     // No color Behavior: it animated the active-tab highlight too, so

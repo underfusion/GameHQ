@@ -8,8 +8,8 @@ Rectangle {
     property string label
     property string icon: ""
     property string iconFontFamily: Theme.fontFamily
-    property color iconColor: primary ? "#FFFFFF" : Theme.text
-    property color labelColor: primary ? "#FFFFFF" : Theme.text
+    property color iconColor: primary ? Theme.textOnAccent : Theme.text
+    property color labelColor: primary ? Theme.textOnAccent : Theme.text
     // Accent-tinted, not a neutral gray hairline: secondary buttons need to read
     // as buttons on their own, without depending on what surface they sit on.
     property color borderColor: Theme.accent
@@ -72,7 +72,7 @@ Rectangle {
     Rectangle { // hover highlight, same treatment for primary and secondary
         anchors.fill: parent
         radius: parent.radius
-        color: "#FFFFFF"
+        color: Theme.highlight
         opacity: root.enabled && mouse.containsMouse && !mouse.pressed ? 0.1 : 0
         Behavior on opacity { NumberAnimation { duration: Theme.durFast } }
     }
@@ -81,7 +81,7 @@ Rectangle {
         id: clickFlash
         anchors.fill: parent
         radius: parent.radius
-        color: "#FFFFFF"
+        color: Theme.highlight
         opacity: 0
     }
 

@@ -1,5 +1,6 @@
 #include "app/App.h"
 #include "app/StartupManager.h"
+#include "config/ConfigKeys.h"
 #include "capture/FramePumpService.h"
 #include "capture/ScreenshotService.h"
 #include "config/CaptureLocations.h"
@@ -19,7 +20,6 @@
 #include "Brand.h"
 
 #include <QDateTime>
-#include <QFile>
 #include <QGuiApplication>
 #include <QQmlContext>
 #include <QQuickWindow>
@@ -45,20 +45,13 @@ bool App::init()
     m_config->load();
     m_locations = std::make_unique<CaptureLocations>(m_config.get());
     m_startup = std::make_unique<StartupManager>();
-    const bool startupEnabled = m_config->value(QStringLiteral("startup.enabled"), false).toBool();
+    const bool startupEnabled = m_config->value(ConfigKeys::StartupEnabled, false).toBool();
     if (!m_startup->setEnabled(startupEnabled) && startupEnabled) {
-        m_config->setValue(QStringLiteral("startup.enabled"), false);
+        m_config->setValue(ConfigKeys::StartupEnabled, false);
         m_config->save();
     }
 
-    const QString databasePath = Paths::dataDir() + QStringLiteral("/gamehq.db");
-    for (const QString& legacyName : {QStringLiteral("saveplay.db"),
-                                      QStringLiteral("playhq.db")}) {
-        const QString legacyPath = Paths::dataDir() + QLatin1Char('/') + legacyName;
-        if (!QFile::exists(databasePath) && QFile::exists(legacyPath))
-            QFile::rename(legacyPath, databasePath);
-    }
-    m_db = std::make_unique<CaptureDatabase>(databasePath);
+    m_db = std::make_unique<CaptureDatabase>(Paths::databasePath());
     if (!m_db->open()) {
         qCritical() << "Failed to open database — aborting startup";
         return false;
@@ -72,21 +65,32 @@ bool App::init()
                                                    m_gallery.get(), m_overlayGallery.get(),
                                                    m_config.get(), m_locations.get(), m_startup.get());
 
+    // Ordering contract for everything below: the service lambdas capture `this`
+    // and dereference members that are constructed further down (m_sounds at the
+    // SoundEngine block, m_notify at the NotificationCenter block). That is safe
+    // only because nothing here emits before init() returns — the first capture
+    // needs the pad/hotkeys, which m_input->start() arms last. Keep it that way:
+    // if a service ever fires a signal from its own constructor, construct
+    // m_sounds/m_notify before the connect that uses them.
+
     // Screenshot capture (0.4): GDI grab of the foreground game → DB/gallery.
     m_screenshots = std::make_unique<ScreenshotService>(m_config.get(),
                                                         m_locations.get());
+    // Let the QML bridge save clip frames (Share on a focused clip) through the
+    // same screenshot pipeline — same folder, format, sound and toast.
+    m_controller->setScreenshotService(m_screenshots.get());
     // Shutter plays the instant the pixels are grabbed (before the async encode),
     // so the feedback is immediate even though the PNG lands a moment later.
     connect(m_screenshots.get(), &ScreenshotService::grabbed, this,
             [this] {
-                if (m_config->value(QStringLiteral("capture.screenshot_sound"), true).toBool())
+                if (m_config->value(ConfigKeys::CaptureScreenshotSound, true).toBool())
                     m_sounds->play(QStringLiteral("screenshot"));
             });
     connect(m_screenshots.get(), &ScreenshotService::captured, this,
             [this](const QString& path, const QString& game, const QString& exePath) {
                 m_controller->commitCapture(path, QStringLiteral("screenshot"), game, exePath);
-                if (m_config->value(QStringLiteral("notifications.enabled"), true).toBool()
-                    && m_config->value(QStringLiteral("capture.screenshot_notify"), true).toBool()) {
+                if (m_config->value(ConfigKeys::NotificationsEnabled, true).toBool()
+                    && m_config->value(ConfigKeys::CaptureScreenshotNotify, true).toBool()) {
                     const QString when = QDateTime::currentDateTime().toString(QStringLiteral("d MMM yyyy, HH:mm"));
                     m_notify->post(tr("Screenshot saved"), game, path,
                                    QStringLiteral("success"), when, false);
@@ -104,7 +108,7 @@ bool App::init()
             });
 
     // WGC replay buffer (0.5): records continuously while a game is foreground
-    // (replay.auto, always-on). Ctrl+Shift+R toggles that master switch; Share-hold
+    // (replay.auto, always-on; Settings → Replay is the master switch). Share-hold
     // (or Ctrl+Shift+E) saves the last N seconds as one clip (below).
     m_framePump = std::make_unique<FramePumpService>(m_config.get(), m_locations.get());
     connect(m_framePump.get(), &FramePumpService::failed, this,
@@ -120,10 +124,10 @@ bool App::init()
             [this](const QString& path, const QString& game, const QString& thumb,
                    const QString& exePath) {
                 m_controller->commitClip(path, game, thumb, exePath);
-                if (m_config->value(QStringLiteral("replay.clip_sound"), true).toBool())
+                if (m_config->value(ConfigKeys::ReplayClipSound, true).toBool())
                     m_sounds->play(QStringLiteral("replay_saved"));
-                if (m_config->value(QStringLiteral("notifications.enabled"), true).toBool()
-                    && m_config->value(QStringLiteral("replay.clip_notify"), true).toBool()) {
+                if (m_config->value(ConfigKeys::NotificationsEnabled, true).toBool()
+                    && m_config->value(ConfigKeys::ReplayClipNotify, true).toBool()) {
                     const QString when = QDateTime::currentDateTime().toString(QStringLiteral("d MMM yyyy, HH:mm"));
                     m_notify->post(tr("Replay saved"), game, thumb,
                                    QStringLiteral("success"), when, true);
@@ -132,7 +136,7 @@ bool App::init()
     connect(m_framePump.get(), &FramePumpService::clipFailed, this,
             [this](const QString& game, const QString& reason) {
                 m_sounds->play(QStringLiteral("error"));
-                if (m_config->value(QStringLiteral("notifications.enabled"), true).toBool()) {
+                if (m_config->value(ConfigKeys::NotificationsEnabled, true).toBool()) {
                     const QString when = QDateTime::currentDateTime().toString(QStringLiteral("d MMM yyyy, HH:mm"));
                     m_notify->post(tr("Replay failed"), reason.isEmpty() ? game : reason,
                                    QString(), QStringLiteral("error"), when, false);
@@ -179,8 +183,6 @@ bool App::init()
             m_screenshots.get(), &ScreenshotService::capture);
     connect(m_input.get(), &InputEngine::replayRequested,
             m_framePump.get(), &FramePumpService::saveReplay);
-    connect(m_input.get(), &InputEngine::bufferToggleRequested,
-            m_framePump.get(), &FramePumpService::toggle);
     connect(m_overlay.get(), &OverlayManager::visibleChanged, this, [this] {
         m_input->setOverlayVisible(m_overlay->isVisible());
     });

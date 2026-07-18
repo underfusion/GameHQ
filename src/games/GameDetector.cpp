@@ -4,6 +4,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QRegularExpression>
 
 #include <windows.h>
@@ -25,8 +27,28 @@ bool isShellProcess(const QString& exeLower)
         QStringLiteral("dwm.exe"),
         QStringLiteral("lockapp.exe"),
         QStringLiteral("gamehq.exe"),   // never screenshot ourselves / the overlay
+        // The Snipping Tool's screen-clip layer covers the whole monitor, so the
+        // fullscreen test below took it for a game and armed the replay buffer on
+        // the desktop (observed 2026-07-17).
+        QStringLiteral("snippingtool.exe"),
+        QStringLiteral("screenclippinghost.exe"),
+        QStringLiteral("screensketch.exe"),
     };
     return kShell.contains(exeLower);
+}
+
+// Overlay surfaces: fullscreen, but never a game — the class fix behind the
+// per-process list above, which only ever catches the names we already know.
+//
+// A game's own render window cannot carry these. A flip-model D3D swapchain
+// cannot present to a WS_EX_LAYERED window (layered windows go through DWM
+// redirection), and no game's main window is click-through, a tool palette, or
+// refuses activation. Overlays and HUDs are exactly what these mark.
+bool isOverlayWindow(HWND hwnd)
+{
+    const LONG_PTR ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+    return (ex & WS_EX_LAYERED) || (ex & WS_EX_TRANSPARENT)
+        || (ex & WS_EX_TOOLWINDOW) || (ex & WS_EX_NOACTIVATE);
 }
 
 // Generic executable base names shared by many games (mostly Unreal Engine
@@ -222,44 +244,75 @@ bool isPlausibleTitle(const QString& cand, const QString& exeBase)
     return true;
 }
 
+// The title sources that cost disk I/O: a Steam library scan plus two version
+// resource reads. All three describe the executable file, so they cannot change
+// while a process lives — unlike the window caption, which games rewrite freely.
+struct TitleSources
+{
+    QString fromExe;
+    QString steamName;
+    QString productName;
+    QString fileDesc;
+};
+
+// Memoized so the 1.5 s autoTick does not re-read the disk on the GUI thread
+// every tick. Keyed by pid AND path: a recycled pid or a swapped executable
+// misses the cache and re-resolves rather than serving a stale title.
+TitleSources titleSourcesFor(unsigned long pid, const QString& exe,
+                             const QString& fullPath, const QString& winTitle)
+{
+    static QMutex mutex;
+    static TitleSources cached;
+    static unsigned long cachedPid = 0;
+    static QString cachedPath;
+    static bool primed = false;
+
+    QMutexLocker lock(&mutex);
+    if (primed && pid == cachedPid && fullPath == cachedPath)
+        return cached;
+
+    cached.fromExe     = prettifyGameName(exe, fullPath);
+    cached.steamName   = steamTitleForPath(fullPath);
+    cached.productName = readVersionString(fullPath, L"ProductName");
+    cached.fileDesc    = readVersionString(fullPath, L"FileDescription");
+    cachedPid  = pid;
+    cachedPath = fullPath;
+    primed     = true;
+
+    qInfo().noquote() << "GameDetector title candidates for" << exe
+                      << "| pid:" << pid
+                      << "| steam:" << (cached.steamName.isEmpty() ? QStringLiteral("<none>") : cached.steamName)
+                      << "| window:" << (winTitle.isEmpty() ? QStringLiteral("<none>") : winTitle)
+                      << "| ProductName:" << (cached.productName.isEmpty() ? QStringLiteral("<none>") : cached.productName)
+                      << "| FileDescription:" << (cached.fileDesc.isEmpty() ? QStringLiteral("<none>") : cached.fileDesc)
+                      << "| fromExe:" << cached.fromExe
+                      << "| path:" << (fullPath.isEmpty() ? QStringLiteral("<none>") : fullPath);
+    return cached;
+}
+
 // Pick the best display title across all available sources, preferring
 // human-facing metadata (window caption → ProductName → FileDescription) over
-// the exe/codename fallback. Logs every candidate once per distinct process so
-// the real source of a given game's name can be confirmed from the log.
-QString resolveTitle(const QString& exe, const QString& fullPath,
-                     const QString& winTitle)
+// the exe/codename fallback.
+QString resolveTitle(unsigned long pid, const QString& exe,
+                     const QString& fullPath, const QString& winTitle)
 {
     QString exeBase = exe;
     if (exeBase.endsWith(QStringLiteral(".exe"), Qt::CaseInsensitive))
         exeBase.chop(4);
 
-    const QString fromExe     = prettifyGameName(exe, fullPath);
-    const QString steamName   = steamTitleForPath(fullPath);
-    const QString productName = readVersionString(fullPath, L"ProductName");
-    const QString fileDesc    = readVersionString(fullPath, L"FileDescription");
-
-    static QString lastProcess;
-    if (exe != lastProcess) {
-        lastProcess = exe;
-        qInfo().noquote() << "GameDetector title candidates for" << exe
-                          << "| steam:" << (steamName.isEmpty() ? QStringLiteral("<none>") : steamName)
-                          << "| window:" << (winTitle.isEmpty() ? QStringLiteral("<none>") : winTitle)
-                          << "| ProductName:" << (productName.isEmpty() ? QStringLiteral("<none>") : productName)
-                          << "| FileDescription:" << (fileDesc.isEmpty() ? QStringLiteral("<none>") : fileDesc)
-                          << "| fromExe:" << fromExe
-                          << "| path:" << (fullPath.isEmpty() ? QStringLiteral("<none>") : fullPath);
-    }
+    const TitleSources src = titleSourcesFor(pid, exe, fullPath, winTitle);
 
     // Steam's manifest name is the authoritative store title — trust it first.
-    if (isPlausibleTitle(steamName, exeBase))
-        return steamName;
+    if (isPlausibleTitle(src.steamName, exeBase))
+        return src.steamName;
 
-    const QString candidates[] = { winTitle, productName, fileDesc };
+    // winTitle stays live: a game that sets its caption late must still win.
+    const QString candidates[] = { winTitle, src.productName, src.fileDesc };
     for (const QString& c : candidates) {
         if (isPlausibleTitle(c, exeBase))
             return c;
     }
-    return fromExe;
+    return src.fromExe;
 }
 } // namespace
 
@@ -291,7 +344,7 @@ ForegroundGame GameDetector::current()
         }
     }
     g.windowTitle = readWindowTitle(hwnd);
-    g.gameName = resolveTitle(g.processName, fullPath, g.windowTitle);
+    g.gameName = resolveTitle(g.pid, g.processName, fullPath, g.windowTitle);
 
     RECT wr = {};
     GetWindowRect(hwnd, &wr);
@@ -310,7 +363,9 @@ ForegroundGame GameDetector::current()
     }
 
     g.isExcludedProcess = isShellProcess(g.processName.toLower());
-    g.isGame = g.isFullscreen && !g.isExcludedProcess;
+    // "Covers the monitor" alone is not a game: it also matches every overlay,
+    // which is how the replay buffer ended up recording the desktop.
+    g.isGame = g.isFullscreen && !g.isExcludedProcess && !isOverlayWindow(hwnd);
     return g;
 }
 

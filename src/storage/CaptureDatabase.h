@@ -1,4 +1,5 @@
 #pragma once
+#include <QHash>
 #include <QObject>
 #include <QSqlDatabase>
 #include <QString>
@@ -18,6 +19,14 @@ struct CaptureRecord
     bool isFavorite = false;
     QString thumbnailPath;
     QString source;
+};
+
+// One captures row as seen by a bulk scan: enough to answer "is this file
+// already registered, and does it still need a thumbnail?" without a query per file.
+struct CaptureIndexEntry
+{
+    QString thumbnailPath;   // empty when unset or when the row is tombstoned
+    bool deleted = false;    // deleted_at IS NOT NULL
 };
 
 struct GameEntry
@@ -66,6 +75,11 @@ public:
     // gameId >= 0 filters to one game. Returns newest first.
     QVector<CaptureRecord> listCaptures(const QString& category, int gameId = -1) const;
     bool hasCapture(const QString& filePath) const;
+    // Whole-table snapshot keyed by stored path; see CaptureQueries::captureIndex.
+    QHash<QString, CaptureIndexEntry> captureIndex() const;
+    // Normalizes filePath the same way the captures table stores it, so callers
+    // holding a captureIndex() can look up their on-disk paths.
+    static QString storedPathKey(const QString& filePath);
     bool hasCapturesForGame(int gameId) const;
     // Inserts if new; resolves/creates the game row. Returns new id or -1.
     int insertCapture(const QString& filePath, const QString& type,
@@ -107,6 +121,8 @@ private:
     bool applyV2();
     bool applyV3();
     bool ensureGameMetadataColumns();
+    bool repairsV1Done() const;
+    void markRepairsV1Done();
     int findOrCreateGame(const QString& displayName, const QString& executablePath = QString());
     void updateGameExecutable(int gameId, const QString& executablePath);
 

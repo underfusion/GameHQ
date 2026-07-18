@@ -1,5 +1,8 @@
 #include "input/DualSenseDevice.h"
 
+#include "input/HidCloakMonitor.h"
+#include "input/StickNav.h"
+
 #include <QByteArray>
 #include <QDebug>
 #include <QTimer>
@@ -211,14 +214,21 @@ DualSenseDevice::DeviceState* DualSenseDevice::probeDevice(void* handle)
     // XInput backend — skip them here so one pad can't drive both backends.
     const bool xinputDevice = path.contains(QLatin1String("IG_"), Qt::CaseInsensitive);
     const int layout = supportedReportLayout(info.hid.dwVendorId, info.hid.dwProductId);
+    const bool gamepadUsage = isGamepadUsage(info.hid);
 
-    if (layout == LayoutUnknown || xinputDevice) {
-        if (isGamepadUsage(info.hid) && !m_loggedIgnored.contains(path)) {
+    // A supported VID/PID alone is NOT enough: the same hardware IDs appear
+    // on non-input collections (the PlayStation Link adapter exposes
+    // 054C:0ECC vendor-defined pages). Tracking those produced phantom
+    // "DualSense" entries that never send a report — require a real
+    // Joystick/Gamepad/MultiAxis collection.
+    if (layout == LayoutUnknown || xinputDevice || !gamepadUsage) {
+        if ((gamepadUsage || layout != LayoutUnknown) && !m_loggedIgnored.contains(path)) {
             m_loggedIgnored.insert(path);
             qInfo() << "Gamepad: ignoring HID device VID"
                     << Qt::hex << info.hid.dwVendorId << "PID" << info.hid.dwProductId
-                    << (xinputDevice ? "(XInput device — XInput backend handles it)"
-                                     : "(unsupported report layout)");
+                    << (xinputDevice     ? "(XInput device — XInput backend handles it)"
+                        : !gamepadUsage  ? "(non-gamepad collection on supported hardware)"
+                                         : "(unsupported report layout)");
         }
         return nullptr;
     }
@@ -273,6 +283,7 @@ void DualSenseDevice::removeDevice(void* handle)
 void DualSenseDevice::reconcileDevices()
 {
     QSet<void*> present;
+    QSet<QString> rawPathsLower;   // every HID interface Raw Input can see
 
     UINT count = 0;
     if (GetRawInputDeviceList(nullptr, &count, sizeof(RAWINPUTDEVICELIST)) == 0 && count > 0) {
@@ -284,6 +295,7 @@ void DualSenseDevice::reconcileDevices()
                 if (devices[i].dwType != RIM_TYPEHID)
                     continue;
                 present.insert(devices[i].hDevice);
+                rawPathsLower.insert(devicePath(devices[i].hDevice).toLower());
                 probeDevice(devices[i].hDevice);
             }
         }
@@ -308,6 +320,41 @@ void DualSenseDevice::reconcileDevices()
 
     if (m_devices.isEmpty())
         qInfo() << "Gamepad: no Sony/DS4 Raw Input devices present";
+
+    // Cross-check Windows PnP against what Raw Input just enumerated: a
+    // supported pad present in PnP but absent here is being cloaked by a HID
+    // filter driver (HidHide, installed with DSX/DS4Windows/reWASD) — the app
+    // can't read it, but it CAN tell the user exactly what is wrong.
+    auto cloak = HidCloakMonitor::scan(rawPathsLower);
+    // Only alarm the user when the cloak explains an actual absence: with a
+    // working pad tracked, hidden *additional* devices (e.g. DSX's parked
+    // virtual pads) are expected and not worth a Settings warning.
+    if (!m_devices.isEmpty() && !cloak.hiddenPads.isEmpty()) {
+        qInfo() << "Gamepad: cloaked device(s) ignored while a pad is tracked:"
+                << cloak.hiddenPads.join(QLatin1String(", "));
+        cloak.hiddenPads.clear();
+    }
+    if (cloak.hiddenPads != m_lastHiddenPads) {
+        if (!cloak.hiddenPads.isEmpty()) {
+            qWarning() << "Gamepad:" << cloak.hiddenPads.join(QLatin1String(", "))
+                       << "present in Windows PnP but INVISIBLE to Raw Input —"
+                       << (cloak.hidHidePresent
+                               ? "HidHide filter driver detected; whitelist GameHQ or disable hiding"
+                               : "a HID filter driver is cloaking it");
+        } else if (!m_lastHiddenPads.isEmpty()) {
+            qInfo() << "Gamepad: previously hidden pad(s) now visible to Raw Input";
+        }
+        m_lastHiddenPads = cloak.hiddenPads;
+        emit hiddenPadsChanged(cloak.hiddenPads, cloak.hidHidePresent);
+    }
+}
+
+// Public nudge used after the HidHide whitelist fix: re-run the debounced
+// full-list sync so a newly-visible pad is picked up without a replug where
+// possible.
+void DualSenseDevice::rescan()
+{
+    m_reconcileTimer->start();
 }
 
 // The active pad is gone. If another tracked pad has streamed reports
@@ -389,41 +436,23 @@ void DualSenseDevice::onRawInput(void* hRawInputV)
         parseReport(handle, *st, raw + i * hidSize, static_cast<int>(hidSize));
 }
 
-void DualSenseDevice::parseReport(void* handle, DeviceState& st,
-                                  const unsigned char* d, int len)
+// Locate the button block. USB report 0x01 puts it at byte 8; Bluetooth
+// report 0x31 shifts the whole payload +2 bytes (docs/controller-input.md).
+// Returns -1 for report ids this app does not parse.
+int DualSenseDevice::buttonBlockBase(unsigned char reportId, bool ds4, int len)
 {
-    if (len < 1)
-        return;
-
-    // Locate the button block. USB report 0x01 puts it at byte 8; Bluetooth
-    // report 0x31 shifts the whole payload +2 bytes (docs/controller-input.md).
-    const unsigned char reportId = d[0];
-    int base;
-    const bool ds4 = st.layout == LayoutDs4;
     if (reportId == 0x01)
-        base = (ds4 || len < 11) ? 5 : 8;
-    else if (reportId == 0x11 && ds4)
-        base = 7;
-    else if (reportId == 0x31 && !ds4)
-        base = 10;
-    else
-        return;
+        return (ds4 || len < 11) ? 5 : 8;
+    if (reportId == 0x11 && ds4)
+        return 7;
+    if (reportId == 0x31 && !ds4)
+        return 10;
+    return -1;
+}
 
-    if (len < base + 3)
-        return;
-
-    st.reported = true;
-    st.lastReportMs = m_clock.elapsed();
-
-    // Any valid Sony report proves a pad is alive — cancel a pending
-    // disconnect. If the active pad was just removed, this report's device
-    // becomes the new active pad below.
-    if (m_disconnectTimer->isActive()) {
-        m_disconnectTimer->stop();
-        qInfo() << "Gamepad:" << padName(st.layout)
-                << "reports resumed before disconnect debounce";
-    }
-
+// Face buttons, shoulder/trigger edges, Share/Options/PS, and the D-pad hat.
+quint32 DualSenseDevice::decodeButtons(const unsigned char* d, int base)
+{
     const unsigned char b0 = d[base];        // dpad hat (low nibble) + face buttons
     const unsigned char b1 = d[base + 1];    // L1/R1/Share/Options/...
     const unsigned char b2 = d[base + 2];    // PS/touchpad/mute
@@ -438,6 +467,10 @@ void DualSenseDevice::parseReport(void* handle, DeviceState& st,
     if (b0 & 0x80) set(Triangle);
     if (b1 & 0x01) set(L1);
     if (b1 & 0x02) set(R1);
+    // The triggers also report a digital edge here alongside their analog axis;
+    // that edge is all this app binds, so the axis is left unread.
+    if (b1 & 0x04) set(L2);
+    if (b1 & 0x08) set(R2);
     if (b1 & 0x10) set(Share);      // "Create" button
     if (b1 & 0x20) set(Options);
     if (b2 & 0x01) set(PS);
@@ -453,51 +486,69 @@ void DualSenseDevice::parseReport(void* handle, DeviceState& st,
     case 7: set(DpadUp);   set(DpadLeft); break;
     default: break;
     }
+    return s;
+}
 
-    // Left stick doubles as the D-pad for menu navigation (overlay request:
-    // "D-pad or left stick"). Axes sit 7 bytes before the button block on
-    // both encodings (USB base=8 → LX at d[1]; BT base=10 → LX at d[3]),
-    // 0..255 with ~128 center. A wide deadzone avoids drift, and HYSTERESIS
-    // (kReturnZone < kDeadzone) keeps an axis "active" until the stick
-    // returns well inside the center — without this the stick oscillating at
-    // the boundary would fire doubled navigation events, and overshooting
-    // past center on release would fire a spurious opposite-direction event.
-    // emitEdges() below only fires once per direction crossed, same as a
-    // real button — no auto-repeat while held, matching the D-pad.
+// Left stick doubles as the D-pad for menu navigation (overlay request:
+// "D-pad or left stick"). Axes sit 7 bytes before the button block on
+// both encodings (USB base=8 → LX at d[1]; BT base=10 → LX at d[3]),
+// 0..255 with ~128 center and Y growing downward. A wide deadzone avoids
+// drift; this is the one backend that runs the hysteresis path, so its
+// return zone is tighter than its deadzone (see StickNav.h for why).
+// emitEdges() in the caller only fires once per direction crossed, same as
+// a real button — no auto-repeat while held, matching the D-pad.
+// Hysteresis state comes from st.stick (last frame's stick bits).
+quint32 DualSenseDevice::decodeStickNav(const DeviceState& st, const unsigned char* d,
+                                        int base, int len)
+{
+    constexpr StickNav::AxisConfig kNav{ 128, 60, 30, false };
+
     const int axisBase = base >= 8 ? base - 7 : 1;
-    quint32 stick = 0;
-    auto stickSet = [&stick](int btn) { stick |= (1u << btn); };
-    if (axisBase >= 1 && len > axisBase + 1) {
-        constexpr int kCenter = 128;
-        constexpr int kDeadzone = 60;     // outer: enter active state
-        constexpr int kReturnZone = 30;   // inner: leave active state
+    if (axisBase < 1 || len <= axisBase + 1)
+        return 0;
 
-        const int lx = d[axisBase];
-        const int ly = d[axisBase + 1];
+    return StickNav::bits(kNav, d[axisBase], d[axisBase + 1], st.stick);
+}
 
-        // X axis — right and left are mutually exclusive, with hysteresis on
-        // whichever direction was active last frame.
-        const bool wasRight = st.stick & (1u << DpadRight);
-        const bool wasLeft  = st.stick & (1u << DpadLeft);
-        if (wasRight ? (lx > kCenter + kReturnZone) : (lx > kCenter + kDeadzone))
-            stickSet(DpadRight);
-        else if (wasLeft ? (lx < kCenter - kReturnZone) : (lx < kCenter - kDeadzone))
-            stickSet(DpadLeft);
+void DualSenseDevice::parseReport(void* handle, DeviceState& st,
+                                  const unsigned char* d, int len)
+{
+    if (len < 1)
+        return;
 
-        // Y axis — down and up are mutually exclusive, same hysteresis.
-        const bool wasDown = st.stick & (1u << DpadDown);
-        const bool wasUp   = st.stick & (1u << DpadUp);
-        if (wasDown ? (ly > kCenter + kReturnZone) : (ly > kCenter + kDeadzone))
-            stickSet(DpadDown);
-        else if (wasUp ? (ly < kCenter - kReturnZone) : (ly < kCenter - kDeadzone))
-            stickSet(DpadUp);
+    const unsigned char reportId = d[0];
+    const int base = buttonBlockBase(reportId, st.layout == LayoutDs4, len);
+    if (base < 0 || len < base + 3)
+        return;
+
+    st.reported = true;
+    st.lastReportMs = m_clock.elapsed();
+
+    // Any valid Sony report proves a pad is alive — cancel a pending
+    // disconnect. If the active pad was just removed, this report's device
+    // becomes the new active pad in routeReport.
+    if (m_disconnectTimer->isActive()) {
+        m_disconnectTimer->stop();
+        qInfo() << "Gamepad:" << padName(st.layout)
+                << "reports resumed before disconnect debounce";
     }
-    st.stick = stick;
-    s |= stick;
+
+    quint32 s = decodeButtons(d, base);
+    st.stick = decodeStickNav(st, d, base, len);
+    s |= st.stick;
 
     const bool changed = (s != st.buttons);
     st.buttons = s;
 
+    routeReport(handle, st, s, changed, reportId, d, len);
+}
+
+// Decide which pad the decoded state drives: first reporting pad becomes
+// active, the active pad just emits, and a non-active pad may steal the
+// active role only on a real input change while the active pad is silent.
+void DualSenseDevice::routeReport(void* handle, const DeviceState& st, quint32 s, bool changed,
+                                  unsigned char reportId, const unsigned char* d, int len)
+{
     if (!m_activeHandle) {
         // First reporting pad (or the previous one just vanished) takes over.
         m_activeHandle = handle;
