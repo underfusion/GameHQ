@@ -56,7 +56,7 @@ void GitHubReleaseSource::checkLatest(const QString &ifNoneMatchEtag)
 
 void GitHubReleaseSource::sendRequest(const QString &ifNoneMatchEtag, int attemptsLeft)
 {
-    const QString url = QStringLiteral("https://api.github.com/repos/%1/%2/releases/latest")
+    const QString url = QStringLiteral("https://api.github.com/repos/%1/%2/releases?per_page=20")
                              .arg(m_owner, m_repo);
     QNetworkRequest request{QUrl(url)};
     request.setHeader(QNetworkRequest::UserAgentHeader,
@@ -114,43 +114,85 @@ void GitHubReleaseSource::handleReply(QNetworkReply *reply, const QString &ifNon
         return;
     }
     const QJsonDocument doc = QJsonDocument::fromJson(body);
-    if (!doc.isObject()) {
+    if (!doc.isArray()) {
         Q_EMIT failed(QStringLiteral("malformed release JSON"));
         return;
     }
-    const QJsonObject obj = doc.object();
 
-    const QString tagName = obj.value(QStringLiteral("tag_name")).toString();
-    const auto version = VersionNumber::parse(tagName);
-    if (!version.has_value()) {
-        Q_EMIT failed(QStringLiteral("release tag \"%1\" is not a valid version").arg(tagName));
+    // The repo also publishes playnite-v* plugin releases (see t32). Scan
+    // every release instead of trusting /releases/latest, and keep only
+    // entries that are non-draft, non-prerelease, whose tag is an exact
+    // "vX.Y.Z" app version (VersionNumber::parse rejects "playnite-v0.1.0"
+    // and any other non-matching tag outright), and that carry the exact
+    // update assets this app knows how to install. Among those, pick the
+    // highest version.
+    std::optional<VersionNumber> bestVersion;
+    QJsonObject bestObj;
+    QString bestZipName;
+    QString bestZipUrl;
+    qint64 bestZipSize = 0;
+    QString bestChecksumUrl;
+
+    const QJsonArray releases = doc.array();
+    for (const QJsonValue &releaseValue : releases) {
+        const QJsonObject obj = releaseValue.toObject();
+        if (obj.value(QStringLiteral("draft")).toBool() || obj.value(QStringLiteral("prerelease")).toBool())
+            continue;
+
+        const QString tagName = obj.value(QStringLiteral("tag_name")).toString();
+        const auto version = VersionNumber::parse(tagName);
+        if (!version.has_value())
+            continue;
+        const QString normalizedVersion = version->toString();
+
+        const QString expectedZip = updateZipName(normalizedVersion);
+        const QString expectedChecksum = updateZipChecksumName(normalizedVersion);
+        QString zipUrl;
+        qint64 zipSize = 0;
+        QString checksumUrl;
+        const QJsonArray assets = obj.value(QStringLiteral("assets")).toArray();
+        for (const QJsonValue &assetValue : assets) {
+            const QJsonObject asset = assetValue.toObject();
+            const QString name = asset.value(QStringLiteral("name")).toString();
+            if (name == expectedZip) {
+                zipUrl = asset.value(QStringLiteral("browser_download_url")).toString();
+                zipSize = static_cast<qint64>(asset.value(QStringLiteral("size")).toDouble());
+            } else if (name == expectedChecksum) {
+                checksumUrl = asset.value(QStringLiteral("browser_download_url")).toString();
+            }
+        }
+        if (zipUrl.isEmpty() || checksumUrl.isEmpty())
+            continue; // not an installable app release (or assets still uploading)
+
+        if (bestVersion.has_value() && *version <= *bestVersion)
+            continue;
+
+        bestVersion = version;
+        bestObj = obj;
+        bestZipName = expectedZip;
+        bestZipUrl = zipUrl;
+        bestZipSize = zipSize;
+        bestChecksumUrl = checksumUrl;
+    }
+
+    if (!bestVersion.has_value()) {
+        Q_EMIT notFound();
         return;
     }
-    const QString normalizedVersion = version->toString();
+    const QString normalizedVersion = bestVersion->toString();
 
     ReleaseInfo info;
     info.version = normalizedVersion;
-    info.name = obj.value(QStringLiteral("name")).toString();
-    info.notes = obj.value(QStringLiteral("body")).toString();
-    info.publishedAt = QDateTime::fromString(obj.value(QStringLiteral("published_at")).toString(), Qt::ISODate);
-    info.webUrl = obj.value(QStringLiteral("html_url")).toString();
-    info.prerelease = obj.value(QStringLiteral("prerelease")).toBool();
-    info.draft = obj.value(QStringLiteral("draft")).toBool();
-
-    const QString expectedZip = updateZipName(normalizedVersion);
-    const QString expectedChecksum = updateZipChecksumName(normalizedVersion);
-    const QJsonArray assets = obj.value(QStringLiteral("assets")).toArray();
-    for (const QJsonValue &assetValue : assets) {
-        const QJsonObject asset = assetValue.toObject();
-        const QString name = asset.value(QStringLiteral("name")).toString();
-        if (name == expectedZip) {
-            info.zipName = name;
-            info.zipUrl = asset.value(QStringLiteral("browser_download_url")).toString();
-            info.zipSize = static_cast<qint64>(asset.value(QStringLiteral("size")).toDouble());
-        } else if (name == expectedChecksum) {
-            info.checksumUrl = asset.value(QStringLiteral("browser_download_url")).toString();
-        }
-    }
+    info.name = bestObj.value(QStringLiteral("name")).toString();
+    info.notes = bestObj.value(QStringLiteral("body")).toString();
+    info.publishedAt = QDateTime::fromString(bestObj.value(QStringLiteral("published_at")).toString(), Qt::ISODate);
+    info.webUrl = bestObj.value(QStringLiteral("html_url")).toString();
+    info.prerelease = false;
+    info.draft = false;
+    info.zipName = bestZipName;
+    info.zipUrl = bestZipUrl;
+    info.zipSize = bestZipSize;
+    info.checksumUrl = bestChecksumUrl;
 
     const QString etag = QString::fromUtf8(reply->rawHeader("ETag"));
     Q_EMIT succeeded(info, etag);

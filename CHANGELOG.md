@@ -4,6 +4,18 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.14] - 2026-07-20
+
+### Fixed
+
+- Update discovery no longer relies on `/releases/latest`, which could return
+  the wrong release once the upcoming Playnite plugin starts publishing its
+  own `playnite-v*` tags into this repo. `GitHubReleaseSource` now scans the
+  release list and selects the highest-versioned entry that is non-draft,
+  non-prerelease, has a tag matching the app's `vX.Y.Z` pattern, and carries
+  the exact update ZIP + checksum assets — a plugin release can never be
+  mistaken for an app update.
+
 ## [0.6.13] - 2026-07-20
 
 ### Added
