@@ -7,6 +7,16 @@ namespace capture::hdr {
 
 namespace {
 
+// Identity below the knee, then a monotonically increasing, asymptotic
+// (never-quite-reaches-1.0) shoulder above it. Must stay numerically in
+// lockstep with GpuToneMapper.cpp's embedded HLSL.
+float shoulderCurve(float x)
+{
+    if (x <= kKneeStart)
+        return x;
+    return 1.0f - (1.0f - kKneeStart) * std::sqrt(kKneeStart / x);
+}
+
 float srgbEncode(float linear)
 {
     linear = std::clamp(linear, 0.0f, 1.0f);
@@ -24,18 +34,22 @@ unsigned char quantize(float srgb)
 
 SdrPixel toneMapPixel(float r, float g, float b, float a)
 {
-    // Identity in [0,1] (SDR untouched), hard-clipped above — see the
-    // DELIBERATE SIMPLIFICATION note in the header.
-    r = std::clamp(r, 0.0f, 1.0f);
-    g = std::clamp(g, 0.0f, 1.0f);
-    b = std::clamp(b, 0.0f, 1.0f);
+    r = std::max(r, 0.0f);
+    g = std::max(g, 0.0f);
+    b = std::max(b, 0.0f);
 
     SdrPixel out;
-    out.r = quantize(srgbEncode(r));
-    out.g = quantize(srgbEncode(g));
-    out.b = quantize(srgbEncode(b));
+    out.r = quantize(srgbEncode(shoulderCurve(r)));
+    out.g = quantize(srgbEncode(shoulderCurve(g)));
+    out.b = quantize(srgbEncode(shoulderCurve(b)));
     out.a = quantize(std::clamp(a, 0.0f, 1.0f));
     return out;
+}
+
+bool shouldAttemptFp16Capture(bool experimentalFlagEnabled, bool displayHdrActive,
+                              bool gpuFp16Supported)
+{
+    return experimentalFlagEnabled && displayHdrActive && gpuFp16Supported;
 }
 
 } // namespace capture::hdr

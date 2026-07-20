@@ -4,6 +4,25 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.16] - 2026-07-21
+
+### Changed
+
+- Replaced the experimental HDR tone-map curve's hard clip above SDR white
+  with a real shoulder: identity below a 0.9 knee, then a smooth,
+  monotonically compressing curve that never quite reaches full white.
+  Highlights at 1.5x/2x/4x/8x/16x reference white now stay visually
+  distinct instead of clipping to one flat value — a hard clip discarded
+  all highlight detail, defeating the point of tone mapping. SDR white
+  (1.0) is now intentionally slightly below 255 (headroom reserved for
+  highlights) rather than pixel-identical to the untouched SDR path.
+- `FramePumpService::createSession` now falls back to the BGRA8 SDR pool
+  if FP16 pool creation itself fails after every earlier gate passed,
+  instead of aborting the capture attempt outright.
+- Extracted the FP16-attempt decision into `capture::hdr::shouldAttemptFp16Capture`
+  (pure function, unit-tested) so `internal.capture.experimental_hdr`
+  being off is verified, not just asserted by code review.
+
 ## [0.6.15] - 2026-07-20
 
 ### Added

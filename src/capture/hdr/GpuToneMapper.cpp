@@ -24,12 +24,21 @@ VSOut VSMain(uint id : SV_VertexID)
 }
 )";
 
-// Identity in [0,1] (SDR untouched), hard-clipped above, then the sRGB
-// OETF. Deliberate simplification, see HdrToneMapMath.h — must stay
-// numerically in lockstep with the CPU oracle in HdrToneMapMath.cpp.
+// Identity below the knee (shadows/midtones untouched), then a smooth,
+// monotonic, never-quite-reaches-white shoulder above it, then the sRGB
+// OETF. Must stay numerically in lockstep with the CPU oracle
+// (HdrToneMapMath.cpp's shoulderCurve/kKneeStart) — change both together.
 const char* kPixelShaderSrc = R"(
 Texture2D<float4> HdrTex : register(t0);
 SamplerState PointSampler : register(s0);
+
+static const float KneeStart = 0.9;
+
+float ShoulderCurve(float x)
+{
+    if (x <= KneeStart) return x;
+    return 1.0 - (1.0 - KneeStart) * sqrt(KneeStart / x);
+}
 
 float SrgbEncode(float c)
 {
@@ -41,7 +50,8 @@ float SrgbEncode(float c)
 float4 PSMain(float4 pos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET
 {
     float4 hdr = HdrTex.Sample(PointSampler, uv);
-    float3 c = saturate(hdr.rgb);
+    float3 c = max(hdr.rgb, 0.0);
+    c = float3(ShoulderCurve(c.r), ShoulderCurve(c.g), ShoulderCurve(c.b));
     c = float3(SrgbEncode(c.r), SrgbEncode(c.g), SrgbEncode(c.b));
     return float4(c, saturate(hdr.a));
 }

@@ -12,9 +12,10 @@ struct ID3D11RasterizerState;
 namespace capture::hdr {
 
 // GPU tone-map stage: FP16 scRGB source texture -> persistent BGRA8 output
-// texture, via a clip + sRGB full-screen-triangle pixel shader (identity in
-// [0,1], hard-clipped above — see HdrToneMapMath.h). Entirely isolated from
-// the existing SDR capture path — FramePumpService only
+// texture, via a shoulder-curve + sRGB full-screen-triangle pixel shader
+// (identity below the knee, smooth monotonic compression above it — see
+// HdrToneMapMath.h). Entirely isolated from the existing SDR capture path —
+// FramePumpService only
 // invokes this after the experimental HDR gate (config flag + HdrCapabilities
 // + checkFp16Support) has already passed, and apply()'s output is exactly
 // what SegmentRecorder already expects (BGRA8), so the recorder itself never

@@ -5,6 +5,7 @@
 #include "capture/CaptureUtil.h"
 #include "capture/HdrCapabilities.h"
 #include "capture/hdr/GpuToneMapper.h"
+#include "capture/hdr/HdrToneMapMath.h"
 #include "config/ConfigKeys.h"
 #include "capture/SegmentRecorder.h"
 #include "capture/ReplayExporter.h"
@@ -358,28 +359,32 @@ bool FramePumpWorker::createSession(Pipeline* pipe, void* hwndVoid, int srcW, in
         return failStep(this, "RoGetActivationFactory(FramePoolStatics2)", hr);
 
     DirectXPixelFormat poolFormat = DirectXPixelFormat_B8G8R8A8UIntNormalized;
+    capture::HdrOutputInfo output;
+    if (hdrExperimentalEnabled)
+        output = capture::HdrCapabilities::forWindow(hwnd);
+    const bool displayHdrActive = output.valid && output.hdrActive;
+    // Only probe the GPU (a real COM call) when the cheaper checks already
+    // passed — shouldAttemptFp16Capture() re-checks all three anyway.
+    const bool gpuFp16Supported = displayHdrActive
+        && capture::hdr::GpuToneMapper::checkFp16Support(pipe->d3dDevice);
 
-    if (hdrExperimentalEnabled) {
-        const capture::HdrOutputInfo output = capture::HdrCapabilities::forWindow(hwnd);
-        if (output.valid && output.hdrActive) {
-            if (capture::hdr::GpuToneMapper::checkFp16Support(pipe->d3dDevice)) {
-                auto* mapper = new capture::hdr::GpuToneMapper();
-                if (mapper->init(pipe->d3dDevice, pipe->d3dCtx, UINT(srcW), UINT(srcH))) {
-                    pipe->hdrToneMapper = mapper;
-                    poolFormat = DirectXPixelFormat_R16G16B16A16Float;
-                    qInfo().noquote() << QStringLiteral(
-                        "FramePump: experimental HDR path armed (%1) — capturing FP16, "
-                        "tone-mapping to BGRA8 before encode").arg(output.describe());
-                } else {
-                    delete mapper;
-                    qWarning() << "FramePump: experimental HDR tone-mapper init failed — "
-                                  "falling back to BGRA8 SDR capture";
-                }
-            } else {
-                qInfo() << "FramePump: GPU lacks FP16 texture/sample support — "
-                           "falling back to BGRA8 SDR capture";
-            }
+    if (capture::hdr::shouldAttemptFp16Capture(hdrExperimentalEnabled, displayHdrActive,
+                                               gpuFp16Supported)) {
+        auto* mapper = new capture::hdr::GpuToneMapper();
+        if (mapper->init(pipe->d3dDevice, pipe->d3dCtx, UINT(srcW), UINT(srcH))) {
+            pipe->hdrToneMapper = mapper;
+            poolFormat = DirectXPixelFormat_R16G16B16A16Float;
+            qInfo().noquote() << QStringLiteral(
+                "FramePump: experimental HDR path armed (%1) — capturing FP16, "
+                "tone-mapping to BGRA8 before encode").arg(output.describe());
+        } else {
+            delete mapper;
+            qWarning() << "FramePump: experimental HDR tone-mapper init failed — "
+                          "falling back to BGRA8 SDR capture";
         }
+    } else if (hdrExperimentalEnabled && displayHdrActive) {
+        qInfo() << "FramePump: GPU lacks FP16 texture/sample support — "
+                   "falling back to BGRA8 SDR capture";
     }
 
     // 4 buffers (was 2): the pump stalls for tens of ms every 5 s while the
@@ -389,11 +394,24 @@ bool FramePumpWorker::createSession(Pipeline* pipe, void* hwndVoid, int srcW, in
     const WgcSizeInt32 size{ srcW, srcH };
     hr = poolStatics2->CreateFreeThreaded(pipe->winrtDevice, poolFormat,
                                           4 /*buffers*/, size, &pipe->framePool);
-    poolStatics2->Release();
-    if (FAILED(hr) || !pipe->framePool) {
-        if (pipe->hdrToneMapper) { delete pipe->hdrToneMapper; pipe->hdrToneMapper = nullptr; }
-        return failStep(this, "CreateFreeThreaded", hr);
+
+    // FP16 pool creation itself failing (rare: CheckFormatSupport said yes
+    // but WGC disagrees) must not abort the whole capture attempt — tear
+    // down the tone-mapper and re-arm with the proven BGRA8 SDR path in the
+    // SAME call, exactly like every other gate above.
+    if ((FAILED(hr) || !pipe->framePool) && pipe->hdrToneMapper) {
+        qWarning().nospace() << "FramePump: CreateFreeThreaded(FP16) failed hr=0x"
+                             << Qt::hex << quint32(hr) << Qt::dec
+                             << " — re-arming with BGRA8 SDR capture";
+        delete pipe->hdrToneMapper;
+        pipe->hdrToneMapper = nullptr;
+        poolFormat = DirectXPixelFormat_B8G8R8A8UIntNormalized;
+        hr = poolStatics2->CreateFreeThreaded(pipe->winrtDevice, poolFormat,
+                                              4 /*buffers*/, size, &pipe->framePool);
     }
+    poolStatics2->Release();
+    if (FAILED(hr) || !pipe->framePool)
+        return failStep(this, "CreateFreeThreaded", hr);
     pipe->hdrToneMapActive = (pipe->hdrToneMapper != nullptr);
 
     hr = pipe->framePool->CreateCaptureSession(pipe->item, &pipe->session);
