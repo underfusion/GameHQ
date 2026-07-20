@@ -1,0 +1,12 @@
+# Consumed by Playnite's add-on installer and add-on database (see plan
+# items p6-1/p6-2). Kept in sync with extension.yaml + VERSION by
+# packaging/verify.ps1. PackageUrl is populated once the first playnite-v*
+# GitHub release exists (p6-1) — left blank until then.
+AddonId: GameHQ_Integration
+Packages:
+  - Version: 0.1.0
+    RequiredApiVersion: 6.16.0
+    ReleaseDate: 2026-07-20
+    PackageUrl: ""
+    Changelog: |
+      Initial scaffold. Not yet functional.
