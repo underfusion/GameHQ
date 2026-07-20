@@ -3,6 +3,7 @@
 #include <QVariantList>
 #include <QUrl>
 #include <memory>
+#include "capture/HdrCapabilities.h"
 #include "ui/GalleryModel.h"
 
 class CaptureDatabase;
@@ -41,6 +42,9 @@ class AppController : public QObject
     Q_PROPERTY(QString logsRoot READ logsRoot CONSTANT)
     Q_PROPERTY(bool replayBufferActive READ replayBufferActive NOTIFY replayBufferStateChanged)
     Q_PROPERTY(QString replayBufferGame READ replayBufferGame NOTIFY replayBufferStateChanged)
+    Q_PROPERTY(bool hdrDisplayActive READ hdrDisplayActive NOTIFY hdrStatusChanged)
+    Q_PROPERTY(QString hdrStatusText READ hdrStatusText NOTIFY hdrStatusChanged)
+    Q_PROPERTY(QString hdrDetailText READ hdrDetailText NOTIFY hdrStatusChanged)
 
 public:
     AppController(CaptureDatabase* db, CaptureScanner* scanner,
@@ -71,6 +75,14 @@ public:
     QString logsRoot() const;
     bool replayBufferActive() const { return m_replayBufferActive; }
     QString replayBufferGame() const { return m_replayBufferGame; }
+    bool hdrDisplayActive() const;
+    QString hdrStatusText() const;
+    QString hdrDetailText() const;
+
+    // Re-probes display HDR state and encoder support, logs the full report and
+    // updates the Advanced page. Called once at startup and from its Refresh
+    // button — HDR is a runtime toggle, so a cached answer goes stale silently.
+    Q_INVOKABLE void refreshHdrStatus();
 
     Q_INVOKABLE void setCategory(const QString& category);
     Q_INVOKABLE void setGame(int gameId);
@@ -148,6 +160,7 @@ signals:
     void replaySettingsChanged();
     void replayBufferStateChanged();
     void lastScanChanged();
+    void hdrStatusChanged();
 
 private:
     CaptureDatabase* m_db;
@@ -165,5 +178,7 @@ private:
     int m_gameId = -1;
     bool m_replayBufferActive = false;
     QString m_replayBufferGame;
+    capture::HdrReport m_hdr;
+    bool m_hdrProbed = false;
     int m_lastScanAdded = -1;   // -1 = not yet scanned this session
 };

@@ -4,6 +4,22 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.13] - 2026-07-20
+
+### Added
+
+- HDR detection and diagnostics: GameHQ now reports, per display, whether
+  Windows HDR is currently active, along with bit depth and the display's
+  luminance range, and probes whether an HEVC Main10 encoder is installed.
+- Settings → Advanced shows a "Display HDR" row with the full report and a
+  Refresh button; the report is also logged at startup, re-probed when the
+  display topology changes, and included in the copied diagnostic summary.
+- The replay buffer logs the HDR state of the display its capture target sits
+  on when arming, making it obvious when HDR content is being captured through
+  the SDR path.
+
+Detection only: capture, screenshots and clips are unchanged and still SDR.
+
 ## [0.6.12] - 2026-07-20
 
 ### Added

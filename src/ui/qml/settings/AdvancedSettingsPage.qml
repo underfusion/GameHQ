@@ -21,6 +21,11 @@ SettingsPage {
             AccentButton { label: "Open"; primary: true; onClicked: app.openDataFolder() }
         }
         SettingsRow {
+            label: "Display HDR"
+            description: app.hdrStatusText + "\n" + app.hdrDetailText
+            AccentButton { label: "Refresh"; primary: true; onClicked: app.refreshHdrStatus() }
+        }
+        SettingsRow {
             label: "Diagnostic summary"
             description: "Copies version, storage mode, and every managed folder path — useful when reporting a problem."
             AccentButton {

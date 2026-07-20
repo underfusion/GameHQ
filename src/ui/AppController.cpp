@@ -149,10 +149,42 @@ void AppController::copyDiagnosticSummary() const
         "Data folder: %3\n"
         "Logs folder: %4\n"
         "Screenshots folder: %5\n"
-        "Clips folder: %6")
+        "Clips folder: %6\n"
+        "%7")
         .arg(version(), portableMode() ? QStringLiteral("portable") : QStringLiteral("installed"),
-             dataRoot(), logsRoot(), screenshotsRoot(), clipsRoot());
+             dataRoot(), logsRoot(), screenshotsRoot(), clipsRoot(),
+             m_hdr.summaryLines().join(QLatin1Char('\n')));
     QGuiApplication::clipboard()->setText(summary);
+}
+
+void AppController::refreshHdrStatus()
+{
+    m_hdr = capture::HdrCapabilities::query();
+    m_hdrProbed = true;
+    capture::HdrCapabilities::logReport(m_hdr);
+    emit hdrStatusChanged();
+}
+
+bool AppController::hdrDisplayActive() const
+{
+    return m_hdr.anyHdrActive;
+}
+
+QString AppController::hdrStatusText() const
+{
+    if (!m_hdrProbed)
+        return QStringLiteral("Not checked yet");
+    if (m_hdr.outputs.isEmpty())
+        return QStringLiteral("No displays reported by the graphics driver");
+    return m_hdr.anyHdrActive ? QStringLiteral("Windows HDR is active")
+                              : QStringLiteral("Windows HDR is inactive");
+}
+
+QString AppController::hdrDetailText() const
+{
+    if (!m_hdrProbed)
+        return QStringLiteral("Check the current HDR state of every display.");
+    return m_hdr.summaryLines().join(QLatin1Char('\n'));
 }
 
 QString AppController::setCaptureRoot(const QString& kindValue, const QUrl& folderUrl)

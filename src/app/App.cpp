@@ -355,8 +355,17 @@ bool App::init()
         m_inputStarted = true;
     }
 
-    // First scan after the window is up so startup feels instant.
+    // First scan after the window is up so startup feels instant. The HDR probe
+    // rides along for the same reason — it activates an encoder MFT, which is
+    // far too slow to run before the first frame.
     QTimer::singleShot(0, m_controller.get(), &AppController::rescan);
+    QTimer::singleShot(0, m_controller.get(), &AppController::refreshHdrStatus);
+
+    // HDR is a per-monitor toggle the user can flip at any time; re-probe when
+    // the desktop topology changes so diagnostics never report a stale state.
+    connect(qApp, &QGuiApplication::screenAdded, m_controller.get(), &AppController::refreshHdrStatus);
+    connect(qApp, &QGuiApplication::screenRemoved, m_controller.get(), &AppController::refreshHdrStatus);
+    connect(qApp, &QGuiApplication::primaryScreenChanged, m_controller.get(), &AppController::refreshHdrStatus);
     return true;
 }
 

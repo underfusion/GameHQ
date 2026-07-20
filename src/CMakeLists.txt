@@ -3,6 +3,7 @@ qt_add_executable(GameHQ
     app/App.cpp            app/App.h
     app/StartupManager.cpp app/StartupManager.h
     capture/CaptureUtil.h
+    capture/HdrCapabilities.cpp capture/HdrCapabilities.h
     capture/ScreenshotService.cpp capture/ScreenshotService.h
     capture/FramePumpService.cpp capture/FramePumpService.h capture/wgc_shims.h
     capture/AudioCapture.cpp capture/AudioCapture.h capture/wasapi_shims.h

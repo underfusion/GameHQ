@@ -47,3 +47,13 @@ Frame pump (above) at 30 fps -> Media Foundation `SinkWriter` with hardware H.26
 ## Fallbacks
 
 If WGC unavailable/fails: log; DXGI Desktop Duplication as a later monitor-capture fallback (not MVP scope).
+
+## HDR detection and diagnostics (0.6.13)
+
+`HdrCapabilities` (`src/capture/HdrCapabilities.{h,cpp}`) is a **read-only probe** — it detects HDR, it does not change a single byte of the capture path. GameHQ still captures `B8G8R8A8UIntNormalized`, still writes 8-bit PNG/JPEG screenshots, and still encodes H.264 8-bit clips; on an HDR desktop that means highlights clip and colours wash out. The point of this item is that the log and Settings now say so out loud instead of leaving the user guessing.
+
+Detection: `CreateDXGIFactory1` → `EnumAdapters1` → `EnumOutputs` → `QueryInterface(IDXGIOutput6)` → `GetDesc1`. HDR counts as active only when `ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020` (ST.2084/PQ in BT.2020), which is what Windows reports while the per-monitor "Use HDR" toggle is on. `BitsPerColor`, `MinLuminance`, `MaxLuminance` and `MaxFullFrameLuminance` come from the same struct. Outputs on machines whose DXGI predates `IDXGIOutput6` report as "Advanced Color state unavailable" rather than as SDR.
+
+Encoder probe: `MFTEnumEx(MFT_CATEGORY_VIDEO_ENCODER, ..., MFVideoFormat_HEVC)`, then each returned MFT is activated and offered an HEVC **Main10** output type (`MF_MT_MPEG2_PROFILE` — the same GUID the SDK also calls `MF_MT_VIDEO_PROFILE` — set to `eAVEncH265VProfile_Main_420_10`). Presence of an HEVC encoder alone proves nothing: plenty of hardware encodes 8-bit HEVC only, so the probe asks for the type it would actually use.
+
+HDR is a runtime toggle, so nothing is cached as a permanent fact. `AppController::refreshHdrStatus()` re-probes at startup, whenever the display topology changes (`QGuiApplication::screenAdded`/`screenRemoved`/`primaryScreenChanged`), and from the **Settings → Advanced → Display HDR** Refresh button. `FramePumpService::startPump` separately re-reads the monitor the capture target sits on, because a game can be on a different display than the one probed at startup. All lines are logged with the `Hdr:` / `FramePump:` prefixes and are included in the copied diagnostic summary.

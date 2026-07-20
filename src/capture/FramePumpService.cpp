@@ -3,6 +3,7 @@
 #include "capture/wgc_shims.h"
 #include "capture/AudioCapture.h"
 #include "capture/CaptureUtil.h"
+#include "capture/HdrCapabilities.h"
 #include "config/ConfigKeys.h"
 #include "capture/SegmentRecorder.h"
 #include "capture/ReplayExporter.h"
@@ -408,6 +409,17 @@ void FramePumpWorker::startPump(qulonglong hwndVal, unsigned long pid, int encod
     m_pipe = pipe;
     m_pipe->timer->start();
     qInfo() << "FramePump: started (hwnd" << Qt::hex << hwndVal << Qt::dec << ")";
+
+    // HDR is a per-monitor runtime toggle, so re-read it for the monitor this
+    // capture target actually sits on rather than trusting the startup probe.
+    const capture::HdrOutputInfo output = capture::HdrCapabilities::forWindow(hwnd);
+    if (output.valid && output.hdrActive)
+        qInfo().noquote() << QStringLiteral(
+            "FramePump: capture target is on an HDR display (%1) — capturing BGRA8 SDR, "
+            "highlights will clip until the HDR pipeline lands").arg(output.describe());
+    else if (output.valid)
+        qInfo().noquote() << QStringLiteral("FramePump: capture target display is SDR (%1)")
+                                 .arg(output.deviceName);
 }
 
 void FramePumpWorker::stopPump()
