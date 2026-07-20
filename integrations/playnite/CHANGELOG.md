@@ -7,6 +7,19 @@ is versioned and released independently of the main GameHQ application (see
 `../../VERSION` for that) — releases are tagged `playnite-vX.Y.Z` in this
 same repository.
 
+## [0.3.0] - 2026-07-20
+
+### Added
+
+- `GameLifecycleForwarder`: tracks active Playnite game sessions and sends
+  `playnite.game.starting/started/stopped/startup_cancelled` and
+  `playnite.application.started/stopping` over the pipe client.
+- `playnite.state.sync` is sent with the current session snapshot after
+  every successful connection, including reconnects, so a missed
+  disconnect never leaves a phantom "game running" state on the app side.
+- Playnite exiting never closes GameHQ — it may be tray-resident or used
+  standalone.
+
 ## [0.2.0] - 2026-07-20
 
 ### Added

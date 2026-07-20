@@ -16,12 +16,14 @@ namespace GameHQ.Playnite
         public override Guid Id { get; } = new Guid("6f2b6a0a-6e0a-4b8e-9b7b-3a7d7c8b6a1d");
 
         private readonly IntegrationClient _client;
+        private readonly GameLifecycleForwarder _lifecycle;
         private bool _launchAttempted;
 
         public GameHQPlugin(IPlayniteAPI api) : base(api)
         {
             var version = Assembly.GetExecutingAssembly().GetName().Version.ToString();
             _client = new IntegrationClient(version);
+            _lifecycle = new GameLifecycleForwarder(api, _client);
             _client.Start();
         }
 
@@ -40,7 +42,30 @@ namespace GameHQ.Playnite
 
         public override void OnApplicationStopped(OnApplicationStoppedEventArgs args)
         {
+            // Never close GameHQ here — it may be tray-resident, exporting a
+            // clip, or used standalone without Playnite at all.
+            _lifecycle.ApplicationStopping();
             _client.Stop();
+        }
+
+        public override void OnGameStarting(OnGameStartingEventArgs args)
+        {
+            _lifecycle.GameStarting(args.Game);
+        }
+
+        public override void OnGameStarted(OnGameStartedEventArgs args)
+        {
+            _lifecycle.GameStarted(args.Game, args.StartedProcessId);
+        }
+
+        public override void OnGameStopped(OnGameStoppedEventArgs args)
+        {
+            _lifecycle.GameStopped(args.Game);
+        }
+
+        public override void OnGameStartupCancelled(OnGameStartupCancelledEventArgs args)
+        {
+            _lifecycle.GameStartupCancelled(args.Game);
         }
     }
 }
