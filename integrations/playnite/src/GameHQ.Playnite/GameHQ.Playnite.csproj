@@ -4,9 +4,10 @@
     <TargetFramework>net462</TargetFramework>
     <RootNamespace>GameHQ.Playnite</RootNamespace>
     <AssemblyName>GameHQ.Playnite</AssemblyName>
-    <Version>0.3.0</Version>
+    <Version>0.4.0</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
+    <UseWPF>true</UseWPF>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <Deterministic>true</Deterministic>
     <AppendTargetFrameworkToOutputPath>true</AppendTargetFrameworkToOutputPath>
@@ -28,6 +29,7 @@
   <ItemGroup>
     <!-- JSON for the integration protocol; part of the .NET Framework, no NuGet dependency added. -->
     <Reference Include="System.Web.Extensions" />
+    <Reference Include="System.Web" />
   </ItemGroup>
 
   <ItemGroup>

@@ -7,6 +7,28 @@ is versioned and released independently of the main GameHQ application (see
 `../../VERSION` for that) — releases are tagged `playnite-vX.Y.Z` in this
 same repository.
 
+## [0.4.0] - 2026-07-20
+
+### Added
+
+- Settings page (Connection / Startup / Support sections): configurable
+  GameHQ path with validation, live connection status, detected GameHQ
+  version and protocol, a "Test connection" action, the two startup
+  preferences, "Open GameHQ", "Website" and "Copy diagnostic summary".
+- Main-menu command "Open GameHQ" (focuses a running instance or launches
+  it) — intentionally the only main-menu command; no screenshot/replay
+  commands, since opening a menu defocuses the game.
+- `IntegrationClient` now tracks the remote app version, negotiated
+  protocol and last error for the settings page, and exposes
+  `TriggerReconnect()` for the "Test connection" action.
+
+### Known gaps
+
+- "Open plugin log" from the Support section is not implemented — Playnite
+  doesn't expose a log path via the SDK and guessing at one risked being
+  wrong; deferred to a follow-up once a real Playnite install is available
+  to confirm the right target.
+
 ## [0.3.0] - 2026-07-20
 
 ### Added

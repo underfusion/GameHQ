@@ -1,0 +1,62 @@
+<UserControl x:Class="GameHQ.Playnite.Settings.GameHQIntegrationSettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignWidth="520">
+    <StackPanel Margin="12">
+
+        <TextBlock Text="Connection" FontWeight="Bold" Margin="0,0,0,6" />
+        <Grid Margin="0,0,0,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox Grid.Column="0" Text="{Binding Settings.ExePath, UpdateSourceTrigger=PropertyChanged}"
+                     ToolTip="Leave blank to auto-detect GameHQ." Margin="0,0,6,0" />
+            <Button Grid.Column="1" Content="Select..." Command="{Binding SelectExeCommand}" />
+        </Grid>
+
+        <Grid Margin="0,0,0,2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="140" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="Status:" />
+            <TextBlock Grid.Column="1" Text="{Binding ConnectionStatusText}" />
+        </Grid>
+        <Grid Margin="0,0,0,2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="140" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="GameHQ version:" />
+            <TextBlock Grid.Column="1" Text="{Binding DetectedGameHQVersionText}" />
+        </Grid>
+        <Grid Margin="0,0,0,2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="140" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="Protocol:" />
+            <TextBlock Grid.Column="1" Text="{Binding ProtocolCompatibilityText}" />
+        </Grid>
+        <Button Content="Test connection" Command="{Binding TestConnectionCommand}"
+                HorizontalAlignment="Left" Margin="0,4,0,12" />
+
+        <TextBlock Text="Startup" FontWeight="Bold" Margin="0,0,0,6" />
+        <CheckBox Content="Start GameHQ with Playnite" IsChecked="{Binding Settings.StartWithPlaynite}" Margin="0,0,0,4" />
+        <CheckBox Content="Start GameHQ when a Playnite game launches if it is not running"
+                  IsChecked="{Binding Settings.StartOnGameLaunchIfNotRunning}" Margin="0,0,0,12" />
+
+        <TextBlock Text="Support" FontWeight="Bold" Margin="0,0,0,6" />
+        <StackPanel Orientation="Horizontal">
+            <Button Content="Open GameHQ" Command="{Binding OpenGameHQCommand}" Margin="0,0,6,0" />
+            <Button Content="Website" Command="{Binding OpenWebsiteCommand}" Margin="0,0,6,0" />
+            <Button Content="Copy diagnostic summary" Command="{Binding CopyDiagnosticSummaryCommand}" />
+        </StackPanel>
+        <TextBlock Text="{Binding LastErrorText, StringFormat='Last error: {0}'}" Margin="0,6,0,0" TextWrapping="Wrap" />
+
+    </StackPanel>
+</UserControl>

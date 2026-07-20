@@ -40,10 +40,15 @@ namespace GameHQ.Playnite.Protocol
         private readonly BlockingCollection<IntegrationMessage> _outgoing =
             new BlockingCollection<IntegrationMessage>(new ConcurrentQueue<IntegrationMessage>(), OutgoingQueueCapacity);
 
+        private readonly AutoResetEvent _wake = new AutoResetEvent(false);
+
         private CancellationTokenSource _cts;
         private Thread _worker;
         private volatile IntegrationConnectionState _state = IntegrationConnectionState.Disconnected;
         private DateTime _suspendedUntilUtc;
+        private volatile string _remoteAppVersion;
+        private int? _protocolSelected; // read/written from one worker thread at a time; UI reads are advisory
+        private volatile string _lastError;
 
         public event Action<IntegrationConnectionState> StateChanged;
         public event Action<IntegrationMessage> MessageReceived;
@@ -56,6 +61,32 @@ namespace GameHQ.Playnite.Protocol
         public IntegrationConnectionState State
         {
             get { return _state; }
+        }
+
+        // Diagnostics for the settings page (p5-4) — the GameHQ version and
+        // protocol reported by the last successful handshake, and the last
+        // connection/handshake failure reason (cleared on success).
+        public string RemoteAppVersion
+        {
+            get { return _remoteAppVersion; }
+        }
+
+        public int? ProtocolSelected
+        {
+            get { return _protocolSelected; }
+        }
+
+        public string LastError
+        {
+            get { return _lastError; }
+        }
+
+        // Nudges the background loop to retry immediately instead of
+        // waiting out its current backoff. Used by the settings page's
+        // "Test connection" action; safe to call at any time.
+        public void TriggerReconnect()
+        {
+            _wake.Set();
         }
 
         public void Start()
@@ -74,6 +105,7 @@ namespace GameHQ.Playnite.Protocol
             _cts = null;
             _worker = null;
             if (cts != null) cts.Cancel();
+            _wake.Set();
         }
 
         // Never blocks the caller. Drops the message and logs if GameHQ is
@@ -131,10 +163,12 @@ namespace GameHQ.Playnite.Protocol
                     catch (TimeoutException)
                     {
                         // GameHQ not listening yet; back off and retry.
+                        _lastError = "GameHQ is not running or not reachable";
                     }
                     catch (Exception ex)
                     {
                         Logger.Warn("GameHQ integration connection error: " + ex.Message);
+                        _lastError = ex.Message;
                     }
                 }
 
@@ -144,7 +178,7 @@ namespace GameHQ.Playnite.Protocol
                 if (token.IsCancellationRequested) break;
 
                 backoffMs = handshakeOk ? MinBackoffMs : NextBackoff(backoffMs);
-                Thread.Sleep(backoffMs);
+                _wake.WaitOne(backoffMs);
             }
         }
 
@@ -168,10 +202,20 @@ namespace GameHQ.Playnite.Protocol
             if (payload == null) return false;
 
             var reply = IntegrationMessage.FromUtf8Json(payload);
-            if (reply.Type == "hello.ack") return true;
+            if (reply.Type == "hello.ack")
+            {
+                _remoteAppVersion = reply.GetString("appVersion");
+                _protocolSelected = reply.GetInt("protocolSelected");
+                _lastError = null;
+                return true;
+            }
 
             if (reply.Type == "error")
-                Logger.Warn("GameHQ integration handshake rejected: " + reply.GetString("code") + " " + reply.GetString("message"));
+            {
+                var message = reply.GetString("code") + ": " + reply.GetString("message");
+                Logger.Warn("GameHQ integration handshake rejected: " + message);
+                _lastError = message;
+            }
 
             return false;
         }
@@ -256,6 +300,7 @@ namespace GameHQ.Playnite.Protocol
         {
             Stop();
             _outgoing.Dispose();
+            _wake.Dispose();
         }
     }
 }

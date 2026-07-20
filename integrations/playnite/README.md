@@ -14,9 +14,11 @@ Playnite users.
 ## Status
 
 Connects to a running GameHQ over `GameHQ.Local.v1`, can launch it when not
-already running, and forwards game start/stop/cancel events plus a full
-session snapshot on every (re)connect. The settings page is not implemented
-yet. See `CHANGELOG.md` for what has shipped.
+already running, forwards game start/stop/cancel events plus a full
+session snapshot on every (re)connect, and has a settings page for the
+GameHQ path, startup preferences and connection diagnostics. Not yet
+verified inside a real Playnite install — see `CHANGELOG.md` for what has
+shipped.
 
 ## Layout
 
