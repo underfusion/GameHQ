@@ -11,6 +11,17 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <!-- Only needed to compile GameHQLocator.cs here; the plugin itself
+         needs no NuGet reference for it (built into .NET Framework). -->
+    <PackageReference Include="Microsoft.Win32.Registry" Version="5.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Test the real protocol/locator source directly rather than a copy,
+         so these tests fail the moment the shared logic regresses. Neither
+         file depends on Playnite.SDK or System.Web.Extensions. -->
+    <Compile Include="..\..\src\GameHQ.Playnite\Protocol\PipeFraming.cs" Link="Sources\PipeFraming.cs" />
+    <Compile Include="..\..\src\GameHQ.Playnite\GameHQLocator.cs" Link="Sources\GameHQLocator.cs" />
   </ItemGroup>
 
 </Project>

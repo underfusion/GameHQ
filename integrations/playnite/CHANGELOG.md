@@ -7,6 +7,19 @@ is versioned and released independently of the main GameHQ application (see
 `../../VERSION` for that) — releases are tagged `playnite-vX.Y.Z` in this
 same repository.
 
+## [0.2.0] - 2026-07-20
+
+### Added
+
+- `GameHQ.Local.v1` pipe client (framing, handshake, bounded outgoing queue,
+  reconnect with exponential backoff, `app.maintenance` awareness) under
+  `Protocol/`.
+- `GameHQLocator` (configured path, then the current-user Run registry
+  entry) and `GameHQProcessLauncher` (launches the root `GameHQ.exe`).
+- The plugin now starts the client on load and makes one best-effort launch
+  attempt on `OnApplicationStarted` if GameHQ isn't already reachable.
+  Game lifecycle forwarding still lands in a follow-up release (p5-3).
+
 ## [0.1.0] - 2026-07-20
 
 ### Added

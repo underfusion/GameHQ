@@ -13,7 +13,9 @@ Playnite users.
 
 ## Status
 
-Early scaffold — not yet functional. See `CHANGELOG.md` for what has
+Connects to a running GameHQ over `GameHQ.Local.v1` and can launch it when
+not already running. Forwarding game lifecycle events (start/stop) and the
+settings page are not implemented yet. See `CHANGELOG.md` for what has
 shipped.
 
 ## Layout

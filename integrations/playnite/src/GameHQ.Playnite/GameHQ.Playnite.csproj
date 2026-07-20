@@ -4,6 +4,7 @@
     <TargetFramework>net462</TargetFramework>
     <RootNamespace>GameHQ.Playnite</RootNamespace>
     <AssemblyName>GameHQ.Playnite</AssemblyName>
+    <Version>0.2.0</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
@@ -22,6 +23,11 @@
     <PackageReference Include="PlayniteSDK" Version="6.16.0">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- JSON for the integration protocol; part of the .NET Framework, no NuGet dependency added. -->
+    <Reference Include="System.Web.Extensions" />
   </ItemGroup>
 
   <ItemGroup>
