@@ -50,7 +50,14 @@ if (Test-Path $pextPath) {
     Remove-Item $pextPath -Force
 }
 
-Compress-Archive -Path (Join-Path $stagingDir "*") -DestinationPath $pextPath
+# Compress-Archive rejects the .pext extension outright even though a .pext
+# is just a zip, so build it as .zip and rename.
+$zipPath = [System.IO.Path]::ChangeExtension($pextPath, "zip")
+if (Test-Path $zipPath) {
+    Remove-Item $zipPath -Force
+}
+Compress-Archive -Path (Join-Path $stagingDir "*") -DestinationPath $zipPath
+Move-Item $zipPath $pextPath
 Remove-Item $stagingDir -Recurse -Force
 
 Write-Host "[playnite-package] wrote $pextPath"
