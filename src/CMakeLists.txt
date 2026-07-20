@@ -6,6 +6,8 @@ qt_add_executable(GameHQ
     capture/HdrCapabilities.cpp capture/HdrCapabilities.h
     capture/ScreenshotService.cpp capture/ScreenshotService.h
     capture/FramePumpService.cpp capture/FramePumpService.h capture/wgc_shims.h
+    capture/hdr/HdrToneMapMath.cpp capture/hdr/HdrToneMapMath.h
+    capture/hdr/GpuToneMapper.cpp capture/hdr/GpuToneMapper.h
     capture/AudioCapture.cpp capture/AudioCapture.h capture/wasapi_shims.h
     capture/SegmentRecorder.cpp capture/SegmentRecorder.h
     capture/ReplayExporter.cpp capture/ReplayExporter.h
@@ -175,6 +177,8 @@ target_link_libraries(GameHQ PRIVATE
     user32 gdi32 version winmm cfgmgr32
     # 0.5 Windows Graphics Capture frame pump (WinRT raw-ABI path, no cppwinrt).
     windowsapp runtimeobject ole32 oleaut32 d3d11 dxgi dxguid uuid
+    # t24 experimental HDR tone-map shader (runtime HLSL compile via D3DCompile).
+    d3dcompiler
     # 0.5 Step 4 H.264 encode via Media Foundation SinkWriter (fragmented MP4).
     mfplat mfreadwrite mfuuid mf avrt ksuser mmdevapi
 )

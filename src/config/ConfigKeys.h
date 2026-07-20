@@ -71,6 +71,12 @@ inline constexpr QLatin1StringView InternalUpdatesEtag{ "internal.updates.etag" 
 inline constexpr QLatin1StringView InternalUpdatesLastCheckUtc{ "internal.updates.last_check_utc" };
 inline constexpr QLatin1StringView InternalUpdatesLastSeenVersion{ "internal.updates.last_seen_version" };
 inline constexpr QLatin1StringView InternalUpdatesPendingPostUpdateVersion{ "internal.updates.pending_post_update_version" };
+// Hidden, default-off HDR capture gate (t24/t22): not exposed in Settings.
+// Even when true, the SDR path is still used unless HdrCapabilities reports
+// the capture target's display as HDR-active AND the FP16 tone-map stage
+// initializes successfully — any failure falls back to the existing SDR
+// pool format, so flipping this key on an SDR-only machine changes nothing.
+inline constexpr QLatin1StringView InternalCaptureExperimentalHdr{ "internal.capture.experimental_hdr" };
 
 // Group prefixes used by resetGroup() and the settings reset taxonomy.
 namespace Group

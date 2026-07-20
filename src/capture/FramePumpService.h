@@ -34,7 +34,8 @@ public slots:
     void startPump(qulonglong hwnd, unsigned long pid, int encodeWidth, int encodeHeight,
                    int fps, int bitrateMbps, int segmentSeconds, int lengthSeconds,
                    const QString& gameName, const QString& executablePath,
-                   bool audioEnabled); // build pipeline + start polling/encoding
+                   bool audioEnabled,
+                   bool hdrExperimentalEnabled = false); // build pipeline + start polling/encoding
     void stopPump();                 // stop polling + tear down the pipeline
     void saveReplayOnWorker(const QString& clipsBaseRoot);
     void prepareForUpdate();
@@ -68,7 +69,8 @@ private:
     void attachRecorder(Pipeline* pipe, unsigned long pid, int srcW, int srcH,
                         int encodeWidth, int encodeHeight, int fps, int bitrateMbps,
                         int segmentSeconds, int lengthSeconds, bool audioEnabled);
-    bool createSession(Pipeline* pipe, int srcW, int srcH);    // frame pool + session
+    bool createSession(Pipeline* pipe, void* hwnd, int srcW, int srcH,
+                       bool hdrExperimentalEnabled); // frame pool + session
 
     // saveReplayOnWorker stages, in call order.
     bool saveGuard(const QString& saveId);                     // preflight: pipe/ring/busy

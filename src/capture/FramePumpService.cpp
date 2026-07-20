@@ -4,6 +4,7 @@
 #include "capture/AudioCapture.h"
 #include "capture/CaptureUtil.h"
 #include "capture/HdrCapabilities.h"
+#include "capture/hdr/GpuToneMapper.h"
 #include "config/ConfigKeys.h"
 #include "capture/SegmentRecorder.h"
 #include "capture/ReplayExporter.h"
@@ -60,6 +61,15 @@ struct FramePumpWorker::Pipeline
     QString                       gameName;                // for the saved-clip Clips/ path
     QString                       executablePath;          // for sidebar game icon metadata
 
+    // t24 experimental HDR tone-map stage (isolated, hidden flag, see
+    // ConfigKeys::InternalCaptureExperimentalHdr). hdrToneMapActive is only
+    // ever true when the frame pool itself was created FP16 AND the mapper
+    // initialized — the SDR path (BGRA8 pool, no mapper) is completely
+    // untouched otherwise.
+    capture::hdr::GpuToneMapper*  hdrToneMapper     = nullptr;
+    bool                          hdrToneMapActive  = false;
+    bool                          hdrToneMapWarned  = false;  // log a failed apply() once, not per-frame
+
     QElapsedTimer fpsClock;
     QElapsedTimer encClock;   // monotonic PTS source for the recorder
     long long encStartQpc100ns = 0;   // QPC epoch of encClock's t=0 (A/V alignment)
@@ -75,6 +85,9 @@ struct FramePumpWorker::Pipeline
         // (its staging texture was created from d3dDevice).
         if (recorder) { recorder->end(); delete recorder; recorder = nullptr; }
         if (audio) { audio->stop(); delete audio; audio = nullptr; }
+        // Also before d3dDevice/d3dCtx — GpuToneMapper's shaders/textures were
+        // created from them.
+        if (hdrToneMapper) { delete hdrToneMapper; hdrToneMapper = nullptr; }
         if (session)     { session->Release();     session = nullptr; }
         if (framePool)   { framePool->Release();    framePool = nullptr; }
         if (item)        { item->Release();         item = nullptr; }
@@ -322,8 +335,19 @@ void FramePumpWorker::attachRecorder(Pipeline* pipe, unsigned long pid, int srcW
 
 // 4-5. Free-threaded frame pool (no DispatcherQueue → pollable from this thread),
 //      then the capture session.
-bool FramePumpWorker::createSession(Pipeline* pipe, int srcW, int srcH)
+//
+// t24 experimental HDR gate: format selection ONLY happens here, and only
+// when hdrExperimentalEnabled is true (ConfigKeys::InternalCaptureExperimentalHdr,
+// hidden/default-off). All three of these must hold before FP16 is even
+// attempted: the config flag, HdrCapabilities reporting the target display
+// as HDR-active, and the GPU tone-mapper initializing successfully. Any
+// failure anywhere in that chain falls straight back to the original
+// hardcoded BGRA8 pool below — the SDR path this function has always taken
+// is otherwise completely unchanged.
+bool FramePumpWorker::createSession(Pipeline* pipe, void* hwndVoid, int srcW, int srcH,
+                                    bool hdrExperimentalEnabled)
 {
+    HWND hwnd = reinterpret_cast<HWND>(hwndVoid);
     IDirect3D11CaptureFramePoolStatics2* poolStatics2 = nullptr;
     HSTRING poolClass = nullptr;
     WindowsCreateString(kWgcFramePoolClass, UINT32(wcslen(kWgcFramePoolClass)), &poolClass);
@@ -333,16 +357,44 @@ bool FramePumpWorker::createSession(Pipeline* pipe, int srcW, int srcH)
     if (FAILED(hr) || !poolStatics2)
         return failStep(this, "RoGetActivationFactory(FramePoolStatics2)", hr);
 
+    DirectXPixelFormat poolFormat = DirectXPixelFormat_B8G8R8A8UIntNormalized;
+
+    if (hdrExperimentalEnabled) {
+        const capture::HdrOutputInfo output = capture::HdrCapabilities::forWindow(hwnd);
+        if (output.valid && output.hdrActive) {
+            if (capture::hdr::GpuToneMapper::checkFp16Support(pipe->d3dDevice)) {
+                auto* mapper = new capture::hdr::GpuToneMapper();
+                if (mapper->init(pipe->d3dDevice, pipe->d3dCtx, UINT(srcW), UINT(srcH))) {
+                    pipe->hdrToneMapper = mapper;
+                    poolFormat = DirectXPixelFormat_R16G16B16A16Float;
+                    qInfo().noquote() << QStringLiteral(
+                        "FramePump: experimental HDR path armed (%1) — capturing FP16, "
+                        "tone-mapping to BGRA8 before encode").arg(output.describe());
+                } else {
+                    delete mapper;
+                    qWarning() << "FramePump: experimental HDR tone-mapper init failed — "
+                                  "falling back to BGRA8 SDR capture";
+                }
+            } else {
+                qInfo() << "FramePump: GPU lacks FP16 texture/sample support — "
+                           "falling back to BGRA8 SDR capture";
+            }
+        }
+    }
+
     // 4 buffers (was 2): the pump stalls for tens of ms every 5 s while the
     // segment writer finalizes + reopens (encoder MFT re-init). With only 2
     // buffers WGC drops frames during that stall — a periodic hitch in every
     // saved clip. 4 buffers ride it out; the drain loop in poll() catches up.
     const WgcSizeInt32 size{ srcW, srcH };
-    hr = poolStatics2->CreateFreeThreaded(pipe->winrtDevice,
-                                          DirectXPixelFormat_B8G8R8A8UIntNormalized,
+    hr = poolStatics2->CreateFreeThreaded(pipe->winrtDevice, poolFormat,
                                           4 /*buffers*/, size, &pipe->framePool);
     poolStatics2->Release();
-    if (FAILED(hr) || !pipe->framePool) return failStep(this, "CreateFreeThreaded", hr);
+    if (FAILED(hr) || !pipe->framePool) {
+        if (pipe->hdrToneMapper) { delete pipe->hdrToneMapper; pipe->hdrToneMapper = nullptr; }
+        return failStep(this, "CreateFreeThreaded", hr);
+    }
+    pipe->hdrToneMapActive = (pipe->hdrToneMapper != nullptr);
 
     hr = pipe->framePool->CreateCaptureSession(pipe->item, &pipe->session);
     if (FAILED(hr) || !pipe->session) return failStep(this, "CreateCaptureSession", hr);
@@ -371,7 +423,8 @@ bool FramePumpWorker::createSession(Pipeline* pipe, int srcW, int srcH)
 void FramePumpWorker::startPump(qulonglong hwndVal, unsigned long pid, int encodeWidth,
                                 int encodeHeight, int fps, int bitrateMbps, int segmentSeconds,
                                 int lengthSeconds, const QString& gameName,
-                                const QString& executablePath, bool audioEnabled)
+                                const QString& executablePath, bool audioEnabled,
+                                bool hdrExperimentalEnabled)
 {
     if (m_pipe)   // already running
         return;
@@ -392,7 +445,7 @@ void FramePumpWorker::startPump(qulonglong hwndVal, unsigned long pid, int encod
     }
     attachRecorder(pipe, pid, srcW, srcH, encodeWidth, encodeHeight, fps, bitrateMbps,
                    segmentSeconds, lengthSeconds, audioEnabled);
-    if (!createSession(pipe, srcW, srcH)) {
+    if (!createSession(pipe, hwnd, srcW, srcH, hdrExperimentalEnabled)) {
         delete pipe;
         return;
     }
@@ -410,16 +463,20 @@ void FramePumpWorker::startPump(qulonglong hwndVal, unsigned long pid, int encod
     m_pipe->timer->start();
     qInfo() << "FramePump: started (hwnd" << Qt::hex << hwndVal << Qt::dec << ")";
 
-    // HDR is a per-monitor runtime toggle, so re-read it for the monitor this
-    // capture target actually sits on rather than trusting the startup probe.
-    const capture::HdrOutputInfo output = capture::HdrCapabilities::forWindow(hwnd);
-    if (output.valid && output.hdrActive)
-        qInfo().noquote() << QStringLiteral(
-            "FramePump: capture target is on an HDR display (%1) — capturing BGRA8 SDR, "
-            "highlights will clip until the HDR pipeline lands").arg(output.describe());
-    else if (output.valid)
-        qInfo().noquote() << QStringLiteral("FramePump: capture target display is SDR (%1)")
-                                 .arg(output.deviceName);
+    // createSession() already logged the experimental-HDR decision when the
+    // flag was on (armed, or why it fell back). This just covers the plain
+    // case: flag off, target happens to be HDR — still BGRA8 SDR, by design.
+    if (!pipe->hdrToneMapActive) {
+        const capture::HdrOutputInfo output = capture::HdrCapabilities::forWindow(hwnd);
+        if (output.valid && output.hdrActive)
+            qInfo().noquote() << QStringLiteral(
+                "FramePump: capture target is on an HDR display (%1) — capturing BGRA8 SDR, "
+                "highlights will clip (internal.capture.experimental_hdr is off or unavailable)"
+                ).arg(output.describe());
+        else if (output.valid)
+            qInfo().noquote() << QStringLiteral("FramePump: capture target display is SDR (%1)")
+                                     .arg(output.deviceName);
+    }
 }
 
 void FramePumpWorker::stopPump()
@@ -485,11 +542,27 @@ void FramePumpWorker::poll()
                                 << "DXGI_FORMAT=" << int(desc.Format);
                         m_pipe->firstFrameLogged = true;
                     }
+                    // t24: tone-map FP16 -> BGRA8 before the recorder ever sees the
+                    // frame. writeFrame() below is completely unaware this stage
+                    // exists — it always receives BGRA8, exactly as before.
+                    ID3D11Texture2D* encodeTex = tex;
+                    bool skipFrame = false;
+                    if (m_pipe->hdrToneMapActive) {
+                        encodeTex = m_pipe->hdrToneMapper->apply(tex);
+                        if (!encodeTex) {
+                            skipFrame = true;
+                            if (!m_pipe->hdrToneMapWarned) {
+                                qWarning() << "FramePump: HDR tone-map apply() failed — "
+                                              "dropping frames until it recovers (SDR path unaffected)";
+                                m_pipe->hdrToneMapWarned = true;
+                            }
+                        }
+                    }
                     // 0.5 Step 4 — feed the live texture to the H.264 segment writer
                     // (throttled to the target fps inside writeFrame).
-                    if (m_pipe->recorder) {
+                    if (m_pipe->recorder && !skipFrame) {
                         const qint64 t100 = m_pipe->encClock.nsecsElapsed() / 100;
-                        m_pipe->recorder->writeFrame(tex, m_pipe->d3dDevice,
+                        m_pipe->recorder->writeFrame(encodeTex, m_pipe->d3dDevice,
                                                      m_pipe->d3dCtx, t100);
                     }
                     tex->Release();
@@ -926,6 +999,9 @@ void FramePumpService::startBuffer()
     const bool audioRequested = m_config
         ? m_config->value(ConfigKeys::AudioEnabled, false).toBool() : false;
     const bool audioOn = audioRequested;
+    // t24: hidden, default-off — see ConfigKeys::InternalCaptureExperimentalHdr.
+    const bool hdrExperimentalEnabled = m_config
+        ? m_config->value(ConfigKeys::InternalCaptureExperimentalHdr, false).toBool() : false;
     const QString gameName = g.gameName.isEmpty() ? QStringLiteral("Unknown Game") : g.gameName;
     const QString executablePath = g.executablePath;
     const QString cacheDir = Paths::replayCacheDir() + QLatin1Char('/') + GameIdentity::folderName(gameName)
@@ -941,7 +1017,8 @@ void FramePumpService::startBuffer()
                               Q_ARG(int, fps), Q_ARG(int, mbps), Q_ARG(int, seg),
                               Q_ARG(int, len), Q_ARG(QString, gameName),
                               Q_ARG(QString, executablePath),
-                              Q_ARG(bool, audioOn));
+                              Q_ARG(bool, audioOn),
+                              Q_ARG(bool, hdrExperimentalEnabled));
 }
 
 void FramePumpService::stopBuffer()

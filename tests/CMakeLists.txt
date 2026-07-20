@@ -94,6 +94,19 @@ gamehq_add_test(tst_updatepreflight
     tst_updatepreflight.cpp
     "${CMAKE_SOURCE_DIR}/src/updates/UpdatePreflight.cpp")
 
+gamehq_add_test(tst_hdrtonemap
+    tst_hdrtonemap.cpp
+    "${CMAKE_SOURCE_DIR}/src/capture/hdr/HdrToneMapMath.cpp")
+
+# GPU smoke test (t24): needs a real D3D11 device, so it is not "pure logic"
+# like the tests above — it self-skips via QSKIP when no D3D11 hardware
+# device or no FP16 support is available (see the test file header comment).
+gamehq_add_test(tst_hdrgputonemap
+    tst_hdrgputonemap.cpp
+    "${CMAKE_SOURCE_DIR}/src/capture/hdr/HdrToneMapMath.cpp"
+    "${CMAKE_SOURCE_DIR}/src/capture/hdr/GpuToneMapper.cpp")
+target_link_libraries(tst_hdrgputonemap PRIVATE d3d11 d3dcompiler)
+
 gamehq_add_test(tst_updateinstaller
     tst_updateinstaller.cpp
     "${CMAKE_SOURCE_DIR}/src/updates/UpdateInstaller.cpp"

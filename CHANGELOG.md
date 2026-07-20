@@ -4,6 +4,30 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.15] - 2026-07-20
+
+### Added
+
+- Experimental HDR capture stage for the replay pipeline (t24), hidden
+  behind `internal.capture.experimental_hdr` (default off, not exposed in
+  Settings). When enabled, the display is HDR-active, and the GPU reports
+  FP16 texture/sample support, `FramePumpService` captures an FP16 scRGB
+  frame pool and tone-maps each frame to BGRA8 on the GPU before handing it
+  to the existing `SegmentRecorder` — the recorder itself is unchanged, and
+  any failure at any gate falls back to the original BGRA8 SDR pool.
+- `capture::hdr::HdrToneMapMath` (CPU reference) and `capture::hdr::GpuToneMapper`
+  (GPU shader stage): identity in the SDR range [0,1], hard-clipped to white
+  above it, then sRGB-encoded — see the code comments for why a perceptual
+  curve is deferred. Covered by `tst_hdrtonemap` (pure logic) and
+  `tst_hdrgputonemap` (opt-in GPU smoke test, self-skips without a D3D11
+  device or FP16 support).
+
+### Status
+
+Code-complete and verified by this machine's own build/test/GPU smoke test,
+but **not accepted** — nobody has run it against a real HDR-active display
+or a live HDR game yet. Stays hidden until that hardware acceptance pass.
+
 ## [0.6.14] - 2026-07-20
 
 ### Fixed
