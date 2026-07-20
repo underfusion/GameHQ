@@ -14,6 +14,7 @@ qt_add_executable(GameHQ
     config/CaptureLocations.cpp config/CaptureLocations.h
     core/GameIdentity.cpp core/GameIdentity.h
     core/UpdateMaintenance.cpp core/UpdateMaintenance.h
+    core/UpdaterHandshake.cpp core/UpdaterHandshake.h
     diagnostics/Logger.cpp diagnostics/Logger.h
     games/GameDetector.cpp games/GameDetector.h
     input/HotkeyManager.cpp input/HotkeyManager.h
@@ -204,6 +205,7 @@ add_executable(GameHQUpdater
     updater/UpdaterHealth.cpp updater/UpdaterHealth.h
     updater/UpdaterRecovery.cpp updater/UpdaterRecovery.h
     core/UpdateMaintenance.cpp core/UpdateMaintenance.h
+    core/UpdaterHandshake.cpp core/UpdaterHandshake.h
 )
 target_include_directories(GameHQUpdater PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(GameHQUpdater PRIVATE miniz bcrypt)

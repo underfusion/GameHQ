@@ -1,6 +1,7 @@
 #pragma once
 #include <QObject>
 #include <QString>
+#include <QThreadPool>
 #include <atomic>
 
 class QImage;
@@ -21,6 +22,7 @@ class ScreenshotService : public QObject
 public:
     ScreenshotService(ConfigManager* config, CaptureLocations* locations,
                       QObject* parent = nullptr);
+    ~ScreenshotService() override;
     bool busy() const { return m_pendingWrites.load() > 0; }
 
 public slots:
@@ -53,4 +55,8 @@ private:
     CaptureLocations* m_locations;
     std::atomic_int m_pendingWrites{0};
     std::atomic_bool m_updatePreparing{false};
+    // Encode workers capture `this`, so they must never outlive the service.
+    // A service-owned pool (declared last → destroyed first) makes the
+    // destructor wait for in-flight encodes before any member goes away.
+    QThreadPool m_encodePool;
 };

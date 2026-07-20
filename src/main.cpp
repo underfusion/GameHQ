@@ -53,11 +53,14 @@ void cleanCompletedUpdateArtifacts()
 {
     const QString update = Paths::packageRoot() + QStringLiteral("/.update");
     for (const QString &name : { QStringLiteral("backup"), QStringLiteral("data-snapshot"),
-                                 QStringLiteral("staging"), QStringLiteral("failed-new") })
+                                 QStringLiteral("staging"), QStringLiteral("failed-new"),
+                                 QStringLiteral("downloads") })
         QDir(update + QLatin1Char('/') + name).removeRecursively();
+    // updater.log is deliberately retained for diagnostics.
     for (const QString &name : { QStringLiteral("swap.manifest"),
                                  QStringLiteral("healthy.token"),
-                                 QStringLiteral("transaction.phase") })
+                                 QStringLiteral("transaction.phase"),
+                                 QStringLiteral("transaction.json") })
         QFile::remove(update + QLatin1Char('/') + name);
 }
 }

@@ -101,11 +101,15 @@ identical after any update, successful or rolled back.
    its release revalidated immediately before installation. See Stage 2 below.
 3. **Quiescence** — the app confirms no game is currently being recorded and
    no export is finalizing before entering maintenance mode. See Stage 3.
-4. **Handoff** — the app writes a transaction file, snapshots user data
-   metadata, launches `GameHQUpdater.exe` from the install root, and exits.
-5. **Swap** — the helper waits for the app to exit, extracts and validates
-   the package in staging, backs up the current program-owned files, installs
-   the new ones, and restarts the app in post-update validation mode.
+4. **Handoff** — the app writes a transaction file (including its own process
+   id as `callerPid`), launches `GameHQUpdater.exe` from the install root, and
+   waits on a named READY event the helper signals once it has validated the
+   transaction. Only then does the app exit; if the helper never becomes ready
+   or exits early, the app cancels the update and stays running.
+5. **Swap** — the helper waits for the `callerPid` process to actually exit
+   (bounded wait; a timeout aborts before any file is touched), extracts and
+   validates the package in staging, backs up the current program-owned files,
+   installs the new ones, and restarts the app in post-update validation mode.
 6. **Health check** — the new process must reach a running, initialized state
    within a bounded window and write a success token; otherwise the helper
    restores the backup and restarts the previous version.
@@ -129,11 +133,14 @@ different stage count or a temp-located helper.
    dry-run mode validates the transaction and staging plan without touching
    any file, used for automated testing. Transaction schema 1 additionally
    records `productId`, package root, staging and backup directories, and the
-   durable phase marker (`download_verified` at handoff). Every path is
-   canonicalized and must remain below the package root. The helper uses a
-   per-transaction Windows mutex to reject a competing updater, then prints
-   the full verify/extract/backup/install/restart operation list in dry-run
-   mode without creating staging, backup or lock files.
+   durable phase marker (`download_verified` at handoff), and the writing
+   process id (`callerPid`) the helper must wait out before mutating files.
+   Every path is canonicalized and must remain below the package root. The
+   helper uses a per-transaction Windows mutex to reject a competing updater,
+   then prints the full verify/extract/backup/install/restart operation list
+   in dry-run mode without creating staging, backup or lock files. Outside
+   dry-run every helper outcome is also appended with a timestamp to
+   `.update/updater.log`, which survives the post-update artifact cleanup.
 2. **Staging extraction and validation** — the helper extracts the update zip
    into a staging directory on the same volume as the install (never a
    different drive, so the final move can be atomic where possible).

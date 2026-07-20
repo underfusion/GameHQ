@@ -15,7 +15,8 @@ Rectangle {
     onVisibleChanged: if (visible) root.dismissed = false
 
     visible: updates.latestVersion !== ""
-             && ["UpdateAvailable", "Downloading", "ReadyToInstall", "Failed"].includes(updates.stateName)
+             && ["UpdateAvailable", "Downloading", "ReadyToInstall", "PreparingForUpdate",
+                 "Quiescent", "Installing", "Failed"].includes(updates.stateName)
              && !root.dismissed
     height: visible ? implicitHeight : 0
     implicitHeight: content.implicitHeight + Theme.s16 * 2
@@ -50,11 +51,21 @@ Rectangle {
             spacing: Theme.s4
 
             Text {
-                text: updates.stateName === "Downloading"
-                      ? "Downloading " + Brand.name + " " + updates.latestVersion + "... " + updates.progress + "%"
-                      : updates.stateName === "ReadyToInstall"
-                        ? Brand.name + " " + updates.latestVersion + " downloaded and verified"
-                        : Brand.name + " " + updates.latestVersion + " is available"
+                text: {
+                    switch (updates.stateName) {
+                    case "Downloading":
+                        return "Downloading " + Brand.name + " " + updates.latestVersion + "... " + updates.progress + "%"
+                    case "ReadyToInstall":
+                        return Brand.name + " " + updates.latestVersion + " downloaded and verified"
+                    case "PreparingForUpdate":
+                    case "Quiescent":
+                        return "Getting ready to install " + Brand.name + " " + updates.latestVersion + "..."
+                    case "Installing":
+                        return "Installing " + Brand.name + " " + updates.latestVersion + "..."
+                    default:
+                        return Brand.name + " " + updates.latestVersion + " is available"
+                    }
+                }
                 color: Theme.text
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontTitle
@@ -91,8 +102,8 @@ Rectangle {
         }
 
         AccentButton {
-            visible: updates.stateName === "UpdateAvailable" || updates.stateName === "Failed"
-            label: updates.stateName === "Failed" ? "Retry download" : "Download update (Beta)"
+            visible: updates.stateName === "UpdateAvailable"
+            label: "Download update (Beta)"
             primary: true
             onClicked: updates.downloadUpdate()
         }
@@ -102,6 +113,25 @@ Rectangle {
             onClicked: updates.cancelDownload()
         }
         AccentButton {
+            visible: updates.stateName === "ReadyToInstall"
+            label: "Install and restart"
+            primary: true
+            onClicked: updates.installAndRestart()
+        }
+        AccentButton {
+            visible: updates.stateName === "Failed" && updates.failedDuringCheck
+            label: "Check again"
+            primary: true
+            onClicked: updates.checkNow()
+        }
+        AccentButton {
+            visible: updates.stateName === "Failed" && !updates.failedDuringCheck
+            label: "Retry download"
+            primary: true
+            onClicked: updates.downloadUpdate()
+        }
+        AccentButton {
+            visible: !["PreparingForUpdate", "Quiescent", "Installing"].includes(updates.stateName)
             label: "View on GitHub"
             onClicked: updates.openReleasePage()
         }
@@ -112,6 +142,7 @@ Rectangle {
         }
         AccentButton {
             visible: updates.stateName === "UpdateAvailable" || updates.stateName === "Failed"
+                     || updates.stateName === "ReadyToInstall"
             label: "Not now"
             onClicked: root.dismissed = true
         }

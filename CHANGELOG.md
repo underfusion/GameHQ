@@ -4,6 +4,40 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.12] - 2026-07-20
+
+### Added
+
+- Install-and-restart controls: the update banner and About page now cover the
+  full install flow (ready, preparing, installing) with state-specific actions,
+  and a failed check offers "Check again" instead of a misleading retry.
+- Updater READY handshake: the app only exits after the helper confirms it
+  validated the transaction, and the helper waits for the old process to fully
+  exit before touching any file.
+- Persistent `.update/updater.log` recording every helper outcome, retained
+  across the post-update cleanup for diagnostics.
+
+### Fixed
+
+- `UpdateService` double ownership: the service is no longer parented to the
+  QML engine while also held by the application, removing a shutdown
+  double-delete.
+- Data-restore rollback now reverses only the operations it performed instead
+  of deleting every known state file, so an aborted restore can no longer
+  discard an untouched database.
+- A release whose assets are still uploading is no longer offered, and its
+  ETag is not cached (previously the check could stick on 304 and never see
+  the finished assets).
+- A failed health-token release from job supervision now rolls back instead of
+  reporting success while the new process is killed on helper exit.
+- Screenshot encoding now finishes before shutdown, preventing a crash when
+  quitting during a background encode.
+- Integration clients rejected for malformed frames free their connection slot
+  immediately, and install-directory game matching no longer accepts
+  executables from a different drive.
+- Completed updates also clean the downloaded package and stale transaction
+  file; the About page License link points at the real repository file.
+
 ## [0.6.11] - 2026-07-20
 
 ### Added

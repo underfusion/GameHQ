@@ -98,7 +98,8 @@ gamehq_add_test(tst_updateinstaller
     tst_updateinstaller.cpp
     "${CMAKE_SOURCE_DIR}/src/updates/UpdateInstaller.cpp"
     "${CMAKE_SOURCE_DIR}/src/updates/UpdateDownloader.cpp"
-    "${CMAKE_SOURCE_DIR}/src/updater/UpdaterTransaction.cpp")
+    "${CMAKE_SOURCE_DIR}/src/updater/UpdaterTransaction.cpp"
+    "${CMAKE_SOURCE_DIR}/src/core/UpdaterHandshake.cpp")
 target_link_libraries(tst_updateinstaller PRIVATE Qt6::Network)
 
 gamehq_add_test(tst_updatertransaction

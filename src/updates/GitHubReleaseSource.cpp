@@ -109,6 +109,10 @@ void GitHubReleaseSource::handleReply(QNetworkReply *reply, const QString &ifNon
     }
 
     const QByteArray body = reply->readAll();
+    if (body.size() > 4 * 1024 * 1024) {
+        Q_EMIT failed(QStringLiteral("release response is unreasonably large"));
+        return;
+    }
     const QJsonDocument doc = QJsonDocument::fromJson(body);
     if (!doc.isObject()) {
         Q_EMIT failed(QStringLiteral("malformed release JSON"));

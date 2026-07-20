@@ -46,6 +46,7 @@ UpdateService::UpdateService(QString owner, QString repo, QString installedVersi
         Q_EMIT errorChanged();
         m_progress = 0;
         Q_EMIT progressChanged();
+        m_failedDuringCheck = false;
         setState(State::Failed);
     });
 }
@@ -82,10 +83,25 @@ bool UpdateService::releaseIsNewerThanInstalled(const ReleaseInfo &release) cons
     return latest.has_value() && installed.has_value() && *latest > *installed;
 }
 
+// A check that produced nothing usable never disturbs the last known-good
+// result; fall back to whatever that result still justifies.
+UpdateService::State UpdateService::fallbackAfterCheck() const
+{
+    return m_release.has_value() && releaseIsNewerThanInstalled(*m_release)
+            && m_release->version != m_skippedVersion
+        ? State::UpdateAvailable
+        : State::UpToDate;
+}
+
 void UpdateService::checkNow()
 {
     if (m_state == State::Checking)
         return;
+    // Rapid re-clicks of "Check again" must not turn into request bursts
+    // against GitHub's anonymous rate limit.
+    if (m_lastCheckRequest.isValid() && m_lastCheckRequest.elapsed() < 5000)
+        return;
+    m_lastCheckRequest.start();
     m_errorText.clear();
     Q_EMIT errorChanged();
     setState(State::Checking);
@@ -125,11 +141,20 @@ void UpdateService::applyRelease(const ReleaseInfo &release)
 
 void UpdateService::onSucceeded(const ReleaseInfo &release, const QString &etag)
 {
-    m_lastChecked = QDateTime::currentDateTimeUtc();
-    Q_EMIT lastCheckedChanged();
-    if (!etag.isEmpty() && etag != m_etag) {
-        m_etag = etag;
-        Q_EMIT etagUpdated(etag);
+    // A newer release that is still uploading its assets is not a completed
+    // check: skip the ETag (a cached one would answer 304 forever and hide the
+    // finished assets) and leave lastChecked stale so the hourly automatic
+    // wake retries instead of waiting out the 24h gate.
+    const bool offerable = !release.draft && !release.prerelease
+        && releaseIsNewerThanInstalled(release);
+    const bool incomplete = offerable && !release.hasCompleteUpdateAssets();
+    if (!incomplete) {
+        m_lastChecked = QDateTime::currentDateTimeUtc();
+        Q_EMIT lastCheckedChanged();
+        if (!etag.isEmpty() && etag != m_etag) {
+            m_etag = etag;
+            Q_EMIT etagUpdated(etag);
+        }
     }
     if (m_revalidatingInstall) {
         m_revalidatingInstall = false;
@@ -142,11 +167,21 @@ void UpdateService::onSucceeded(const ReleaseInfo &release, const QString &etag)
         if (!unchanged) {
             m_errorText = QStringLiteral("The release changed after download. Check again before installing.");
             Q_EMIT errorChanged();
+            if (incomplete) {
+                setState(fallbackAfterCheck());
+                return;
+            }
             applyRelease(release);
             return;
         }
         Q_EMIT installApproved(release.version, m_downloadedPackagePath,
                                m_downloadedSha256);
+        return;
+    }
+    if (incomplete) {
+        qInfo() << "UpdateService: release" << release.version
+                << "is missing its update assets; keeping the previous result and re-checking later";
+        setState(fallbackAfterCheck());
         return;
     }
     applyRelease(release);
@@ -161,9 +196,7 @@ void UpdateService::onUnchanged(const QString & /*etag*/)
     }
     m_lastChecked = QDateTime::currentDateTimeUtc();
     Q_EMIT lastCheckedChanged();
-    setState(m_release.has_value() && releaseIsNewerThanInstalled(*m_release) && m_release->version != m_skippedVersion
-                  ? State::UpdateAvailable
-                  : State::UpToDate);
+    setState(fallbackAfterCheck());
 }
 
 void UpdateService::onNotFound()
@@ -198,9 +231,7 @@ void UpdateService::onRateLimited(qint64 resetEpochSeconds)
     Q_EMIT errorChanged();
     // Never treat rate limiting as "no update" or as a hard failure: fall back
     // to whatever the last known-good result was.
-    setState(m_release.has_value() && releaseIsNewerThanInstalled(*m_release) && m_release->version != m_skippedVersion
-                  ? State::UpdateAvailable
-                  : State::UpToDate);
+    setState(fallbackAfterCheck());
 }
 
 void UpdateService::onFailed(const QString &errorText)
@@ -216,10 +247,9 @@ void UpdateService::onFailed(const QString &errorText)
     // A failed check never disturbs a known-good result; only report Failed
     // when there is nothing good to fall back to.
     if (m_release.has_value()) {
-        setState(releaseIsNewerThanInstalled(*m_release) && m_release->version != m_skippedVersion
-                     ? State::UpdateAvailable
-                     : State::UpToDate);
+        setState(fallbackAfterCheck());
     } else {
+        m_failedDuringCheck = true;
         setState(State::Failed);
     }
 }
@@ -232,6 +262,7 @@ void UpdateService::downloadUpdate()
     if (!UpdatePreflight::check(m_packageRoot, m_release->zipSize, preflightError)) {
         m_errorText = preflightError;
         Q_EMIT errorChanged();
+        m_failedDuringCheck = false;
         setState(State::Failed);
         return;
     }
@@ -257,6 +288,7 @@ void UpdateService::installAndRestart()
                                 preflightError)) {
         m_errorText = preflightError;
         Q_EMIT errorChanged();
+        m_failedDuringCheck = false;
         setState(State::Failed);
         return;
     }

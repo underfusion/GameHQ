@@ -3,6 +3,7 @@
 #include "updates/ReleaseInfo.h"
 
 #include <QDateTime>
+#include <QElapsedTimer>
 #include <QObject>
 #include <QString>
 #include <optional>
@@ -32,6 +33,10 @@ class UpdateService : public QObject
     Q_PROPERTY(int progress READ progress NOTIFY progressChanged)
     Q_PROPERTY(QString errorText READ errorText NOTIFY errorChanged)
     Q_PROPERTY(QDateTime lastChecked READ lastChecked NOTIFY lastCheckedChanged)
+    // True when the current Failed state came from a background/manual check
+    // (no download was attempted yet) rather than from a download or install
+    // preflight failure — lets QML offer "Check again" vs "Retry download".
+    Q_PROPERTY(bool failedDuringCheck READ failedDuringCheck NOTIFY stateChanged)
 
 public:
     enum class State
@@ -66,6 +71,7 @@ public:
     int progress() const { return m_progress; }
     QString errorText() const { return m_errorText; }
     QDateTime lastChecked() const { return m_lastChecked; }
+    bool failedDuringCheck() const { return m_failedDuringCheck; }
 
     // Config-key persistence (updates.skipped_version, internal.updates.etag,
     // ...) is owned by the caller; these let it prime/read this instance.
@@ -101,6 +107,7 @@ Q_SIGNALS:
 private:
     void setState(State state);
     bool releaseIsNewerThanInstalled(const ReleaseInfo &release) const;
+    State fallbackAfterCheck() const;
     void applyRelease(const ReleaseInfo &release);
     void onSucceeded(const ReleaseInfo &release, const QString &etag);
     void onUnchanged(const QString &etag);
@@ -121,5 +128,7 @@ private:
     QString m_downloadedPackagePath;
     QByteArray m_downloadedSha256;
     QString m_packageRoot;
+    QElapsedTimer m_lastCheckRequest;
     bool m_revalidatingInstall = false;
+    bool m_failedDuringCheck = false;
 };

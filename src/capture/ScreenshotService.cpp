@@ -25,6 +25,14 @@ ScreenshotService::ScreenshotService(ConfigManager* config, CaptureLocations* lo
     , m_config(config)
     , m_locations(locations)
 {
+    m_encodePool.setMaxThreadCount(2);
+}
+
+ScreenshotService::~ScreenshotService()
+{
+    // ~QThreadPool would wait too, but do it explicitly while the full object
+    // is still alive: workers touch m_pendingWrites and emit signals.
+    m_encodePool.waitForDone();
 }
 
 void ScreenshotService::capture()
@@ -102,7 +110,7 @@ void ScreenshotService::encodeAndSave(const QImage& img, const QString& gameName
         : 90;
 
     ++m_pendingWrites;
-    QThreadPool::globalInstance()->start(QRunnable::create(
+    m_encodePool.start(QRunnable::create(
         [this, img, gameName, executablePath, dir, jpeg, ext, jpegQuality]() {
         struct Completion {
             ScreenshotService *service;

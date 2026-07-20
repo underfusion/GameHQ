@@ -26,6 +26,7 @@ private Q_SLOTS:
     void rejectsForbiddenDataAndBadManifest();
     void rejectsPackageChangedAfterVerification();
     void snapshotsAndRestoresDataWithoutTouchingCaptures();
+    void failedRestoreKeepsUntouchedDataFiles();
     void swapsOnlyOwnedProgramFiles();
     void lockedFileAbortsAndRollsBack();
     void healthyStartPublishesToken();
@@ -70,6 +71,7 @@ QString UpdaterTransactionTest::writeFixture(const QString &root, const QString 
         { QStringLiteral("healthTokenPath"), QDir::toNativeSeparators(QDir(updateDir).filePath(QStringLiteral("healthy.token"))) },
         { QStringLiteral("dataDir"), QDir::toNativeSeparators(QDir(root).filePath(QStringLiteral("gamehq-data"))) },
         { QStringLiteral("dataSnapshotDir"), QDir::toNativeSeparators(QDir(updateDir).filePath(QStringLiteral("data-snapshot"))) },
+        { QStringLiteral("callerPid"), static_cast<qint64>(QCoreApplication::applicationPid()) },
         { QStringLiteral("phase"), QStringLiteral("download_verified") }
     };
     const QString transactionPath = QDir(updateDir).filePath(QStringLiteral("transaction.json"));
@@ -286,6 +288,38 @@ void UpdaterTransactionTest::snapshotsAndRestoresDataWithoutTouchingCaptures()
     QCOMPARE(read(QDir(data).filePath(QStringLiteral("gamehq.db-wal"))), QByteArray("old wal"));
     QVERIFY(!QFileInfo::exists(QDir(data).filePath(QStringLiteral("gamehq.db-shm"))));
     QCOMPARE(read(capture), QByteArray("user media"));
+}
+
+void UpdaterTransactionTest::failedRestoreKeepsUntouchedDataFiles()
+{
+    QTemporaryDir dir(QDir::current().filePath(QStringLiteral("tst-updater-datafail-XXXXXX")));
+    QVERIFY(dir.isValid());
+    const QString data = QDir(dir.path()).filePath(QStringLiteral("gamehq-data"));
+    const QString snapshot = QDir(dir.path()).filePath(QStringLiteral(".update/data-snapshot"));
+    QDir().mkpath(data);
+    auto write = [](const QString &path, const QByteArray &contents) {
+        QFile file(path); return file.open(QIODevice::WriteOnly | QIODevice::Truncate)
+            && file.write(contents) == contents.size();
+    };
+    QVERIFY(write(QDir(data).filePath(QStringLiteral("config.json")), "old config"));
+    QVERIFY(write(QDir(data).filePath(QStringLiteral("gamehq.db")), "old database"));
+    QVERIFY(write(QDir(data).filePath(QStringLiteral("gamehq.db-wal")), "old wal"));
+    std::string error;
+    QVERIFY2(updater::createDataSnapshot(data.toStdWString(), snapshot.toStdWString(), error), error.c_str());
+    // A directory in the gamehq.db slot makes the backup step fail after
+    // config.json was already backed up; the rollback must leave the untouched
+    // gamehq.db-wal alone instead of deleting every known state file.
+    QVERIFY(write(QDir(data).filePath(QStringLiteral("config.json")), "new config"));
+    QVERIFY(QFile::remove(QDir(data).filePath(QStringLiteral("gamehq.db"))));
+    QVERIFY(QDir().mkpath(QDir(data).filePath(QStringLiteral("gamehq.db"))));
+    QVERIFY(write(QDir(data).filePath(QStringLiteral("gamehq.db-wal")), "current wal"));
+    QVERIFY(!updater::restoreDataSnapshot(data.toStdWString(), snapshot.toStdWString(), error));
+    auto read = [](const QString &path) { QFile file(path); file.open(QIODevice::ReadOnly); return file.readAll(); };
+    QCOMPARE(read(QDir(data).filePath(QStringLiteral("config.json"))), QByteArray("new config"));
+    QCOMPARE(read(QDir(data).filePath(QStringLiteral("gamehq.db-wal"))), QByteArray("current wal"));
+    QVERIFY(QFileInfo(QDir(data).filePath(QStringLiteral("gamehq.db"))).isDir());
+    QVERIFY(!QFileInfo::exists(QDir(data).filePath(QStringLiteral("config.json.restore.partial"))));
+    QVERIFY(!QFileInfo::exists(QDir(data).filePath(QStringLiteral("config.json.failed-update.backup"))));
 }
 
 void UpdaterTransactionTest::swapsOnlyOwnedProgramFiles()

@@ -1,6 +1,8 @@
 #include "updates/UpdateInstaller.h"
 #include "updates/UpdateDownloader.h"
+#include "core/UpdaterHandshake.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QCryptographicHash>
 #include <QFileInfo>
@@ -9,6 +11,8 @@
 #include <QProcess>
 #include <QSaveFile>
 #include <QRegularExpression>
+
+#include <windows.h>
 
 namespace UpdateInstaller
 {
@@ -56,6 +60,7 @@ bool prepareTransaction(const QString &packageRoot, const QString &dataDir,
         { QStringLiteral("healthTokenPath"), QDir::toNativeSeparators(QDir(update).filePath(QStringLiteral("healthy.token"))) },
         { QStringLiteral("dataDir"), QDir::toNativeSeparators(QFileInfo(dataDir).absoluteFilePath()) },
         { QStringLiteral("dataSnapshotDir"), QDir::toNativeSeparators(QDir(update).filePath(QStringLiteral("data-snapshot"))) },
+        { QStringLiteral("callerPid"), static_cast<qint64>(QCoreApplication::applicationPid()) },
         { QStringLiteral("phase"), QStringLiteral("download_verified") }
     };
     QSaveFile output(transactionPath);
@@ -76,13 +81,36 @@ bool launchPrepared(const QString &packageRoot, const QString &transactionPath,
         error = QStringLiteral("GameHQUpdater.exe is missing or cannot run.");
         return false;
     }
+    // Create the READY event before the helper starts so its SetEvent can
+    // never race ahead of us; only quit the app once the helper has validated
+    // the transaction (docs/updater.md "Handoff").
+    const std::wstring readyName =
+        handshake::readyEventNameFor(transactionPath.toStdWString());
+    HANDLE ready = CreateEventW(nullptr, TRUE, FALSE, readyName.c_str());
+    if (!ready) {
+        error = QStringLiteral("GameHQ could not prepare the updater handshake.");
+        return false;
+    }
     qint64 processId = 0;
     if (!QProcess::startDetached(helper,
                                  { QStringLiteral("--apply"), transactionPath },
                                  root, &processId) || processId <= 0) {
+        CloseHandle(ready);
         error = QStringLiteral("GameHQ could not start the updater helper.");
         return false;
     }
-    return true;
+    HANDLE helperProcess = OpenProcess(SYNCHRONIZE, FALSE, static_cast<DWORD>(processId));
+    HANDLE waitees[2] = { ready, helperProcess };
+    const DWORD count = helperProcess ? 2 : 1;
+    const DWORD result = WaitForMultipleObjects(count, waitees, FALSE, 15000);
+    if (helperProcess)
+        CloseHandle(helperProcess);
+    CloseHandle(ready);
+    if (result == WAIT_OBJECT_0)
+        return true;
+    error = result == WAIT_OBJECT_0 + 1
+        ? QStringLiteral("The updater helper rejected the update before it became ready.")
+        : QStringLiteral("The updater helper did not confirm it is ready in time.");
+    return false;
 }
 }

@@ -1,4 +1,5 @@
 #include "updates/UpdateDownloader.h"
+#include "updates/ReleaseInfo.h"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -13,7 +14,23 @@ private Q_SLOTS:
     void parsesCommonChecksumFormats();
     void rejectsMalformedOrMismatchedChecksum();
     void rejectsCorruptedPackage();
+    void detectsIncompleteReleaseAssets();
 };
+
+void UpdateDownloaderTest::detectsIncompleteReleaseAssets()
+{
+    ReleaseInfo release;
+    release.version = QStringLiteral("1.2.3");
+    QVERIFY(!release.hasCompleteUpdateAssets());
+    release.zipName = QStringLiteral("GameHQ-1.2.3-win64-update.zip");
+    release.zipUrl = QStringLiteral("https://example.invalid/update.zip");
+    release.zipSize = 1024;
+    QVERIFY(!release.hasCompleteUpdateAssets()); // checksum still uploading
+    release.checksumUrl = QStringLiteral("https://example.invalid/update.zip.sha256");
+    QVERIFY(release.hasCompleteUpdateAssets());
+    release.zipSize = 0;
+    QVERIFY(!release.hasCompleteUpdateAssets());
+}
 
 void UpdateDownloaderTest::parsesCommonChecksumFormats()
 {

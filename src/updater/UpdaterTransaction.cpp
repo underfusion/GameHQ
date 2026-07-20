@@ -313,6 +313,13 @@ bool loadAndValidateTransaction(const std::filesystem::path &transactionPath,
         || !getPath(values, "dataSnapshotDir", out.dataSnapshotDir, error)
         || !getString(values, "phase", out.phase, error))
         return false;
+    const auto callerPid = values.find("callerPid");
+    if (callerPid == values.end() || !std::holds_alternative<long long>(callerPid->second)
+        || std::get<long long>(callerPid->second) <= 0) {
+        error = "missing or invalid transaction field: callerPid";
+        return false;
+    }
+    out.callerPid = std::get<long long>(callerPid->second);
 
     if (out.productId != "underfusion.gamehq") {
         error = "transaction product does not match GameHQ";
@@ -378,6 +385,7 @@ std::vector<std::string> plannedOperations(const Transaction &tx)
         "THIRD_PARTY_NOTICES.md", "licenses/", "GameHQUpdater.pending.exe"
     };
     std::vector<std::string> operations;
+    operations.push_back("WAIT FOR CALLER EXIT pid=" + std::to_string(tx.callerPid));
     operations.push_back("VERIFY SHA-256 " + pathToUtf8(tx.packagePath));
     operations.push_back("CREATE STAGING " + pathToUtf8(tx.stagingDir));
     operations.push_back("EXTRACT PACKAGE " + pathToUtf8(tx.packagePath) + " -> " + pathToUtf8(tx.stagingDir));

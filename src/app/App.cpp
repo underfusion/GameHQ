@@ -195,7 +195,7 @@ bool App::init()
     m_updates = std::make_unique<UpdateService>(QStringLiteral("underfusion"), QStringLiteral("GameHQ"),
                                                  QStringLiteral(GAMEHQ_VERSION),
                                                  Paths::packageRoot() + QStringLiteral("/.update/downloads"),
-                                                 &m_engine);
+                                                 nullptr);
     // Update-check policy (docs/updater.md "Discovery"): prime the cached ETag
     // and skip flag from config, persist whatever the service later reports,
     // and gate automatic checks to at most once every 24h. Manual checkNow()

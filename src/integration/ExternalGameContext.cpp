@@ -40,7 +40,10 @@ bool pathInside(const QString &candidate, const QString &directory)
         return false;
     }
     const QString relative = QDir(cleanDirectory).relativeFilePath(cleanCandidate);
-    return relative != QStringLiteral(".") && relative != QStringLiteral("..")
+    // On another drive relativeFilePath() returns the candidate unchanged
+    // (still absolute); that is never "inside" the install directory.
+    return !QDir::isAbsolutePath(relative)
+        && relative != QStringLiteral(".") && relative != QStringLiteral("..")
         && !relative.startsWith(QStringLiteral("../"));
 }
 }

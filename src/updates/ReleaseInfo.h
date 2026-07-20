@@ -18,4 +18,13 @@ struct ReleaseInfo
     QString checksumUrl;   // Download URL of the matching ".sha256" asset.
     bool prerelease = false;
     bool draft = false;
+
+    // A freshly published release may still be uploading its assets; such a
+    // release must not be offered and its ETag must not be cached (a cached
+    // ETag would answer 304 forever and hide the completed assets).
+    bool hasCompleteUpdateAssets() const
+    {
+        return !zipName.isEmpty() && !zipUrl.isEmpty() && !checksumUrl.isEmpty()
+            && zipSize > 0;
+    }
 };

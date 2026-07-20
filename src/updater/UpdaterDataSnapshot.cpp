@@ -122,13 +122,20 @@ bool restoreDataSnapshot(const std::filesystem::path &dataDir,
         prepared.push_back(partial);
     }
 
+    // Rollback may only reverse operations this restore actually performed:
+    // remove files it published, put back files it renamed away, drop its
+    // partials. Untouched live files (e.g. a database whose backup step never
+    // ran) must survive a failed restore.
     std::vector<std::pair<std::filesystem::path, std::filesystem::path>> backups;
+    std::vector<std::filesystem::path> published;
     const auto rollback = [&] {
         std::error_code ignored;
-        for (const wchar_t *name : kStateFiles)
-            std::filesystem::remove(dataDir / name, ignored);
-        for (auto it = backups.rbegin(); it != backups.rend(); ++it)
+        for (auto it = published.rbegin(); it != published.rend(); ++it)
+            std::filesystem::remove(*it, ignored);
+        for (auto it = backups.rbegin(); it != backups.rend(); ++it) {
+            std::filesystem::remove(it->first, ignored);
             std::filesystem::rename(it->second, it->first, ignored);
+        }
         for (const auto &path : prepared) std::filesystem::remove(path, ignored);
     };
     for (const wchar_t *name : kStateFiles) {
@@ -160,9 +167,11 @@ bool restoreDataSnapshot(const std::filesystem::path &dataDir,
             error = "could not publish restored data state";
             return false;
         }
+        published.push_back(dataDir / name);
     }
-    for (const auto &entry : backups)
-        std::filesystem::remove(entry.second, ec);
+    // Also clears backups a crashed earlier restore may have left behind.
+    for (const wchar_t *name : kStateFiles)
+        std::filesystem::remove(dataDir / (std::wstring(name) + L".failed-update.backup"), ec);
     return true;
 }
 } // namespace updater

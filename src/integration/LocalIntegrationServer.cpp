@@ -105,7 +105,17 @@ void LocalIntegrationServer::readClient(QLocalSocket *socket)
 void LocalIntegrationServer::rejectClient(QLocalSocket *socket, const QString &reason)
 {
     qWarning() << "Integration client disconnected:" << reason;
+    // abort() is not guaranteed to emit disconnected(), so clean up here or
+    // the entry would hold one of the kMaximumClients slots forever.
+    const auto it = m_clients.find(socket);
+    if (it != m_clients.end()) {
+        const quint64 id = it->id;
+        m_clients.erase(it);
+        emit clientDisconnected(id);
+    }
+    socket->disconnect(this);
     socket->abort();
+    socket->deleteLater();
 }
 
 bool LocalIntegrationServer::send(quint64 clientId, const QJsonObject &message)

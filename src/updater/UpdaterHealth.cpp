@@ -101,8 +101,17 @@ bool launchAndWaitForHealth(const Transaction &transaction, int timeoutMs,
             }
             if (token == transaction.expectedVersion) {
                 limits.BasicLimitInformation.LimitFlags = 0;
-                SetInformationJobObject(job, JobObjectExtendedLimitInformation,
-                                        &limits, sizeof(limits));
+                if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation,
+                                             &limits, sizeof(limits))) {
+                    // Kill-on-close could not be lifted, so the healthy app
+                    // dies as soon as the job handle closes (at the latest at
+                    // helper exit). Report failure so the caller rolls back
+                    // and restarts the previous version instead.
+                    CloseHandle(job);
+                    CloseHandle(process.hProcess);
+                    errorOut = "could not release the updated application from supervision";
+                    return false;
+                }
                 CloseHandle(job);
                 CloseHandle(process.hProcess);
                 return true;

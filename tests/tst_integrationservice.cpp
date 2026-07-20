@@ -201,6 +201,12 @@ void IntegrationServiceTest::externalIdentityRequiresProcessOrSafeGamePath()
         99, QStringLiteral("C:/Games/Trusted/game.exe"), true, noDescendant);
     QCOMPARE(safePath.confidence, integration::MatchConfidence::InstallDirectory);
     QVERIFY(!safePath.authorizesWindowedCapture());
+
+    // relativeFilePath() returns an absolute path for another drive; that must
+    // never count as "inside" the install directory.
+    const auto crossDrive = context.matchForeground(
+        99, QStringLiteral("D:/Other/game.exe"), true, noDescendant);
+    QCOMPARE(crossDrive.confidence, integration::MatchConfidence::None);
 }
 
 QTEST_GUILESS_MAIN(IntegrationServiceTest)

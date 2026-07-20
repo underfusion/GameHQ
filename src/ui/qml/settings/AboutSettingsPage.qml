@@ -50,6 +50,9 @@ SettingsPage {
             if (updates.stateName === "UpdateAvailable") return "GameHQ " + updates.latestVersion + " is available."
             if (updates.stateName === "Downloading") return "Downloading GameHQ " + updates.latestVersion + "... " + updates.progress + "%"
             if (updates.stateName === "ReadyToInstall") return "GameHQ " + updates.latestVersion + " is downloaded and SHA-256 verified."
+            if (updates.stateName === "PreparingForUpdate" || updates.stateName === "Quiescent")
+                return "Getting ready to install GameHQ " + updates.latestVersion + "..."
+            if (updates.stateName === "Installing") return "Installing GameHQ " + updates.latestVersion + "..."
             if (updates.stateName === "Failed" && updates.errorText !== "") return updates.errorText
             if (updates.lastChecked.getTime() > 0)
                 return "Up to date, last checked " + Qt.formatDateTime(updates.lastChecked, "d MMM yyyy, HH:mm")
@@ -71,16 +74,47 @@ SettingsPage {
             }
         }
         SettingsRow {
-            visible: updates.stateName === "UpdateAvailable" || updates.stateName === "Downloading" || updates.stateName === "Failed"
-            label: updates.stateName === "Downloading" ? "Download progress" : "Beta update download"
-            description: updates.stateName === "Downloading"
-                         ? updates.progress + "% complete"
-                         : "SHA-256 detects corruption, but not a compromised GitHub account."
+            visible: ["UpdateAvailable", "Downloading", "ReadyToInstall", "PreparingForUpdate",
+                      "Quiescent", "Installing", "Failed"].includes(updates.stateName)
+            label: {
+                switch (updates.stateName) {
+                case "Downloading": return "Download progress"
+                case "ReadyToInstall": return "Ready to install"
+                case "PreparingForUpdate":
+                case "Quiescent":
+                case "Installing": return "Installing"
+                default: return "Beta update download"
+                }
+            }
+            description: {
+                switch (updates.stateName) {
+                case "Downloading": return updates.progress + "% complete"
+                case "ReadyToInstall": return "GameHQ will restart to apply the update."
+                case "PreparingForUpdate":
+                case "Quiescent": return "Waiting for capture work to finish safely..."
+                case "Installing": return "GameHQ is applying the update and will restart."
+                default: return "SHA-256 detects corruption, but not a compromised GitHub account."
+                }
+            }
             AccentButton {
-                label: updates.stateName === "Downloading" ? "Cancel"
-                       : updates.stateName === "Failed" ? "Retry" : "Download"
+                visible: !["PreparingForUpdate", "Quiescent", "Installing"].includes(updates.stateName)
+                label: {
+                    switch (updates.stateName) {
+                    case "Downloading": return "Cancel"
+                    case "ReadyToInstall": return "Install and restart"
+                    case "Failed": return updates.failedDuringCheck ? "Check again" : "Retry download"
+                    default: return "Download"
+                    }
+                }
                 primary: true
-                onClicked: updates.stateName === "Downloading" ? updates.cancelDownload() : updates.downloadUpdate()
+                onClicked: {
+                    switch (updates.stateName) {
+                    case "Downloading": updates.cancelDownload(); break
+                    case "ReadyToInstall": updates.installAndRestart(); break
+                    case "Failed": updates.failedDuringCheck ? updates.checkNow() : updates.downloadUpdate(); break
+                    default: updates.downloadUpdate()
+                    }
+                }
             }
         }
         SettingsRow {
@@ -114,8 +148,8 @@ SettingsPage {
         }
         SettingsRow {
             label: "License"
-            description: Brand.repositoryUrl + "/blob/main/LICENSE.txt"
-            AccentButton { label: "Open"; primary: true; onClicked: Qt.openUrlExternally(Brand.repositoryUrl + "/blob/main/LICENSE.txt") }
+            description: Brand.repositoryUrl + "/blob/main/LICENSE"
+            AccentButton { label: "Open"; primary: true; onClicked: Qt.openUrlExternally(Brand.repositoryUrl + "/blob/main/LICENSE") }
         }
     }
     SettingsSection {
