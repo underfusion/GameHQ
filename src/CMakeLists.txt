@@ -13,6 +13,7 @@ qt_add_executable(GameHQ
     config/ConfigManager.cpp config/ConfigManager.h
     config/CaptureLocations.cpp config/CaptureLocations.h
     core/GameIdentity.cpp core/GameIdentity.h
+    core/UpdateMaintenance.cpp core/UpdateMaintenance.h
     diagnostics/Logger.cpp diagnostics/Logger.h
     games/GameDetector.cpp games/GameDetector.h
     input/HotkeyManager.cpp input/HotkeyManager.h
@@ -27,6 +28,12 @@ qt_add_executable(GameHQ
     input/HidCloakMonitor.cpp input/HidCloakMonitor.h
     input/XInputDevice.cpp input/XInputDevice.h
     input/WinMMDevice.cpp input/WinMMDevice.h
+    integration/IntegrationMessage.h
+    integration/IntegrationProtocol.cpp integration/IntegrationProtocol.h
+    integration/LocalIntegrationServer.cpp integration/LocalIntegrationServer.h
+    integration/ExternalGameContext.cpp integration/ExternalGameContext.h
+    integration/IntegrationService.cpp integration/IntegrationService.h
+    integration/IntegrationClient.cpp integration/IntegrationClient.h
     input/MouseHookDevice.cpp input/MouseHookDevice.h
     input/InputEngine.cpp input/InputEngine.h
     notify/NotificationCenter.cpp notify/NotificationCenter.h
@@ -46,6 +53,13 @@ qt_add_executable(GameHQ
     ui/CurrentGameService.cpp ui/CurrentGameService.h
     ui/GalleryModel.cpp    ui/GalleryModel.h
     ui/ShellActions.cpp    ui/ShellActions.h
+    updates/VersionNumber.cpp updates/VersionNumber.h
+    updates/ReleaseInfo.h
+    updates/UpdateDownloader.cpp updates/UpdateDownloader.h
+    updates/UpdatePreflight.cpp updates/UpdatePreflight.h
+    updates/UpdateInstaller.cpp updates/UpdateInstaller.h
+    updates/GitHubReleaseSource.cpp updates/GitHubReleaseSource.h
+    updates/UpdateService.cpp updates/UpdateService.h
     # Win32 resource: embeds the multi-size app icon into GameHQ.exe.
     ${CMAKE_SOURCE_DIR}/assets/icons/gamehq.rc
 )
@@ -100,6 +114,7 @@ qt_add_qml_module(GameHQ
         ui/qml/components/SettingsPathField.qml
         ui/qml/components/ConfirmDialog.qml
         ui/qml/components/Toast.qml
+        ui/qml/components/UpdateBanner.qml
         ui/qml/components/Lightbox.qml
         ui/qml/components/MediaStage.qml
         ui/qml/components/PlayerControls.qml
@@ -118,6 +133,7 @@ qt_add_qml_module(GameHQ
         ui/qml/settings/LibrarySettingsPage.qml
         ui/qml/settings/FeedbackSettingsPage.qml
         ui/qml/settings/AdvancedSettingsPage.qml
+        ui/qml/settings/AboutSettingsPage.qml
     )
 
 qt_add_resources(GameHQ "icons"
@@ -153,7 +169,7 @@ target_compile_definitions(GameHQ PRIVATE
 
 target_link_libraries(GameHQ PRIVATE
     Qt6::Core Qt6::Gui Qt6::Quick Qt6::Sql Qt6::Widgets Qt6::Svg
-    Qt6::Multimedia
+    Qt6::Multimedia Qt6::Network
     user32 gdi32 version winmm cfgmgr32
     # 0.5 Windows Graphics Capture frame pump (WinRT raw-ABI path, no cppwinrt).
     windowsapp runtimeobject ole32 oleaut32 d3d11 dxgi dxguid uuid
@@ -170,6 +186,27 @@ set_target_properties(GameHQ PROPERTIES
 # the real executable and every runtime dependency live below app/.
 add_executable(GameHQLauncher WIN32
     launcher/LauncherMain.cpp
+    launcher/UpdaterPromotion.cpp launcher/UpdaterPromotion.h
+    core/UpdateMaintenance.cpp core/UpdateMaintenance.h
     ${CMAKE_SOURCE_DIR}/assets/icons/gamehq.rc
 )
+target_include_directories(GameHQLauncher PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_options(GameHQLauncher PRIVATE -static)
+
+# Static updater helper: it must remain runnable while app/ and Qt DLLs are
+# being replaced. Stage 1 exposes only a transaction-safe --dry-run mode.
+add_executable(GameHQUpdater
+    updater/UpdaterMain.cpp
+    updater/UpdaterTransaction.cpp updater/UpdaterTransaction.h
+    updater/UpdaterStaging.cpp updater/UpdaterStaging.h
+    updater/UpdaterDataSnapshot.cpp updater/UpdaterDataSnapshot.h
+    updater/UpdaterSwap.cpp updater/UpdaterSwap.h
+    updater/UpdaterHealth.cpp updater/UpdaterHealth.h
+    updater/UpdaterRecovery.cpp updater/UpdaterRecovery.h
+    core/UpdateMaintenance.cpp core/UpdateMaintenance.h
+)
+target_include_directories(GameHQUpdater PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(GameHQUpdater PRIVATE miniz bcrypt)
+target_link_options(GameHQUpdater PRIVATE -static -municode)
+target_compile_definitions(GameHQUpdater PRIVATE
+    GAMEHQ_UPDATER_VERSION="${GAMEHQ_VERSION_FULL}")

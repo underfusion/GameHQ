@@ -7,7 +7,19 @@ file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" GAMEHQ_VERSION_FULL)
 string(STRIP "${GAMEHQ_VERSION_FULL}" GAMEHQ_VERSION_FULL)
 string(REGEX MATCH "^[0-9]+\\.[0-9]+\\.[0-9]+" GAMEHQ_VERSION_BASE "${GAMEHQ_VERSION_FULL}")
 
-project(GameHQ VERSION ${GAMEHQ_VERSION_BASE} LANGUAGES CXX)
+project(GameHQ VERSION ${GAMEHQ_VERSION_BASE} LANGUAGES C CXX)
+
+include(FetchContent)
+set(BUILD_EXAMPLES OFF CACHE BOOL "Disable miniz examples" FORCE)
+set(BUILD_FUZZERS OFF CACHE BOOL "Disable miniz fuzzers" FORCE)
+set(BUILD_TESTS OFF CACHE BOOL "Disable miniz tests" FORCE)
+set(INSTALL_PROJECT OFF CACHE BOOL "Disable miniz install rules" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static dependencies" FORCE)
+FetchContent_Declare(miniz
+    URL https://github.com/richgel999/miniz/archive/refs/tags/3.1.2.tar.gz
+    URL_HASH SHA256=98468f8924934b723276680f85238b6c78bf1f8b49b4459cc9b7214a20e2e9fb
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_MakeAvailable(miniz)
 
 # Brand.qml is the single source of truth for the visible product name. It is
 # read at configure time so C++ and QML always expose the same branding.
@@ -37,7 +49,7 @@ if(WIN32)
     enable_language(RC)
 endif()
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Quick Sql Widgets Svg Multimedia)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Quick Sql Widgets Svg Multimedia Network)
 
 qt_standard_project_setup(REQUIRES 6.5)
 qt_policy(SET QTP0004 NEW)

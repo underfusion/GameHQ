@@ -48,6 +48,8 @@ QJsonObject ConfigManager::defaults()
         { ConfigKeys::NotificationsEnabled,    true },
         { ConfigKeys::ThemeActiveSkin,         "obsidian" },
         { ConfigKeys::ThemeOverlayScrimStrength, 100 },   // percent, 25-150
+        { ConfigKeys::UpdatesCheckAutomatically, true },
+        { ConfigKeys::UpdatesSkippedVersion,   "" },
     };
 }
 

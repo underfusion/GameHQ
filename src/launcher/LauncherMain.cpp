@@ -2,6 +2,8 @@
 // Starts app\GameHQ.exe (where all Qt/ffmpeg DLLs live) so the root folder stays
 // clean: launcher + README + data folders. Pure Win32, statically linked, no Qt.
 #include <windows.h>
+#include "launcher/UpdaterPromotion.h"
+#include "core/UpdateMaintenance.h"
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
@@ -13,6 +15,20 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     if (!slash)
         return 1;
     *slash = L'\0';
+
+    const bool postUpdateLaunch = wcsstr(GetCommandLineW(), L"--post-update") != nullptr;
+    const maintenance::Info maintenanceState = maintenance::inspect(
+        std::filesystem::path(root));
+    if (!postUpdateLaunch && maintenanceState.state == maintenance::State::Active) {
+        MessageBoxW(nullptr, L"GameHQ is being updated. Please try again shortly.",
+                    L"GameHQ", MB_ICONINFORMATION);
+        return 0;
+    }
+
+    // A running helper stages its replacement under a non-running name. The
+    // first later launcher validates and promotes it only after the helper's
+    // global activity mutex has disappeared.
+    launcher::promotePendingUpdater(std::filesystem::path(root));
 
     wchar_t exe[MAX_PATH];
     wsprintfW(exe, L"%s\\app\\GameHQ.exe", root);

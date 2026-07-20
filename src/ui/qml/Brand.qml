@@ -6,4 +6,11 @@ import QtQuick
 QtObject {
     readonly property string name: "GameHQ"
     readonly property string slug: "gamehq"
+
+    // Canonical project links. Website points at the GitHub repository until
+    // a real public site is deployed (see START-PLAN Phase 0 decisions).
+    readonly property string repositoryUrl: "https://github.com/underfusion/GameHQ"
+    readonly property string websiteUrl: repositoryUrl
+    readonly property string releasesUrl: repositoryUrl + "/releases"
+    readonly property string issuesUrl: repositoryUrl + "/issues"
 }

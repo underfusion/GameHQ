@@ -18,6 +18,9 @@ class InputEngine;
 class ScreenshotService;
 class FramePumpService;
 class NotificationCenter;
+class UpdateService;
+class IntegrationService;
+class QTimer;
 
 // Owns application lifecycle: paths → logging → config → database →
 // scanner/model/controller → tray → QML UI.
@@ -30,9 +33,13 @@ public:
 
     // Returns false on fatal init failure (already logged).
     bool init();
+    void setPostUpdateValidation(bool enabled);
+    void recordPostUpdateSuccess(const QString& version);
+    void completePostUpdateValidation();
 
 private:
     void showWindow();
+    void openGallery();
 
     std::unique_ptr<ConfigManager> m_config;
     std::unique_ptr<CaptureLocations> m_locations;
@@ -52,5 +59,18 @@ private:
     std::unique_ptr<ScreenshotService> m_screenshots;
     std::unique_ptr<FramePumpService> m_framePump;
     std::unique_ptr<NotificationCenter> m_notify;
+    std::unique_ptr<UpdateService> m_updates;
+    std::unique_ptr<IntegrationService> m_integration;
+    // Wakes periodically to see if the 24h automatic-check window has passed
+    // (see the update-check policy block in init()). Manual checkNow() from
+    // QML bypasses this entirely.
+    QTimer* m_updateCheckTimer = nullptr;
+    QTimer* m_updatePreparationTimer = nullptr;
+    bool m_updateScreenshotsReady = false;
+    bool m_updateReplayReady = false;
+    bool m_postUpdateValidation = false;
+    bool m_inputStarted = false;
+    bool m_pendingActivation = false;
+    bool m_pendingOpenGallery = false;
     QQmlApplicationEngine m_engine;
 };

@@ -52,9 +52,10 @@ if ($PreserveUserData -and $target -ne $devTarget) {
 $qtBin = Join-Path $root 'tools\Qt\6.8.3\mingw_64\bin'
 $realExe = Join-Path $source 'GameHQ.exe'
 $launcherExe = Join-Path $source 'GameHQLauncher.exe'
+$updaterExe = Join-Path $source 'GameHQUpdater.exe'
 $deployTool = Join-Path $qtBin 'windeployqt.exe'
 
-foreach ($required in @($realExe, $launcherExe, $deployTool)) {
+foreach ($required in @($realExe, $launcherExe, $updaterExe, $deployTool)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
         throw "Missing $required - configure and build $BuildDirectory first."
     }
@@ -98,6 +99,7 @@ Copy-Item (Join-Path $qtBin 'sw*.dll') $app -ErrorAction SilentlyContinue
 
 $version = (Get-Content (Join-Path $root 'VERSION') -Raw).Trim()
 Copy-Item -LiteralPath $launcherExe -Destination (Join-Path $target 'GameHQ.exe')
+Copy-Item -LiteralPath $updaterExe -Destination (Join-Path $target 'GameHQUpdater.exe')
 (Get-Content (Join-Path $PSScriptRoot 'README-dist.txt') -Raw).Replace('{VERSION}', $version) |
     Set-Content (Join-Path $target 'README.txt') -NoNewline
 Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $target 'LICENSE.txt')
@@ -121,6 +123,7 @@ New-Item -ItemType File -Path (Join-Path $target 'portable.flag') -Force | Out-N
 $programBytes = (Get-ChildItem -LiteralPath $app -Recurse -File |
     Measure-Object Length -Sum).Sum
 $programBytes += (Get-Item -LiteralPath (Join-Path $target 'GameHQ.exe')).Length
+$programBytes += (Get-Item -LiteralPath (Join-Path $target 'GameHQUpdater.exe')).Length
 $programBytes += (Get-Item -LiteralPath (Join-Path $target 'README.txt')).Length
 $programBytes += (Get-Item -LiteralPath (Join-Path $target 'LICENSE.txt')).Length
 $programBytes += (Get-Item -LiteralPath (Join-Path $target 'THIRD_PARTY_NOTICES.md')).Length

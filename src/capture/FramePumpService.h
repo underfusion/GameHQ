@@ -37,6 +37,8 @@ public slots:
                    bool audioEnabled); // build pipeline + start polling/encoding
     void stopPump();                 // stop polling + tear down the pipeline
     void saveReplayOnWorker(const QString& clipsBaseRoot);
+    void prepareForUpdate();
+    void cancelUpdatePreparation();
 
 private slots:
     void poll();                     // one TryGetNextFrame tick
@@ -51,6 +53,8 @@ signals:
     void clipSaved(const QString& clipPath, const QString& gameName,
                    const QString& thumbnailPath, const QString& executablePath);
     void clipFailed(const QString& gameName, const QString& reason);
+    void exportBusyChanged(bool busy);
+    void updateReady();
 
 private:
     struct Pipeline;                 // all WGC/D3D pointers + timer + fps state (.cpp)
@@ -78,22 +82,29 @@ private:
     Pipeline* m_pipe = nullptr;
     bool m_apartmentReady = false;
     bool m_exportBusy = false;       // one async clip export at a time
+    bool m_updatePreparing = false;
 };
 
 // GUI-thread owner: constructs the worker on a dedicated thread and relays toggle().
 class FramePumpService : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(bool exportBusy READ exportBusy NOTIFY exportBusyChanged)
+    Q_PROPERTY(bool preparingForUpdate READ preparingForUpdate NOTIFY preparingForUpdateChanged)
 public:
     explicit FramePumpService(ConfigManager* config, CaptureLocations* locations,
                               QObject* parent = nullptr);
     ~FramePumpService() override;
+    bool exportBusy() const { return m_exportBusy; }
+    bool preparingForUpdate() const { return m_preparingForUpdate; }
 
 public slots:
     void saveReplay();               // Share-hold: save the last N seconds as one clip
     // Replay settings changed (fps/resolution/length): disarm a running
     // buffer so the auto-arm tick re-arms it with the new parameters.
     void restartBuffer();
+    void prepareForUpdate();
+    void cancelUpdatePreparation();
 
 signals:
     void failed(const QString& reason);
@@ -105,6 +116,10 @@ signals:
     void foregroundGameDetected(const QString& gameName, const QString& executablePath);
     // Rolling buffer armed/disarmed — drives the Settings "buffer state" row.
     void recordingStateChanged(bool active, const QString& gameName);
+    void exportBusyChanged(bool busy);
+    void preparingForUpdateChanged(bool preparing);
+    void updateWaitingForExport();
+    void updateReady();
 
 private slots:
     void autoTick();                 // poll the foreground game → arm/disarm the buffer
@@ -118,6 +133,8 @@ private:
     QThread m_thread;
     FramePumpWorker* m_worker = nullptr;   // lives on m_thread; deleted after it stops
     bool m_running = false;
+    bool m_exportBusy = false;
+    bool m_preparingForUpdate = false;
 
     // Always-on auto-arm (replay.auto): while enabled, the buffer records whenever a
     // game is foreground (per capture.mode) — no manual arming needed.

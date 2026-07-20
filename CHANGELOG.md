@@ -4,6 +4,163 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.11] - 2026-07-20
+
+### Added
+
+- Same-user `GameHQ.Local.v1` integration channel with bounded 64 KiB framing,
+  strict UTF-8/JSON/type validation, handshake negotiation, lifecycle snapshots,
+  structured replies, disconnect expiry, and hostile-input tests.
+- Friendly second-instance forwarding for window activation and gallery opening,
+  with short connection/reply bounds and the existing lock as final authority.
+- Playnite identity hints for foreground detection. Exact or descendant process
+  evidence can recognize windowed games; names and directory hints never weaken
+  existing capture-safety gates.
+- Durable update-maintenance suppression across the app, launcher, helper and
+  local protocol, including terminal cleanup and five-minute stale recovery.
+
+## [0.6.10] - 2026-07-20
+
+### Added
+
+- Safe update-package download and cancellation: HTTPS-only redirects, bounded
+  streaming into install-local `.partial` files, atomic publication, stale
+  partial cleanup, exact release-size enforcement, and visible progress.
+- Strict `.sha256` parsing and local SHA-256 verification. Malformed checksum
+  files, mismatched package names, truncated downloads, and corrupted packages
+  are deleted before the update can enter `ReadyToInstall`.
+- Focused updater tests covering accepted checksum formats and rejection of
+  malformed, mismatched, and corrupted packages.
+- Static `GameHQUpdater.exe` Stage 1 foundation with a strict transaction
+  schema, canonical package-root path containment, a per-transaction mutex,
+  and `--dry-run` output listing every planned operation without file writes.
+- Transaction tests prove a valid dry run leaves staging and backup absent,
+  while an escaped backup path is rejected before anything is created.
+- Hardened Stage 2 ZIP staging with pinned miniz 3.1.2: the helper re-hashes
+  the package, enforces file/count/size/method and positive-path allowlists,
+  rejects traversal, links, user-data paths and invalid manifests/layouts,
+  and removes staging after every rejection without touching live files.
+- Update quiescence barrier: new screenshot/replay requests are blocked during
+  preparation, in-flight writes and clip exports finish naturally, replay
+  auto-arming stops, configuration is flushed, and a 30-second timeout cancels
+  the update instead of cancelling or killing capture work.
+- Helper-side data snapshot and restoration for config plus SQLite DB/WAL/SHM.
+  The manifest preserves originally absent sidecars, restoration has its own
+  rollback path, and automated mutation/restore coverage proves `Captures/`
+  remains byte-identical.
+- Allowlisted program-file swap with bounded Windows lock retries and reverse-
+  order rollback. Tests cover a successful swap preserving `portable.flag`
+  and a deliberately locked executable aborting with old and staged files intact.
+- Healthy-start validation keeps capture hooks disarmed until the upgraded app
+  survives seven seconds with its database, services, QML and event loop active;
+  the helper accepts only the matching version token and times out safely.
+- Durable update phase and swap journals make interrupted replacement
+  deterministic. Failed health checks stop the supervised process tree, restore
+  program and data state together, and restart the previous version.
+- Updater helpers now advertise and enforce their protocol version. A packaged
+  replacement is staged under a pending name, self-tested, and promoted by a
+  later launcher only after the previous helper has exited.
+- End-to-end transaction coverage exercises abandoned staging cleanup,
+  extraction, snapshot, swap and healthy launch while proving settings,
+  captures and `portable.flag` remain byte-identical.
+- Automatic-update preflight now rejects unpackaged, unwritable, network,
+  unsupported-filesystem, overlong, low-space and active-transaction targets;
+  packaged autostart always uses the recovery-aware root launcher.
+- A successful health-validated update records and shows a one-time greeting
+  with a version-specific What's New link, deferred until the desktop window
+  is visible when GameHQ starts minimized.
+- Release packaging now emits separate portable and update-only ZIPs plus a
+  SHA-256 file. A mandatory validator rejects missing, forbidden, mismatched or
+  untested artifacts before publication.
+- The final install action now revalidates the GitHub release, writes a helper-
+  validated transaction, launches the updater, and exits only after successful
+  handoff; withdrawn, superseded or changed releases are refused.
+
+## [0.6.9] - 2026-07-20
+
+### Added
+
+- Automatic update-check policy and a non-modal update banner (Phase 1 of
+  the updater plan, `docs/updater.md`). `App::init()` primes `UpdateService`
+  from config, runs the first automatic check 15-30s after startup, and
+  re-checks at most once every 24 hours via an hourly gate timer; manual
+  checks always bypass that cache. New config keys: `updates.check_automatically`
+  (default on), `updates.skipped_version`, and internal persistence keys
+  `internal.updates.etag` / `internal.updates.last_check_utc` (survive
+  "Restore all settings" like other `internal.*` keys).
+- `UpdateBanner.qml`: shown only in the desktop gallery window (never over
+  the pad overlay or a running game) when a newer stable release exists —
+  version, publish date, size, and release notes rendered as plain text
+  (no Markdown/HTML interpretation), with "View on GitHub" (the standalone
+  fallback until download/install lands in Phase 2), "Skip this version",
+  and "Not now".
+- Settings → About "Updates" section now reflects real state (checking /
+  up to date / update available / last-checked time) with a working
+  "Check now" button and a "Check automatically" toggle, replacing the
+  placeholder shipped in 0.6.6.
+
+## [0.6.8] - 2026-07-20
+
+### Added
+
+- Release lookup and update-check service (`src/updates/`): `ReleaseInfo`,
+  `GitHubReleaseSource` (queries the GitHub releases API with ETag caching,
+  a bounded retry, and confirmed-rate-limit detection via
+  `x-ratelimit-remaining`/`x-ratelimit-reset`), and `UpdateService`, a state
+  machine (`Idle`/`Checking`/`UpToDate`/`UpdateAvailable`/…/`Failed`)
+  exposed to QML as the `updates` context object. Only exact-named
+  `GameHQ-<version>-win64-update.zip` (+ `.sha256`) assets are selected;
+  drafts, prereleases, and releases not newer than the installed version are
+  rejected. A failed or rate-limited check never regresses a known-good
+  result. Download/install commands are declared but not yet implemented —
+  that lands with the safe updater helper.
+
+## [0.6.7] - 2026-07-20
+
+### Added
+
+- Linked the Qt Network module (needed by the upcoming update checker and
+  the local integration channel).
+- `VersionNumber` (`src/updates/`): strict `major.minor.patch` parsing and
+  numeric comparison for release version strings, with an optional leading
+  `v`/`V` and no prerelease/build-metadata suffix accepted. Versions are
+  never compared as strings. Covered by `tst_versionnumber` (valid/invalid
+  parsing, numeric ordering, `v`-prefix equivalence).
+
+## [0.6.6] - 2026-07-20
+
+### Added
+
+- About settings page (`Settings → About`): application logo, name, version,
+  storage mode, an Updates placeholder for the upcoming update checker, and
+  project links (website, GitHub, releases, issues, license) plus a GitHub
+  star call-to-action, all reading from `Brand.qml`. Version and Storage mode
+  rows moved here from the Advanced page.
+
+## [0.6.5] - 2026-07-20
+
+### Changed
+
+- Centralized project links (website, repository, releases, issues) in the
+  `Brand.qml` singleton instead of hard-coding them per page. The GitHub
+  link in the Help view now reads from `Brand.repositoryUrl`.
+
+## [0.6.4] - 2026-07-20
+
+### Added
+
+- Design documentation for the upcoming update system and local integration
+  channel: [`docs/updater.md`](docs/updater.md) (path ownership contract,
+  the nine-stage helper flow, authenticity limits) and
+  [`docs/integration-protocol.md`](docs/integration-protocol.md) (the
+  `GameHQ.Local.v1` named-pipe protocol used by the future Playnite
+  companion plugin).
+- Reserved the canonical identifiers for that work (pipe name, release asset
+  naming, plugin repo name, add-on identifiers) so none are invented ad hoc
+  during implementation.
+- Added the `0.6.x — Distribution & Integration Foundation` milestone to
+  [`docs/roadmap.md`](docs/roadmap.md).
+
 ## [0.6.3] - 2026-07-18
 
 ### Added

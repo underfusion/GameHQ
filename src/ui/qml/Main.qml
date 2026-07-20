@@ -55,6 +55,32 @@ ApplicationWindow {
 
     property bool settingsOpen: false
     property bool helpOpen: false
+    property string pendingPostUpdateVersion: app
+        ? app.config("internal.updates.pending_post_update_version", "") : ""
+
+    function maybeShowPostUpdateGreeting() {
+        if (!window.visible || pendingPostUpdateVersion === "")
+            return
+        if (app.config("internal.updates.last_seen_version", "") === pendingPostUpdateVersion)
+            return
+        postUpdateDialog.open()
+    }
+
+    function acknowledgePostUpdateGreeting() {
+        app.setConfig("internal.updates.last_seen_version", pendingPostUpdateVersion)
+        app.setConfig("internal.updates.pending_post_update_version", "")
+        pendingPostUpdateVersion = ""
+    }
+
+    Connections {
+        target: app
+        function onConfigChanged(key, value) {
+            if (key === "internal.updates.pending_post_update_version") {
+                window.pendingPostUpdateVersion = value
+                window.maybeShowPostUpdateGreeting()
+            }
+        }
+    }
 
     // DualSense support (0.3/0.6 extended to the desktop window): L1 is the
     // ONLY entry to the sidebar (left panel), R1 is the ONLY way back to the
@@ -150,6 +176,8 @@ ApplicationWindow {
     onVisibilityChanged: function(visibility) {
         if (visibility === Window.Minimized && app.config("tray.minimize_to_tray", false))
             window.hide()
+        if (visibility === Window.Windowed || visibility === Window.Maximized)
+            window.maybeShowPostUpdateGreeting()
     }
     onClosing: function(close) {
         window.doPersistGeometry()
@@ -167,6 +195,7 @@ ApplicationWindow {
         var savedZoom = app.config("ui.zoom_level", 0)
         if (savedZoom >= 160 && savedZoom <= 480)
             window.zoomLevel = savedZoom
+        Qt.callLater(window.maybeShowPostUpdateGreeting)
     }
     onZoomLevelChanged: window.persistGeometry()
 
@@ -764,6 +793,19 @@ ApplicationWindow {
 
     }
 
+    // ───────────────────────── Update banner ─────────────────────────
+    // Floats above the content rather than participating in the RowLayout,
+    // so it never has to fight the sidebar/settings/help width math. Only
+    // ever shown here (the desktop gallery window) — never above the pad
+    // overlay or a running game.
+    UpdateBanner {
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: Theme.s16
+        z: 50
+    }
+
     FolderDialog {
         id: folderDialog
         title: "Choose a folder to watch"
@@ -808,6 +850,22 @@ ApplicationWindow {
         title: "Delete selected captures?"
         confirmLabel: "Delete"
         onConfirmed: window.bulkConfirmDelete()
+    }
+
+    ConfirmDialog {
+        id: postUpdateDialog
+        anchors.fill: parent
+        z: 500
+        title: "GameHQ was updated to " + window.pendingPostUpdateVersion
+        message: "The update completed successfully. Your recordings, settings, and storage mode were preserved."
+        cancelLabel: "Continue"
+        confirmLabel: "What's New"
+        onCanceled: window.acknowledgePostUpdateGreeting()
+        onConfirmed: {
+            const version = window.pendingPostUpdateVersion
+            window.acknowledgePostUpdateGreeting()
+            Qt.openUrlExternally(Brand.releasesUrl + "/tag/v" + version)
+        }
     }
 
     // ───────────────────────── Pad action menu (Square) ─────────────────────────

@@ -22,8 +22,10 @@ QString StartupManager::executablePath()
     const QDir packageRoot(realDir.absoluteFilePath(QStringLiteral("..")));
     const QString launcher = packageRoot.absoluteFilePath(QStringLiteral("GameHQ.exe"));
 
-    if (QFileInfo::exists(packageRoot.absoluteFilePath(QStringLiteral("portable.flag")))
-        && QFileInfo::exists(launcher)) {
+    // Packaged installed and portable layouts both use the root launcher. It
+    // owns updater promotion/recovery and must not be bypassed by autostart.
+    if (realDir.dirName().compare(QStringLiteral("app"), Qt::CaseInsensitive) == 0
+        && QFileInfo(launcher).isFile()) {
         return QDir::cleanPath(launcher);
     }
     return QDir::cleanPath(realExecutable.absoluteFilePath());

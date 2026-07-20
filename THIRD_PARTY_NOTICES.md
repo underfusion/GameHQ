@@ -33,4 +33,12 @@ runtime library exceptions.
 - GCC licenses: https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
 - MinGW-w64 licensing: https://www.mingw-w64.org/about/
 
+## miniz 3.1.2
+
+`GameHQUpdater.exe` statically links miniz for ZIP staging and validation.
+miniz is distributed under the MIT License; the complete license is included
+at `licenses/miniz.txt`.
+
+- Source: https://github.com/richgel999/miniz/tree/3.1.2
+
 No ownership of these third-party components is claimed by the GameHQ project.

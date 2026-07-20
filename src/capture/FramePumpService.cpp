@@ -519,6 +519,11 @@ bool FramePumpWorker::saveGuard(const QString& saveId)
                         QStringLiteral("A replay save is already in progress"));
         return false;
     }
+    if (m_updatePreparing) {
+        emit clipFailed(m_pipe->gameName.isEmpty() ? QStringLiteral("Replay") : m_pipe->gameName,
+                        QStringLiteral("Replay capture is paused for an update"));
+        return false;
+    }
     return true;
 }
 
@@ -596,6 +601,7 @@ void FramePumpWorker::runExport(const QStringList& segs, const QString& outPath,
     };
     auto result = std::make_shared<ExportResult>();
     m_exportBusy = true;
+    emit exportBusyChanged(true);
 
     QThread* exportThread = QThread::create(
         [segs, outPath, partialPath, thumbPath, instantThumb, saveId, result] {
@@ -639,6 +645,7 @@ void FramePumpWorker::runExport(const QStringList& segs, const QString& outPath,
     connect(exportThread, &QThread::finished, this,
             [this, result, outPath, partialPath, game, exePath, saveId] {
                 m_exportBusy = false;
+                emit exportBusyChanged(false);
                 if (m_pipe && m_pipe->recorder)
                     m_pipe->recorder->unpinRing();
                 if (result->ok) {
@@ -650,9 +657,27 @@ void FramePumpWorker::runExport(const QStringList& segs, const QString& outPath,
                     qWarning() << "FramePump: save-replay — remux failed for" << outPath;
                     emit clipFailed(game, QStringLiteral("Could not export a complete replay clip"));
                 }
+                if (m_updatePreparing) {
+                    stopPump();
+                    emit updateReady();
+                }
             });
     connect(exportThread, &QThread::finished, exportThread, &QObject::deleteLater);
     exportThread->start();
+}
+
+void FramePumpWorker::prepareForUpdate()
+{
+    m_updatePreparing = true;
+    if (m_exportBusy)
+        return;
+    stopPump();
+    emit updateReady();
+}
+
+void FramePumpWorker::cancelUpdatePreparation()
+{
+    m_updatePreparing = false;
 }
 
 void FramePumpWorker::saveReplayOnWorker(const QString& clipsBaseRoot)
@@ -716,6 +741,17 @@ FramePumpService::FramePumpService(ConfigManager* config, CaptureLocations* loca
     connect(m_worker, &FramePumpWorker::clipSaving, this, &FramePumpService::clipSaving);
     connect(m_worker, &FramePumpWorker::clipSaved, this, &FramePumpService::clipSaved);
     connect(m_worker, &FramePumpWorker::clipFailed, this, &FramePumpService::clipFailed);
+    connect(m_worker, &FramePumpWorker::exportBusyChanged, this, [this](bool busy) {
+        if (m_exportBusy == busy)
+            return;
+        m_exportBusy = busy;
+        emit exportBusyChanged(busy);
+    });
+    connect(m_worker, &FramePumpWorker::updateReady, this, [this] {
+        m_running = false;
+        emit recordingStateChanged(false, QString());
+        emit updateReady();
+    });
     // If a startPump fails, clear the armed flag so auto-arm can retry next tick.
     connect(m_worker, &FramePumpWorker::failed, this, [this] {
         m_running = false;
@@ -735,6 +771,10 @@ FramePumpService::FramePumpService(ConfigManager* config, CaptureLocations* loca
 
 void FramePumpService::saveReplay()
 {
+    if (m_preparingForUpdate) {
+        emit clipFailed(QStringLiteral("Replay"), QStringLiteral("Replay capture is paused for an update"));
+        return;
+    }
     // A cold buffer holds no past frames, so passing the request through would
     // only bounce back as "buffer is not running" — the Share-hold then looks
     // ignored no matter how long it was held. Arm here instead: an explicit
@@ -759,6 +799,30 @@ void FramePumpService::saveReplay()
                                               : Paths::capturesRoot();
     QMetaObject::invokeMethod(m_worker, "saveReplayOnWorker", Qt::QueuedConnection,
                               Q_ARG(QString, clipsBaseRoot));
+}
+
+void FramePumpService::prepareForUpdate()
+{
+    if (m_preparingForUpdate)
+        return;
+    m_preparingForUpdate = true;
+    emit preparingForUpdateChanged(true);
+    if (m_autoTimer)
+        m_autoTimer->stop();
+    if (m_exportBusy)
+        emit updateWaitingForExport();
+    QMetaObject::invokeMethod(m_worker, "prepareForUpdate", Qt::QueuedConnection);
+}
+
+void FramePumpService::cancelUpdatePreparation()
+{
+    if (!m_preparingForUpdate)
+        return;
+    m_preparingForUpdate = false;
+    emit preparingForUpdateChanged(false);
+    QMetaObject::invokeMethod(m_worker, "cancelUpdatePreparation", Qt::QueuedConnection);
+    if (m_autoEnabled && m_autoTimer && !m_autoTimer->isActive())
+        m_autoTimer->start();
 }
 
 void FramePumpService::restartBuffer()
@@ -801,6 +865,8 @@ FramePumpService::~FramePumpService()
 
 void FramePumpService::autoTick()
 {
+    if (m_preparingForUpdate)
+        return;
     const QString mode = m_config
         ? m_config->value(ConfigKeys::CaptureMode, QStringLiteral("only_in_games")).toString()
         : QStringLiteral("only_in_games");

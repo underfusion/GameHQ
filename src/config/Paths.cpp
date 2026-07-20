@@ -70,6 +70,14 @@ QString gameIconsDir()   { return dataDir() + QStringLiteral("/game-icons"); }
 QString replayCacheDir() { return dataDir() + QStringLiteral("/replay-cache"); }
 QString soundPacksDir()  { return dataDir() + QStringLiteral("/sound-packs"); }
 
+QString packageRoot()
+{
+    const QFileInfo appDir(exeDir());
+    if (appDir.fileName().compare(QStringLiteral("app"), Qt::CaseInsensitive) == 0)
+        return appDir.absolutePath();
+    return exeDir();
+}
+
 QString capturesRoot()
 {
     if (isPortable())

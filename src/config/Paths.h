@@ -17,6 +17,7 @@ namespace Paths
     QString replayCacheDir();
     QString soundPacksDir();
     QString capturesRoot();   // per-game capture tree
+    QString packageRoot();    // root launcher/.update directory (or exe dir in development)
 
     // Portable persistence. Values below the package root are stored as
     // "portable:/..." and resolved against the package's current location.

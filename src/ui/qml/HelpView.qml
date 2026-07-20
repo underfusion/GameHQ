@@ -237,7 +237,7 @@ Item {
                     id: footerText
                     anchors.fill: parent
                     anchors.margins: Theme.s16
-                    text: "<a href='https://github.com/underfusion/GameHQ'>GameHQ on GitHub</a>"
+                    text: "<a href='" + Brand.repositoryUrl + "'>GameHQ on GitHub</a>"
                     textFormat: Text.RichText
                     color: Theme.textMuted
                     linkColor: Theme.accent

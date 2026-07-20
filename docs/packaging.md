@@ -21,9 +21,17 @@ together under `app/`; it must not be scattered through the package root.
 
 Reference: [Qt for Windows - Deployment](https://doc.qt.io/qt-6/windows-deployment.html).
 
+The static update helper uses miniz 3.1.2, fetched from its tagged upstream
+archive with a pinned SHA-256 during configuration. It accepts only stored or
+deflated ZIP entries and applies GameHQ's own path, size, layout and manifest
+validation before staged files can be considered installable. Its MIT license
+is included at `licenses/miniz.txt`.
+
 ## Clean package layout
 
-Both `build/` and `dist/GameHQ/` use this root layout:
+Both `build/` and `dist/GameHQ/` use this root layout. `portable.flag` appears
+only in a fresh portable package; an installed layout omits it, and update-only
+packages must never contain or modify it:
 
 ```txt
 GameHQ/
@@ -56,7 +64,11 @@ stops the running app, refreshes only generated content in `build/`, preserves
 `build/Captures/` and `build/gamehq-data/`, then launches the root executable.
 
 `make-dist.ps1` wraps the same assembler but recreates `dist/GameHQ/` from
-scratch. The assembler validates its destination, copies the real executable
+scratch, creates `dist/releases/GameHQ-<version>-win64-portable.zip` plus the
+program-only `GameHQ-<version>-win64-update.zip` and checksum, then runs
+`validate-release.ps1`. The gate checks filenames, manifest/version agreement,
+checksum, allowed/forbidden ZIP paths, packaged binary version and updater
+tests. The assembler validates its destination, copies the real executable
 into `app/`, runs `windeployqt --qmldir src/ui/qml --compiler-runtime`, adds the
 FFmpeg DLLs that Qt Multimedia loads dynamically, then writes the launcher,
 readme, and portable marker at the root.

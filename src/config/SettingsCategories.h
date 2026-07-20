@@ -27,6 +27,7 @@ inline const QHash<QString, QStringList>& groups()
                                                     ConfigKeys::Group::Audio } },
         { QStringLiteral("Notifications & Sound"), { ConfigKeys::Group::Sounds,
                                                      ConfigKeys::Group::Notifications } },
+        { QStringLiteral("About"),                { ConfigKeys::Group::Updates } },
     };
     return kGroups;
 }

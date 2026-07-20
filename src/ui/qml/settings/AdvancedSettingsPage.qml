@@ -8,22 +8,6 @@ SettingsPage {
     signal restoreCategoryRequested(string category)
     signal restoreInputRequested()
     SettingsSection {
-        title: "Application"
-        SettingsRow {
-            label: "Version"
-            Text { text: app.version; color: Theme.textMuted; font.family: Theme.fontFamily; font.pixelSize: Theme.fontBody }
-        }
-        SettingsRow {
-            label: "Storage mode"
-            Text {
-                text: app.portableMode ? "Portable" : "Installed"
-                color: Theme.textMuted
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontBody
-            }
-        }
-    }
-    SettingsSection {
         title: "Diagnostics"
         description: "Open " + Brand.name + "-owned folders for logs, configuration, database, and cached support data."
         SettingsRow {

@@ -10,7 +10,7 @@ GameHQ uses Semantic Versioning as plain `MAJOR.MINOR.PATCH`.
 - `MINOR` - active development line or roadmap milestone family.
 - `PATCH` - every project change increments this number.
 
-Current development line: `0.5.x`.
+Current development line: `0.6.x`.
 
 Patch numbers run from `0` to `99` within a minor line. After `0.5.99`, the next version is `0.6.0`. The first version after the old `0.1.0-dev.N` scheme is `0.5.0`; the next changed build is `0.5.1`.
 
@@ -18,7 +18,7 @@ The single source of truth is the `VERSION` file in the repo root. CMake reads i
 
 ## Release Checklist
 
-1. Bump `VERSION` by one patch number (`0.5.1`, `0.5.2`, ...). Roll `0.5.99` to `0.6.0`.
+1. Bump `VERSION` by one patch number (`0.6.10`, `0.6.11`, ...). Roll `0.6.99` to `0.7.0`.
 2. Add a `CHANGELOG.md` entry with Added/Changed/Fixed/Removed sections as needed.
 3. Update affected docs in `docs/` when code changes behavior, architecture, storage, setup, capture, overlay, input, or UI rules.
 4. Update `docs/README.md` if a doc is added, renamed, or its purpose changes.

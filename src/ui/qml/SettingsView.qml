@@ -10,7 +10,7 @@ Item {
     property var categories: [
         { label: "General" }, { label: "Capture" }, { label: "Replay" },
         { label: "Input" }, { label: "Library" },
-        { label: "Notifications & Sound" }, { label: "Advanced" }
+        { label: "Notifications & Sound" }, { label: "Advanced" }, { label: "About" }
     ]
     property int currentCategory: Math.max(0, Math.min(categories.length - 1,
         Number(app.config("ui.settings_category", 0))))
@@ -243,6 +243,7 @@ Item {
                     restoreCategoryDialog.open()
                 }
             }
+            AboutSettingsPage {}
             }
         }
     }

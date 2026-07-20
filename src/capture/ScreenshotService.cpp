@@ -29,6 +29,10 @@ ScreenshotService::ScreenshotService(ConfigManager* config, CaptureLocations* lo
 
 void ScreenshotService::capture()
 {
+    if (m_updatePreparing.load()) {
+        emit skipped(QStringLiteral("screenshot capture is paused for an update"));
+        return;
+    }
     const QString mode = m_config
         ? m_config->value(ConfigKeys::CaptureMode,
                           QStringLiteral("only_in_games")).toString()
@@ -68,6 +72,10 @@ void ScreenshotService::capture()
 void ScreenshotService::saveImage(const QImage& img, const QString& gameName,
                                   const QString& executablePath)
 {
+    if (m_updatePreparing.load()) {
+        emit skipped(QStringLiteral("screenshot capture is paused for an update"));
+        return;
+    }
     if (img.isNull()) {
         emit failed(QStringLiteral("no video frame available to save"));
         return;
@@ -93,8 +101,16 @@ void ScreenshotService::encodeAndSave(const QImage& img, const QString& gameName
         ? qBound(1, m_config->value(ConfigKeys::CaptureJpegQuality, 90).toInt(), 100)
         : 90;
 
+    ++m_pendingWrites;
     QThreadPool::globalInstance()->start(QRunnable::create(
         [this, img, gameName, executablePath, dir, jpeg, ext, jpegQuality]() {
+        struct Completion {
+            ScreenshotService *service;
+            ~Completion() {
+                if (--service->m_pendingWrites == 0 && service->m_updatePreparing.load())
+                    QMetaObject::invokeMethod(service, "updateReady", Qt::QueuedConnection);
+            }
+        } completion{this};
         QElapsedTimer et;
         et.start();
         if (!QDir().mkpath(dir)) {
@@ -121,6 +137,18 @@ void ScreenshotService::encodeAndSave(const QImage& img, const QString& gameName
                 << ") encode+write" << et.elapsed() << "ms";
         emit captured(path, gameName, executablePath);
     }));
+}
+
+void ScreenshotService::prepareForUpdate()
+{
+    m_updatePreparing.store(true);
+    if (!busy())
+        emit updateReady();
+}
+
+void ScreenshotService::cancelUpdatePreparation()
+{
+    m_updatePreparing.store(false);
 }
 
 // Screen-DC BitBlt of the window's screen rectangle. CAPTUREBLT pulls in

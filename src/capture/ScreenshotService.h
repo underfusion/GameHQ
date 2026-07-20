@@ -1,6 +1,7 @@
 #pragma once
 #include <QObject>
 #include <QString>
+#include <atomic>
 
 class QImage;
 class ConfigManager;
@@ -20,6 +21,7 @@ class ScreenshotService : public QObject
 public:
     ScreenshotService(ConfigManager* config, CaptureLocations* locations,
                       QObject* parent = nullptr);
+    bool busy() const { return m_pendingWrites.load() > 0; }
 
 public slots:
     void capture();   // grab per capture.mode; emits exactly one result signal
@@ -29,6 +31,8 @@ public slots:
     // pixels already.
     void saveImage(const QImage& img, const QString& gameName,
                    const QString& executablePath = QString());
+    void prepareForUpdate();
+    void cancelUpdatePreparation();
 
 signals:
     void grabbed();                        // pixels are in hand — play shutter NOW
@@ -36,6 +40,7 @@ signals:
                   const QString& executablePath);
     void skipped(const QString& reason);   // gate said "not in a game"
     void failed(const QString& reason);    // grab or save error
+    void updateReady();
 
 private:
     QImage grabRect(void* hwnd, int x, int y, int w, int h) const;
@@ -46,4 +51,6 @@ private:
 
     ConfigManager* m_config;
     CaptureLocations* m_locations;
+    std::atomic_int m_pendingWrites{0};
+    std::atomic_bool m_updatePreparing{false};
 };

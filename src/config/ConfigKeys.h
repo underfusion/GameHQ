@@ -55,10 +55,22 @@ inline constexpr QLatin1StringView ThemeActiveSkin{ "theme.active_skin" };  // s
 // "100" always means "the skin's own dimming" regardless of which skin is on.
 inline constexpr QLatin1StringView ThemeOverlayScrimStrength{ "theme.overlay_scrim_strength" };
 
+// updates.* — automatic update-check policy (docs/updater.md "Discovery").
+inline constexpr QLatin1StringView UpdatesCheckAutomatically{ "updates.check_automatically" };
+inline constexpr QLatin1StringView UpdatesSkippedVersion{ "updates.skipped_version" };
+
 // internal.* — safety metadata, never shown in the UI and deliberately absent
 // from ConfigManager::defaults(). ConfigManager preserves internal.* across a
 // reset-all, so these keys survive "Restore all defaults" by design.
 inline constexpr QLatin1StringView InternalCaptureRootHistory{ "internal.capture_root_history" };
+// UpdateService's cached ETag + the last completed check time, used to gate
+// automatic checks to at most once every 24h (App::init()). last_seen_version
+// and pending_post_update_version are reserved for the post-update greeting
+// that lands with the safe updater helper (docs/updater.md stage 6/7).
+inline constexpr QLatin1StringView InternalUpdatesEtag{ "internal.updates.etag" };
+inline constexpr QLatin1StringView InternalUpdatesLastCheckUtc{ "internal.updates.last_check_utc" };
+inline constexpr QLatin1StringView InternalUpdatesLastSeenVersion{ "internal.updates.last_seen_version" };
+inline constexpr QLatin1StringView InternalUpdatesPendingPostUpdateVersion{ "internal.updates.pending_post_update_version" };
 
 // Group prefixes used by resetGroup() and the settings reset taxonomy.
 namespace Group
@@ -73,5 +85,6 @@ inline constexpr QLatin1StringView Notifications{ "notifications" };
 inline constexpr QLatin1StringView Input{ "input" };
 inline constexpr QLatin1StringView Audio{ "audio" };
 inline constexpr QLatin1StringView Theme{ "theme" };
+inline constexpr QLatin1StringView Updates{ "updates" };
 } // namespace Group
 } // namespace ConfigKeys
