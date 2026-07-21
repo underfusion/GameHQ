@@ -68,13 +68,23 @@ tools/cmake/bin/cmake.exe --build out
 tools/cmake/bin/ctest.exe --test-dir out --output-on-failure
 ```
 
-`ctest` needs the Qt runtime on `PATH`. In Git Bash use POSIX paths — a
-`I:/...`-style entry is not translated and every test dies with
+`ctest` prepends the Qt runtime directory to each test's `PATH` itself
+(`ENVIRONMENT_MODIFICATION` in `tests/CMakeLists.txt`), so the command above
+needs no environment setup. Without it Windows answered with one modal
+"Qt6Core.dll was not found" box per test and `ctest` hung until each was
+dismissed.
+
+Running a test exe **directly** still needs Qt on `PATH`. In Git Bash use POSIX
+paths — a `I:/...`-style entry is not translated and the test dies with
 `0xc0000135` (DLL not found):
 
 ```sh
 export PATH="/i/PROJECTS/Apps/GameHQ/tools/Qt/6.8.3/mingw_64/bin:/i/PROJECTS/Apps/GameHQ/tools/Qt/Tools/mingw1310_64/bin:$PATH"
 ```
+
+Tests that reach `GameIconCache::iconPathForExecutable` must use `QTEST_MAIN`
+(a `QApplication`). Its `QFileIconProvider` fallback is a QtWidgets class and
+segfaults under `QTEST_GUILESS_MAIN`.
 
 Test exes land in `out/` and can be run directly (`./out/tst_gameidentity.exe`).
 Their console output is not always captured when run from a tool-driven shell;

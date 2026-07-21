@@ -18,6 +18,13 @@ function(gamehq_add_test name)
     # console it does not have — ctest then reports a pass with no output.
     set_target_properties(${name} PROPERTIES WIN32_EXECUTABLE FALSE)
     add_test(NAME ${name} COMMAND ${name})
+    # The test exes are not deployed with windeployqt, so a plain `ctest` run
+    # cannot resolve Qt6Core.dll and Windows answers with one modal "DLL was
+    # not found" box per test — ctest then hangs until every box is dismissed.
+    # Handing each test the project-local Qt bin directory keeps `ctest` a
+    # non-interactive command.
+    set_tests_properties(${name} PROPERTIES
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 endfunction()
 
 gamehq_add_test(tst_gameidentity
