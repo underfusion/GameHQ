@@ -127,11 +127,10 @@ Rectangle {
             id: aboutRow
             Layout.fillWidth: true
             Layout.bottomMargin: Theme.s4
-            label: root.updateAvailable ? "Update available" : "About GameHQ"
-            glyph: root.updateAvailable ? "\u2193" : "\u24d8"
-            trailingText: "v" + (root.updateAvailable && root.availableVersion !== ""
-                                 ? root.availableVersion : app.version)
-            trailingGlyph: root.updateAvailable ? "" : (root.aboutUnread ? "\u25cf" : "")
+            label: "About"
+            glyph: "\u24d8"
+            trailingText: "v" + app.version
+            trailingGlyph: root.updateAvailable || root.aboutUnread ? "\u25cf" : ""
             active: false
             sidebarHovered: root.sidebarFocused
                             && root.sidebarHoverIndex === root.categories.length + app.games.length + 2

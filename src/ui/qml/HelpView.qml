@@ -7,6 +7,16 @@ import GameHQ
 Item {
     id: root
 
+    function resetScroll() {
+        flick.contentY = 0
+    }
+
+    function scrollBy(direction) {
+        const maximum = Math.max(0, flick.contentHeight - flick.height)
+        flick.contentY = Math.max(0, Math.min(maximum,
+            flick.contentY + direction * Math.max(80, flick.height * 0.28)))
+    }
+
     Flickable {
         id: flick
         anchors.fill: parent
@@ -16,20 +26,14 @@ Item {
         contentHeight: helpColumn.implicitHeight + Theme.s16
         flickableDirection: Flickable.VerticalFlick
 
-        QC.ScrollBar.vertical: QC.ScrollBar { }
+        QC.ScrollBar.vertical: QC.ScrollBar {
+            policy: QC.ScrollBar.AlwaysOn
+        }
 
         ColumnLayout {
             id: helpColumn
             width: Math.max(0, flick.width - Theme.s16)
             spacing: Theme.s24
-
-    Text {
-        text: "Help"
-        color: Theme.text
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontDisplay
-        font.weight: Font.Light
-    }
 
     // ── Keyboard shortcuts ──
     ColumnLayout {
@@ -225,31 +229,6 @@ Item {
         }
     }
 
-            Rectangle {
-                Layout.fillWidth: true
-                implicitHeight: footerText.implicitHeight + Theme.s16 * 2
-                radius: Theme.radiusM
-                color: Theme.surface
-                border.width: 1
-                border.color: Theme.stroke
-
-                Text {
-                    id: footerText
-                    anchors.fill: parent
-                    anchors.margins: Theme.s16
-                    text: "<a href='" + Brand.repositoryUrl + "'>GameHQ on GitHub</a>"
-                    textFormat: Text.RichText
-                    color: Theme.textMuted
-                    linkColor: Theme.accent
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontBody
-                    horizontalAlignment: Text.AlignHCenter
-                    wrapMode: Text.WordWrap
-                    onLinkActivated: link => Qt.openUrlExternally(link)
-
-                    HoverHandler { cursorShape: Qt.PointingHandCursor }
-                }
-            }
         }
     }
 }

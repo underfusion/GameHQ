@@ -8,5 +8,8 @@
 
 ## Notes
 
-- The one-click updater is beta until the update-authenticity decision is resolved.
-- Manual download remains available from this release page.
+- Trust mode: `unsigned-beta` or `signed` (must match release evidence).
+- Unsigned Beta wording: **Open-source Beta · Not yet code-signed; Windows may show an Unknown publisher warning.**
+- Never describe an unsigned release as Stable.
+- Setup is the recommended download; Portable is the explicit no-install alternative.
+- Link [Download verification](https://github.com/underfusion/GameHQ/blob/main/docs/download-verification.md).

@@ -89,12 +89,18 @@ Rectangle {
             }
         }
 
-        Text {
-            text: root.glyph
+        Item {
             visible: root.glyph !== "" && root.iconSource === ""
-            color: root.active ? Theme.accent : Theme.textMuted
-            font.pixelSize: Theme.fontBody
+            width: Theme.s24
+            height: Theme.s24
             anchors.verticalCenter: parent.verticalCenter
+
+            Text {
+                anchors.centerIn: parent
+                text: root.glyph
+                color: root.active ? Theme.accent : Theme.textMuted
+                font.pixelSize: Theme.fontBody
+            }
         }
         Text {
             text: root.label

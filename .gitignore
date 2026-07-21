@@ -51,7 +51,13 @@ build_log*.txt
 spike/**/*.exe
 
 # Local toolchain + build
-tools/
+tools/*
+!tools/manual-validation/
+!tools/manual-validation/**
+!tools/release-manifest/
+!tools/release-manifest/**
+tools/release-manifest/**/bin/
+tools/release-manifest/**/obj/
 
 # Assembled dist packages (packaging/make-dist.ps1)
 dist/

@@ -147,6 +147,11 @@ SettingsPage {
             AccentButton { label: "Open"; primary: true; onClicked: Qt.openUrlExternally(Brand.issuesUrl) }
         }
         SettingsRow {
+            label: "Security & privacy"
+            description: "Verification, local data, network use, and private reporting"
+            AccentButton { label: "Open"; primary: true; onClicked: Qt.openUrlExternally(Brand.securityUrl) }
+        }
+        SettingsRow {
             label: "License"
             description: Brand.repositoryUrl + "/blob/main/LICENSE"
             AccentButton { label: "Open"; primary: true; onClicked: Qt.openUrlExternally(Brand.repositoryUrl + "/blob/main/LICENSE") }

@@ -1,10 +1,13 @@
-# Builds a clean portable GameHQ folder from the separate CMake output tree.
+# Builds a clean GameHQ program payload or portable folder from CMake output.
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$Destination,
 
     [string]$BuildDirectory = 'out',
+
+    [ValidateSet('Portable', 'Neutral')]
+    [string]$Mode = 'Portable',
 
     [switch]$PreserveUserData
 )
@@ -40,13 +43,23 @@ $source = Get-ProjectPath $BuildDirectory
 $target = Get-ProjectPath $Destination
 $devTarget = Get-ProjectPath 'build'
 $distTarget = Get-ProjectPath 'dist\GameHQ'
-$allowedTargets = @($devTarget, $distTarget)
+$payloadTarget = Get-ProjectPath 'dist\.program-payload'
+$allowedTargets = @($devTarget, $distTarget, $payloadTarget)
 
 if ($allowedTargets -notcontains $target) {
     throw "Refusing to assemble outside the approved package folders: $target"
 }
 if ($PreserveUserData -and $target -ne $devTarget) {
     throw '-PreserveUserData is only valid for the local build package.'
+}
+if ($PreserveUserData -and $Mode -ne 'Portable') {
+    throw '-PreserveUserData requires -Mode Portable.'
+}
+if ($target -eq $devTarget -and $Mode -ne 'Portable') {
+    throw 'The local build package must remain portable.'
+}
+if ($target -eq $payloadTarget -and $Mode -ne 'Neutral') {
+    throw 'The program payload must be assembled with -Mode Neutral.'
 }
 
 $qtBin = Join-Path $root 'tools\Qt\6.8.3\mingw_64\bin'
@@ -118,7 +131,9 @@ if (Test-Path -LiteralPath $qtSbom -PathType Container) {
             Copy-Item -Destination $sbomTarget
     }
 }
-New-Item -ItemType File -Path (Join-Path $target 'portable.flag') -Force | Out-Null
+if ($Mode -eq 'Portable') {
+    New-Item -ItemType File -Path (Join-Path $target 'portable.flag') -Force | Out-Null
+}
 
 $programBytes = (Get-ChildItem -LiteralPath $app -Recurse -File |
     Measure-Object Length -Sum).Sum

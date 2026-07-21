@@ -52,9 +52,20 @@ gamehq_add_test(tst_releasenotes
     tst_releasenotes.cpp
     "${CMAKE_SOURCE_DIR}/src/app/ReleaseNotes.cpp")
 
+gamehq_add_test(tst_releasetrust tst_releasetrust.cpp)
+target_link_libraries(tst_releasetrust PRIVATE gamehq_release_trust)
+target_compile_definitions(tst_releasetrust PRIVATE
+    UPDATER_EXE="$<TARGET_FILE:GameHQUpdater>"
+    GAMEHQ_RELEASE_VECTOR="${CMAKE_SOURCE_DIR}/tests/fixtures/release-trust/gamehq-test-vector.json")
+add_dependencies(tst_releasetrust GameHQUpdater)
+
 gamehq_add_test(tst_updatemaintenance
     tst_updatemaintenance.cpp
     "${CMAKE_SOURCE_DIR}/src/core/UpdateMaintenance.cpp")
+
+gamehq_add_test(tst_applicationmutex
+    tst_applicationmutex.cpp
+    "${CMAKE_SOURCE_DIR}/src/core/ApplicationMutex.cpp")
 
 gamehq_add_test(tst_integrationprotocol
     tst_integrationprotocol.cpp

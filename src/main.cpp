@@ -14,7 +14,9 @@
 #include "config/Paths.h"
 #include "input/HidCloakMonitor.h"
 #include "integration/IntegrationClient.h"
+#include "core/ApplicationMutex.h"
 #include "core/UpdateMaintenance.h"
+#include "security/ReleaseTrust.h"
 
 #include <cstring>
 #include <iostream>
@@ -78,6 +80,14 @@ int main(int argc, char* argv[])
         #undef GAMEHQ_WIDEN
         #undef GAMEHQ_WIDEN_IMPL
         return rawCommand.find(L"--assert-version " + expected) != std::wstring::npos ? 0 : 2;
+    }
+    if (rawCommand.find(L"--release-trust-self-test") != std::wstring::npos) {
+        std::string error;
+        if (!release_trust::runBuiltInSelfTest(error)) {
+            std::cerr << "Release trust self-test failed: " << error << '\n';
+            return 6;
+        }
+        return 0;
     }
     // Elevated helper mode (no GUI, no single-instance lock): the Settings
     // "Fix automatically" button relaunches this exe with "runas" so the
@@ -147,6 +157,13 @@ int main(int argc, char* argv[])
         }
         return 0;
     }
+
+    // Setup and Uninstall observe this process-lifetime mutex. It is acquired
+    // only after QLockFile accepts this copy, so rejected second instances do
+    // not make the installer think GameHQ is still running.
+    ApplicationMutex applicationMutex;
+    if (!applicationMutex.acquired())
+        return 5;
 
     App app;
     app.setPostUpdateValidation(postUpdateValidation);

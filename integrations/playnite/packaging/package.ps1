@@ -29,7 +29,7 @@ if (Test-Path $stagingDir) {
 }
 New-Item -ItemType Directory -Path $stagingDir | Out-Null
 
-$requiredFiles = @("GameHQ.Playnite.dll", "extension.yaml")
+$requiredFiles = @("GameHQ.Playnite.dll", "BouncyCastle.Cryptography.dll", "extension.yaml")
 foreach ($file in $requiredFiles) {
     $source = Join-Path $publishDir $file
     if (-not (Test-Path $source)) {
@@ -37,6 +37,10 @@ foreach ($file in $requiredFiles) {
     }
     Copy-Item $source $stagingDir
 }
+$licenseSource = Join-Path $root "LICENSES\BouncyCastle.Cryptography.txt"
+$licenseTarget = Join-Path $stagingDir "LICENSES"
+New-Item -ItemType Directory -Path $licenseTarget -Force | Out-Null
+Copy-Item -LiteralPath $licenseSource -Destination $licenseTarget
 
 $iconSource = Join-Path $root "icon.png"
 if (Test-Path $iconSource) {

@@ -5,6 +5,7 @@
 #include "updater/UpdaterHealth.h"
 #include "updater/UpdaterRecovery.h"
 #include "core/UpdaterHandshake.h"
+#include "security/ReleaseTrust.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -165,6 +166,15 @@ int wmain(int argc, wchar_t **argv)
     const std::wstring mode = argc >= 2 ? std::wstring(argv[1]) : std::wstring();
     if (argc == 2 && mode == L"--self-test") {
         std::cout << "GameHQUpdater " GAMEHQ_UPDATER_VERSION " ready\n";
+        return 0;
+    }
+    if (argc == 2 && mode == L"--release-trust-self-test") {
+        std::string error;
+        if (!release_trust::runBuiltInSelfTest(error)) {
+            std::cerr << "ERROR: release trust self-test failed: " << error << '\n';
+            return 13;
+        }
+        std::cout << "GameHQUpdater release trust self-test passed\n";
         return 0;
     }
     if (argc != 3 || (mode != L"--dry-run" && mode != L"--stage"

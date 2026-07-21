@@ -36,6 +36,25 @@ FetchContent_Declare(miniz
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(miniz)
 
+# Release-manifest verification uses the reviewed upstream Ed25519
+# implementation. Keep this an exact immutable archive pin; 4.0.3 contains
+# the June 2026 EdDSA timing-leak fix (docs/release-manifest-security-review.md).
+FetchContent_Declare(monocypher
+    URL https://monocypher.org/download/monocypher-4.0.3.tar.gz
+    URL_HASH SHA512=40904ada5c7ee4f7741733e38b69a30a4b0561cbffba5ffe7c2dce16136d540251ec0d9056ff606510d3b5b708fb8a40db7e0870d4a0b2dc17ba2bfb880f8965
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_MakeAvailable(monocypher)
+
+add_library(gamehq_release_trust STATIC
+    src/security/ReleaseTrust.cpp
+    src/security/ReleaseTrust.h
+    "${monocypher_SOURCE_DIR}/src/monocypher.c"
+    "${monocypher_SOURCE_DIR}/src/optional/monocypher-ed25519.c")
+target_include_directories(gamehq_release_trust PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    PRIVATE "${monocypher_SOURCE_DIR}/src" "${monocypher_SOURCE_DIR}/src/optional")
+target_link_libraries(gamehq_release_trust PUBLIC bcrypt)
+
 # Brand.qml is the single source of truth for the visible product name. It is
 # read at configure time so C++ and QML always expose the same branding.
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/qml/Brand.qml" GAMEHQ_BRAND_QML)

@@ -246,11 +246,11 @@ the app, not only on disk.
 The `.sha256` file hosted beside the release zip protects against corrupted
 or incomplete downloads. It does **not** protect against a compromised
 GitHub repository or account — anyone who could tamper with the zip could
-equally tamper with its checksum file. A stronger authenticity model (code
-signing, or a signed manifest) is tracked as a separate decision; see the
-plan's `t8` item. Until that model is approved, an unsigned one-click
-updater ships only as a clearly labelled beta, and this limit is stated
-explicitly in both this document and the in-app Updates UI.
+equally tamper with its checksum file. The stronger Ed25519 release manifest
+and Authenticode publisher identity are separate pending release gates. Until
+both are active, an unsigned one-click updater ships only as a clearly labelled
+Beta, and this limit is stated here, in the in-app Updates UI, and in
+[Download Verification](download-verification.md).
 
 ## Unsupported locations
 

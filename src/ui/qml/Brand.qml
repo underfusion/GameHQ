@@ -13,4 +13,6 @@ QtObject {
     readonly property string websiteUrl: repositoryUrl
     readonly property string releasesUrl: repositoryUrl + "/releases"
     readonly property string issuesUrl: repositoryUrl + "/issues"
+    readonly property string licenseUrl: repositoryUrl + "/blob/main/LICENSE.txt"
+    readonly property string securityUrl: repositoryUrl + "/blob/main/docs/security-and-privacy.md"
 }

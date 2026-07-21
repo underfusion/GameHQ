@@ -1,18 +1,18 @@
 {
-  "version": "0.6.23",
+  "version": "0.6.25",
   "sections": [
     {
       "title": "Added",
       "items": [
-        "Open About GameHQ and What's New directly from the main sidebar.",
-        "Read the current version's release notes even while offline.",
-        "See update availability and run the appropriate update action from the same compact window."
+        "Generate and verify a byte-exact Ed25519 release manifest in an isolated test-key mode.",
+        "Share the same signed-manifest test vectors across GameHQ, the updater, and Playnite."
       ]
     },
     {
       "title": "Changed",
       "items": [
-        "The post-update greeting now opens once as a useful What's New view instead of sending you straight to GitHub."
+        "Release validation now checks artifact names, sizes, hashes, signatures, and rollback sequences.",
+        "Production keys remain disabled until their separate activation review."
       ]
     }
   ]

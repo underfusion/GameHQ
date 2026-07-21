@@ -7,6 +7,25 @@ is versioned and released independently of the main GameHQ application (see
 `../../VERSION` for that) — releases are tagged `playnite-vX.Y.Z` in this
 same repository.
 
+## [0.4.12] - 2026-07-22
+
+### Added
+
+- Added the pinned Bouncy Castle Ed25519 verifier, strict Base64 handling,
+  trusted/revoked key states and atomic anti-rollback persistence.
+- The plugin now passes the same RFC 8032 and GameHQ-specific test vectors as
+  the native application and static updater; production keys remain disabled.
+
+## [0.4.11] - 2026-07-21
+
+### Changed
+
+- Expanded GameHQ discovery for Setup installations. After the configured
+  path, the plugin now checks the installer-owned `InstallLocation`, the
+  current-user Windows App Path, the existing autostart entry, and finally the
+  standard per-user install folder. Candidate precedence and invalid fallback
+  behavior are covered by linked-source tests.
+
 ## [0.4.10] - 2026-07-21
 
 ### Added

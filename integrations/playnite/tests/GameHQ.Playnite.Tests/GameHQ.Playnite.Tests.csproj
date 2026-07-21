@@ -5,6 +5,10 @@
     <RootNamespace>GameHQ.Playnite.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
     <Nullable>disable</Nullable>
+    <!-- The linked locator is intentionally Windows-only; tests exercise its
+         pure candidate/precedence seam on any host without opening HKCU. -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,6 +18,7 @@
     <!-- Only needed to compile GameHQLocator.cs here; the plugin itself
          needs no NuGet reference for it (built into .NET Framework). -->
     <PackageReference Include="Microsoft.Win32.Registry" Version="5.0.0" />
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
   </ItemGroup>
 
   <ItemGroup>
@@ -22,6 +27,12 @@
          file depends on Playnite.SDK or System.Web.Extensions. -->
     <Compile Include="..\..\src\GameHQ.Playnite\Protocol\PipeFraming.cs" Link="Sources\PipeFraming.cs" />
     <Compile Include="..\..\src\GameHQ.Playnite\GameHQLocator.cs" Link="Sources\GameHQLocator.cs" />
+    <Compile Include="..\..\src\GameHQ.Playnite\Security\ReleaseTrust.cs" Link="Sources\ReleaseTrust.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\..\..\tests\fixtures\release-trust\gamehq-test-vector.json"
+          Link="Fixtures\gamehq-test-vector.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

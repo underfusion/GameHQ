@@ -19,9 +19,7 @@ continuously keeps the most recent gameplay in a rolling buffer. When something
 worth saving happens, press one button **after the moment** to turn the previous
 configurable minutes into a normal MP4 video clip — there is no need to start
 recording beforehand. You can also take instant screenshots and browse everything
-in a controller-friendly gallery without leaving your game. GameHQ 0.6.3 adds a
-full theme system, stronger overlay behavior, clip-frame screenshots, and clear
-recovery when controller-filtering software hides a connected pad.
+in a controller-friendly gallery without leaving your game.
 
 ## Highlights
 
@@ -52,14 +50,17 @@ recovery when controller-filtering software hides a connected pad.
 
 ## Download
 
-The latest version is **GameHQ 0.6.3**. Download
-`GameHQ-0.6.3-win64.zip` from the
-[latest release](https://github.com/underfusion/GameHQ/releases/latest), extract
-it anywhere writable, and run `GameHQ.exe`.
+Download only from the official
+[GameHQ Releases page](https://github.com/underfusion/GameHQ/releases). Choose
+`GameHQ-<version>-win64-setup.exe` for the recommended per-user installation, or
+the `-portable.zip` package to keep data beside the app.
 
-The application is not code-signed, so Windows SmartScreen may ask for
-confirmation. Verify that the download comes from this repository's Releases
-page before choosing **More info → Run anyway**.
+**Open-source Beta · Not yet code-signed; Windows may show an Unknown publisher
+warning.** Verify the official source and published release hash before running
+an artifact. A specific Defender malware/PUA detection is different: do not
+bypass it or disable Windows security. See
+[Download verification](docs/download-verification.md) and
+[Security & privacy](docs/security-and-privacy.md).
 
 ## Default controls
 
@@ -104,6 +105,8 @@ powershell -ExecutionPolicy Bypass -File packaging/make-dist.ps1
 
 Architecture and subsystem documentation lives in [docs/](docs/README.md).
 Changes are summarized in the [changelog](CHANGELOG.md).
+Vulnerabilities can be reported privately through the repository's enabled
+[security advisory form](https://github.com/underfusion/GameHQ/security/advisories/new).
 
 ## License
 

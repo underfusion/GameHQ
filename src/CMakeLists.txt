@@ -16,6 +16,7 @@ qt_add_executable(GameHQ
     config/LegacyMigration.cpp config/LegacyMigration.h
     config/ConfigManager.cpp config/ConfigManager.h
     config/CaptureLocations.cpp config/CaptureLocations.h
+    core/ApplicationMutex.cpp core/ApplicationMutex.h
     core/GameIdentity.cpp core/GameIdentity.h
     core/UpdateMaintenance.cpp core/UpdateMaintenance.h
     core/UpdaterHandshake.cpp core/UpdaterHandshake.h
@@ -121,6 +122,9 @@ qt_add_qml_module(GameHQ
         ui/qml/components/Toast.qml
         ui/qml/components/UpdateBanner.qml
         ui/qml/components/AboutWhatsNewDialog.qml
+        ui/qml/components/HelpDialog.qml
+        ui/qml/components/DialogCloseButton.qml
+        ui/qml/components/TextLink.qml
         ui/qml/components/Lightbox.qml
         ui/qml/components/MediaStage.qml
         ui/qml/components/PlayerControls.qml
@@ -180,6 +184,7 @@ target_compile_definitions(GameHQ PRIVATE
 )
 
 target_link_libraries(GameHQ PRIVATE
+    gamehq_release_trust
     Qt6::Core Qt6::Gui Qt6::Quick Qt6::Sql Qt6::Widgets Qt6::Svg
     Qt6::Multimedia Qt6::Network
     user32 gdi32 version winmm cfgmgr32
@@ -222,6 +227,7 @@ add_executable(GameHQUpdater
 )
 target_include_directories(GameHQUpdater PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(GameHQUpdater PRIVATE miniz bcrypt)
+target_link_libraries(GameHQUpdater PRIVATE gamehq_release_trust)
 target_link_options(GameHQUpdater PRIVATE -static -municode)
 target_compile_definitions(GameHQUpdater PRIVATE
     GAMEHQ_UPDATER_VERSION="${GAMEHQ_VERSION_FULL}")

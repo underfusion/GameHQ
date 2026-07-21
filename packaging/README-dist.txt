@@ -26,3 +26,4 @@ Notes
 - GameHQ never modifies your games and never injects into game processes.
 - Logs are at gamehq-data\logs\gamehq.log if you need to report a problem.
 - Source code and licenses: https://github.com/underfusion/GameHQ
+- Security and download verification: https://github.com/underfusion/GameHQ/blob/main/docs/security-and-privacy.md

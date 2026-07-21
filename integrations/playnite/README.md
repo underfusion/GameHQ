@@ -11,14 +11,19 @@ GameHQ works completely standalone. This plugin is optional and never
 required to use GameHQ; it only makes automatic game detection smarter for
 Playnite users.
 
+The plugin communicates only with the local `GameHQ.Local.v1` named pipe and
+does not add telemetry. Download and security guidance is maintained in
+[GameHQ Security & Privacy](../../docs/security-and-privacy.md).
+
 ## Status
 
 Connects to a running GameHQ over `GameHQ.Local.v1`, can launch it when not
 already running, forwards game start/stop/cancel events plus a full
 session snapshot on every (re)connect, and has a settings page for the
-GameHQ path, startup preferences and connection diagnostics. Not yet
-verified inside a real Playnite install — see `CHANGELOG.md` for what has
-shipped.
+GameHQ path, startup preferences and connection diagnostics. Plugin 0.4.12
+has been verified in Playnite 10.56 with automatic GameHQ discovery, a
+compatible v1 handshake, live diagnostics, and launch-on-game behavior.
+Portable Playnite and lifecycle edge cases remain in the acceptance matrix.
 
 ## Layout
 

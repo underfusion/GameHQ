@@ -41,4 +41,13 @@ at `licenses/miniz.txt`.
 
 - Source: https://github.com/richgel999/miniz/tree/3.1.2
 
+## Monocypher 4.0.3
+
+GameHQ and `GameHQUpdater.exe` statically link Monocypher's optional Ed25519
+implementation to verify signed release manifests. GameHQ uses the 2-clause
+BSD license option; the complete license is included at
+`licenses/monocypher.txt`.
+
+- Source: https://monocypher.org/download/
+
 No ownership of these third-party components is claimed by the GameHQ project.

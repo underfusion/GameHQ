@@ -4,7 +4,7 @@
     <TargetFramework>net462</TargetFramework>
     <RootNamespace>GameHQ.Playnite</RootNamespace>
     <AssemblyName>GameHQ.Playnite</AssemblyName>
-    <Version>0.4.10</Version>
+    <Version>0.4.12</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <UseWPF>true</UseWPF>
@@ -13,6 +13,7 @@
     <AppendTargetFrameworkToOutputPath>true</AppendTargetFrameworkToOutputPath>
     <!-- Playnite loads extensions from a flat plugin folder; keep dependency count low. -->
     <GenerateDependencyFile>false</GenerateDependencyFile>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -24,6 +25,7 @@
     <PackageReference Include="PlayniteSDK" Version="6.16.0">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
   </ItemGroup>
 
   <ItemGroup>

@@ -62,7 +62,8 @@ ApplicationWindow {
 
     function maybeShowPostUpdateGreeting() {
         if (!window.visible || !window.active || lightbox.visible
-                || aboutDialog.visible || pendingPostUpdateVersion === "")
+                || aboutDialog.visible || helpDialog.visible
+                || pendingPostUpdateVersion === "")
             return
         if (app.config("internal.ui.whats_new_seen_version", "") === pendingPostUpdateVersion) {
             app.setConfig("internal.updates.pending_post_update_version", "")
@@ -83,7 +84,7 @@ ApplicationWindow {
     }
 
     function openAbout(asPostUpdateGreeting) {
-        if (lightbox.visible)
+        if (lightbox.visible || helpDialog.visible)
             return
         window.menuOpen = false
         window.sidebarFocused = false
@@ -95,9 +96,25 @@ ApplicationWindow {
         app.setConfig("internal.ui.whats_new_seen_version", app.version)
         if (pendingPostUpdateVersion !== "")
             window.acknowledgePostUpdateGreeting()
-        window.sidebarHoverIndex = window.aboutSidebarIndex()
-        window.sidebarFocused = true
-        desktopSidebar.focusAboutLauncher()
+        window.sidebarFocused = false
+        grid.forceActiveFocus()
+    }
+
+    function openHelp() {
+        if (lightbox.visible || aboutDialog.visible)
+            return
+        window.menuOpen = false
+        window.settingsOpen = false
+        window.helpOpen = true
+        window.sidebarFocused = false
+        helpDialog.open()
+        sounds.play("nav_tick")
+    }
+
+    function finishHelp() {
+        window.helpOpen = false
+        window.sidebarFocused = false
+        grid.forceActiveFocus()
     }
 
     function openAboutSettings() {
@@ -376,7 +393,8 @@ ApplicationWindow {
         } else if (i === catCount + gameCount) {
             window.helpOpen = false; window.settingsOpen = true
         } else if (i === catCount + gameCount + 1) {
-            window.settingsOpen = false; window.helpOpen = true
+            window.openHelp()
+            return
         } else {  // About / What's New is a modal over the current page.
             window.openAbout(false)
             return
@@ -404,8 +422,10 @@ ApplicationWindow {
     }
 
     function padTabStep(direction) {
+        if (helpDialog.visible)
+            return
         if (aboutDialog.visible) {
-            aboutDialog.padStep(direction)
+            aboutDialog.padVertical(direction)
             return
         }
         if (window.settingsOpen) {
@@ -436,6 +456,8 @@ ApplicationWindow {
     }
 
     function padNavigate(direction) {
+        if (helpDialog.visible)
+            return
         if (aboutDialog.visible) {
             aboutDialog.padStep(direction)
             return
@@ -493,6 +515,10 @@ ApplicationWindow {
     }
 
     function padNavigateVertical(direction) {
+        if (helpDialog.visible) {
+            helpDialog.padScroll(direction)
+            return
+        }
         if (aboutDialog.visible) {
             aboutDialog.padStep(direction)
             return
@@ -539,6 +565,7 @@ ApplicationWindow {
     }
 
     function padConfirm() {
+        if (helpDialog.visible) { helpDialog.padConfirm(); return }
         if (aboutDialog.visible) { aboutDialog.padConfirm(); return }
         if (deleteDialog.visible) { deleteDialog.confirmed(); deleteDialog.close(); return }
         if (bulkDeleteDialog.visible) { window.bulkConfirmDelete(); bulkDeleteDialog.close(); return }
@@ -583,7 +610,7 @@ ApplicationWindow {
     }
 
     function padToggleMenu() {
-        if (aboutDialog.visible || window.settingsOpen || grid.count === 0)
+        if (aboutDialog.visible || helpDialog.visible || window.settingsOpen || grid.count === 0)
             return
         if (window.sidebarFocused)
             return  // action menu only acts on a grid tile
@@ -614,6 +641,7 @@ ApplicationWindow {
     }
 
     function padBack() {
+        if (helpDialog.visible) { helpDialog.close(); return }
         if (aboutDialog.visible) { aboutDialog.close(); return }
         if (deleteDialog.visible) { deleteDialog.canceled(); deleteDialog.close(); return }
         if (bulkDeleteDialog.visible) { bulkDeleteDialog.canceled(); bulkDeleteDialog.close(); return }
@@ -695,7 +723,7 @@ ApplicationWindow {
         function onDesktopBack() { window.usingGamepad = true; window.padBack() }
         function onDesktopSettings() {
             window.usingGamepad = true
-            if (lightbox.visible || aboutDialog.visible)
+            if (lightbox.visible || aboutDialog.visible || helpDialog.visible)
                 return
             window.openSettings()
         }
@@ -781,8 +809,7 @@ ApplicationWindow {
                 window.settingsOpen = true
             }
             onHelpRequested: {
-                window.settingsOpen = false
-                window.helpOpen = true
+                window.openHelp()
             }
             onAboutRequested: window.openAbout(false)
         }
@@ -798,16 +825,9 @@ ApplicationWindow {
             }
         }
 
-        // ───────────────────────── Help ─────────────────────────
-        HelpView {
-            visible: window.helpOpen
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-        }
-
         // ───────────────────────── Content ─────────────────────────
         ColumnLayout {
-            visible: !window.settingsOpen && !window.helpOpen
+            visible: !window.settingsOpen
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: Theme.s16
@@ -926,6 +946,13 @@ ApplicationWindow {
         z: 500
         onClosed: window.finishAbout()
         onUpdateSettingsRequested: window.openAboutSettings()
+    }
+
+    HelpDialog {
+        id: helpDialog
+        anchors.fill: parent
+        z: 500
+        onClosed: window.finishHelp()
     }
 
     // ───────────────────────── Pad action menu (Square) ─────────────────────────

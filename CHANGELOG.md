@@ -4,6 +4,48 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.25] - 2026-07-22
+
+### Added
+
+- Added a byte-exact Ed25519 release-manifest generator and verifier in an
+  explicit test-key mode, covering Setup, Portable and Update artifacts.
+- GameHQ, the static updater and the Playnite plugin now consume shared RFC
+  8032 and GameHQ-specific verification vectors.
+- Added strict signature encoding, trusted/current/next/revoked key handling,
+  atomic anti-rollback state and tamper/equivocation tests.
+
+### Security
+
+- Pinned Monocypher 4.0.3 and BouncyCastle.Cryptography 2.6.2 with locked
+  integrity metadata and redistributable license notices.
+- Test-key manifests are rejected for tagged releases; production private key
+  creation and activation remain outside the repository and ordinary CI.
+
+## [0.6.24] - 2026-07-21
+
+### Added
+
+- A pinned, project-local Inno Setup toolchain now builds a full offline,
+  per-user Windows installer with stable identity, metadata, shortcuts and
+  installed-location discovery registration.
+- Playnite 0.4.11 discovers GameHQ through the installer registry contract,
+  Windows App Paths, autostart and the standard per-user location in a tested
+  deterministic order.
+- GameHQ holds an application-lifetime mutex so Setup and Uninstall can wait
+  for capture, remux and database work to close normally.
+- Security, privacy, download-verification, troubleshooting and code-signing
+  policies now document Windows warnings and private vulnerability reporting.
+
+### Changed
+
+- Release packaging now creates one flag-free neutral payload. Portable staging
+  alone adds `portable.flag`; Setup consumes the payload unchanged; update
+  staging retains its strict program-file allowlist.
+- Distribution identity, registry ownership and release artifact names are
+  centralized in `packaging/distribution-identity.psd1`.
+- Settings -> About now links to the concise Security & Privacy guidance.
+
 ## [0.6.23] - 2026-07-21
 
 ### Added
