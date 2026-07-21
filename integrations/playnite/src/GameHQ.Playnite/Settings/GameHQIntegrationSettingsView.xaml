@@ -23,6 +23,14 @@
                 <ColumnDefinition Width="140" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="Plugin version:" />
+            <TextBlock Grid.Column="1" Text="{Binding PluginVersionText}" />
+        </Grid>
+        <Grid Margin="0,0,0,2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="140" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="Status:" />
             <TextBlock Grid.Column="1" Text="{Binding ConnectionStatusText}" />
         </Grid>
@@ -43,7 +51,8 @@
             <TextBlock Grid.Column="1" Text="{Binding ProtocolCompatibilityText}" />
         </Grid>
         <Button Content="Test connection" Command="{Binding TestConnectionCommand}"
-                HorizontalAlignment="Left" Margin="0,4,0,12" />
+                HorizontalAlignment="Left" Margin="0,4,0,2" />
+        <TextBlock Text="{Binding TestConnectionStatusText}" Foreground="Gray" Margin="0,0,0,12" />
 
         <TextBlock Text="Startup" FontWeight="Bold" Margin="0,0,0,6" />
         <CheckBox Content="Start GameHQ with Playnite" IsChecked="{Binding Settings.StartWithPlaynite}" Margin="0,0,0,4" />

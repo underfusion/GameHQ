@@ -25,6 +25,7 @@ namespace GameHQ.Playnite
 
         public GameHQPlugin(IPlayniteAPI api) : base(api)
         {
+            Properties = new GenericPluginProperties { HasSettings = true };
             Settings = LoadPluginSettings<GameHQIntegrationSettings>() ?? new GameHQIntegrationSettings();
 
             var version = Assembly.GetExecutingAssembly().GetName().Version.ToString();

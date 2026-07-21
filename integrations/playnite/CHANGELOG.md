@@ -7,6 +7,46 @@ is versioned and released independently of the main GameHQ application (see
 `../../VERSION` for that) — releases are tagged `playnite-vX.Y.Z` in this
 same repository.
 
+## [0.4.3] - 2026-07-21
+
+### Fixed
+
+- "Test connection" still gave no visible feedback: a local pipe reconnect
+  completes in a few milliseconds, so the Status field's Connecting flicker
+  was too fast to actually see. The button now shows "Testing..." right
+  away and, once the reconnect settles, a persistent "Test succeeded" /
+  "Test failed: <reason>" result line under the button.
+- The settings page never showed the plugin's own version, only GameHQ's —
+  it now has a "Plugin version:" row so it's obvious whether Playnite
+  picked up a newly installed build.
+
+## [0.4.2] - 2026-07-21
+
+### Fixed
+
+- The plugin never appeared under Playnite's Add-ons → Extensions settings
+  tree (though it showed as installed/enabled) because the constructor
+  didn't set `Properties.HasSettings = true`, the flag Playnite's SDK
+  requires to list a settings entry regardless of `GetSettings`/
+  `GetSettingsView` being overridden.
+- `extension.yaml` never declared an `Icon`, so Playnite showed the plugin
+  with a generic default icon instead of the packaged `icon.png`.
+- The handshake always failed with "Timeouts are not supported on this
+  stream" because `PipeStream.ReadTimeout` is unconditionally unsupported
+  in .NET — Test Connection could never succeed even with GameHQ running.
+  The handshake deadline is now enforced by racing the read against a
+  timer instead of setting `ReadTimeout`.
+- "Test connection" did nothing when already connected — it only woke the
+  loop's backoff wait, which isn't reached while a connection is active,
+  so clicking it gave no visible feedback. It now also drops the active
+  pipe to force an immediate real reconnect, which is visible in the
+  Status field as it cycles through Connecting.
+- Even after the reconnect fix above, Test connection still appeared to
+  do nothing: `StateChanged` fires from the background reconnect thread,
+  and WPF doesn't reliably apply property-change notifications raised
+  off the UI thread. The settings page's `StateChanged` handler now
+  marshals onto the UI dispatcher before refreshing the bound fields.
+
 ## [0.4.0] - 2026-07-20
 
 ### Added

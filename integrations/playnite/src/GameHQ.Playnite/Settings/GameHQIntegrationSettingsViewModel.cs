@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using GameHQ.Playnite.Protocol;
@@ -19,18 +21,40 @@ namespace GameHQ.Playnite.Settings
 
         public GameHQIntegrationSettings Settings { get; set; }
 
+        private string _testConnectionStatusText;
+
         public GameHQIntegrationSettingsViewModel(GameHQPlugin plugin, IPlayniteAPI api)
         {
             _plugin = plugin;
             _api = api;
             Settings = plugin.Settings;
 
-            plugin.Client.StateChanged += (_) => RefreshConnectionStatus();
+            // StateChanged fires from IntegrationClient's background reconnect
+            // thread, not the UI thread — WPF bindings don't reliably pick up
+            // PropertyChanged raised off-thread, so marshal onto the dispatcher.
+            plugin.Client.StateChanged += (_) =>
+                Application.Current.Dispatcher.BeginInvoke(new Action(RefreshConnectionStatus));
+        }
+
+        public string PluginVersionText
+        {
+            get { return PluginVersion(); }
         }
 
         public string ConnectionStatusText
         {
             get { return DescribeState(_plugin.Client.State); }
+        }
+
+        // Result of the last "Test connection" click. A local pipe
+        // reconnect (see TriggerReconnect) completes in a few ms, so the
+        // natural Connecting/Connected flicker on ConnectionStatusText is
+        // too fast for a user to actually see — this gives an explicit
+        // "Testing..." then a persistent result message instead.
+        public string TestConnectionStatusText
+        {
+            get { return _testConnectionStatusText; }
+            private set { SetValue(ref _testConnectionStatusText, value); }
         }
 
         public string DetectedGameHQVersionText
@@ -95,8 +119,32 @@ namespace GameHQ.Playnite.Settings
 
         private void TestConnection()
         {
+            TestConnectionStatusText = "Testing...";
             _plugin.Client.TriggerReconnect();
-            RefreshConnectionStatus();
+
+            Task.Run(() =>
+            {
+                var deadline = DateTime.UtcNow.AddSeconds(5);
+                var sawConnecting = false;
+                while (DateTime.UtcNow < deadline)
+                {
+                    var state = _plugin.Client.State;
+                    if (state == IntegrationConnectionState.Connecting) sawConnecting = true;
+                    if (sawConnecting && state != IntegrationConnectionState.Connecting) break;
+                    Thread.Sleep(100);
+                }
+
+                var finalState = _plugin.Client.State;
+                var result = finalState == IntegrationConnectionState.Connected
+                    ? "Test succeeded — connected to GameHQ " + (_plugin.Client.RemoteAppVersion ?? "?")
+                    : "Test failed: " + (_plugin.Client.LastError ?? "could not reach GameHQ");
+
+                Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    TestConnectionStatusText = result;
+                    RefreshConnectionStatus();
+                }));
+            });
         }
 
         private void CopyDiagnosticSummary()

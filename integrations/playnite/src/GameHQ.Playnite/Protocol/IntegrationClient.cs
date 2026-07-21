@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.IO.Pipes;
 using System.Security.Principal;
 using System.Threading;
+using System.Threading.Tasks;
 using Playnite.SDK;
 
 namespace GameHQ.Playnite.Protocol
@@ -44,6 +45,7 @@ namespace GameHQ.Playnite.Protocol
 
         private CancellationTokenSource _cts;
         private Thread _worker;
+        private volatile NamedPipeClientStream _activePipe;
         private volatile IntegrationConnectionState _state = IntegrationConnectionState.Disconnected;
         private DateTime _suspendedUntilUtc;
         private volatile string _remoteAppVersion;
@@ -81,12 +83,21 @@ namespace GameHQ.Playnite.Protocol
             get { return _lastError; }
         }
 
-        // Nudges the background loop to retry immediately instead of
-        // waiting out its current backoff. Used by the settings page's
-        // "Test connection" action; safe to call at any time.
+        // Forces an immediate fresh handshake: wakes the background loop out
+        // of its backoff wait, and if already connected, drops the active
+        // pipe so the loop reconnects right away instead of staying idle in
+        // its read pump. Used by the settings page's "Test connection"
+        // action; safe to call at any time.
         public void TriggerReconnect()
         {
             _wake.Set();
+
+            var pipe = _activePipe;
+            if (pipe != null)
+            {
+                try { pipe.Dispose(); }
+                catch (Exception ex) { Logger.Warn("GameHQ integration forced-reconnect dispose failed: " + ex.Message); }
+            }
         }
 
         public void Start()
@@ -157,7 +168,15 @@ namespace GameHQ.Playnite.Protocol
                         {
                             backoffMs = MinBackoffMs;
                             SetState(IntegrationConnectionState.Connected);
-                            PumpUntilDisconnected(pipe, token);
+                            _activePipe = pipe;
+                            try
+                            {
+                                PumpUntilDisconnected(pipe, token);
+                            }
+                            finally
+                            {
+                                _activePipe = null;
+                            }
                         }
                     }
                     catch (TimeoutException)
@@ -195,10 +214,19 @@ namespace GameHQ.Playnite.Protocol
 
             PipeFraming.WriteFrame(pipe, hello.ToUtf8Json());
 
-            var deadline = DateTime.UtcNow.AddMilliseconds(HandshakeTimeoutMs);
-            pipe.ReadTimeout = HandshakeTimeoutMs;
+            // PipeStream never supports the synchronous ReadTimeout/WriteTimeout
+            // properties (they throw InvalidOperationException regardless of
+            // PipeOptions), so the handshake deadline is enforced by racing the
+            // blocking read against a timer instead.
+            var readTask = Task.Run(() => PipeFraming.ReadFrame(pipe));
+            if (!readTask.Wait(HandshakeTimeoutMs))
+            {
+                _lastError = "GameHQ handshake timed out";
+                readTask.ContinueWith(t => { var _ = t.Exception; }, TaskContinuationOptions.OnlyOnFaulted);
+                return false;
+            }
 
-            var payload = PipeFraming.ReadFrame(pipe);
+            var payload = readTask.Result;
             if (payload == null) return false;
 
             var reply = IntegrationMessage.FromUtf8Json(payload);
