@@ -22,6 +22,9 @@ namespace GameHQ.Playnite.Settings
         public GameHQIntegrationSettings Settings { get; set; }
 
         private string _testConnectionStatusText;
+        private volatile bool _testInFlight;
+
+        private const string ReleasesUrl = "https://github.com/underfusion/GameHQ/releases";
 
         public GameHQIntegrationSettingsViewModel(GameHQPlugin plugin, IPlayniteAPI api)
         {
@@ -33,7 +36,13 @@ namespace GameHQ.Playnite.Settings
             // thread, not the UI thread — WPF bindings don't reliably pick up
             // PropertyChanged raised off-thread, so marshal onto the dispatcher.
             plugin.Client.StateChanged += (_) =>
-                Application.Current.Dispatcher.BeginInvoke(new Action(RefreshConnectionStatus));
+                Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    // A test in flight owns the message until it posts its own
+                    // result; outside that, a state change invalidates it.
+                    if (!_testInFlight) ClearTestResult();
+                    RefreshConnectionStatus();
+                }));
         }
 
         public string PluginVersionText
@@ -60,6 +69,42 @@ namespace GameHQ.Playnite.Settings
         public string DetectedGameHQVersionText
         {
             get { return _plugin.Client.RemoteAppVersion ?? "(not connected)"; }
+        }
+
+        // The settings page used to show an empty text box bound straight to
+        // the manual override, which reads as a broken field: auto-detection
+        // succeeds silently and its result is never displayed. Resolve the
+        // path the same way the client does and show what actually won.
+        public string ResolvedExePath
+        {
+            get { return GameHQLocator.Locate(Settings.ExePath); }
+        }
+
+        public bool IsGameHQFound
+        {
+            get { return !string.IsNullOrEmpty(ResolvedExePath); }
+        }
+
+        public string ResolvedExePathText
+        {
+            get { return ResolvedExePath ?? "GameHQ was not found on this PC."; }
+        }
+
+        public string LocationSourceText
+        {
+            get
+            {
+                if (!IsGameHQFound)
+                    return "Install GameHQ, then use \"Locate GameHQ.exe...\" if it is still not found.";
+                return GameHQLocator.IsValidInstall(Settings.ExePath)
+                    ? "Selected manually"
+                    : "Detected automatically";
+            }
+        }
+
+        public string SelectExeButtonText
+        {
+            get { return IsGameHQFound ? "Change location..." : "Locate GameHQ.exe..."; }
         }
 
         public string ProtocolCompatibilityText
@@ -101,6 +146,21 @@ namespace GameHQ.Playnite.Settings
             get { return new RelayCommand(CopyDiagnosticSummary); }
         }
 
+        public ICommand OpenFolderCommand
+        {
+            get { return new RelayCommand(OpenFolder); }
+        }
+
+        public ICommand DownloadGameHQCommand
+        {
+            get { return new RelayCommand(() => OpenUrl(ReleasesUrl)); }
+        }
+
+        public ICommand OpenPlayniteLogCommand
+        {
+            get { return new RelayCommand(OpenPlayniteLog); }
+        }
+
         private void SelectExe()
         {
             var path = _api.Dialogs.SelectFile("GameHQ.exe|GameHQ.exe");
@@ -115,11 +175,53 @@ namespace GameHQ.Playnite.Settings
             }
 
             Settings.ExePath = path;
+            RefreshLocation();
+        }
+
+        private void OpenFolder()
+        {
+            var path = ResolvedExePath;
+            if (string.IsNullOrEmpty(path)) return;
+
+            var folder = System.IO.Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(folder))
+                OpenUrl(folder);
+        }
+
+        // The integration has no log file of its own — everything it reports
+        // goes into Playnite's main log, so the action is named for what it
+        // actually opens. Fall back to the folder if the file isn't there yet.
+        private void OpenPlayniteLog()
+        {
+            var configPath = _api.Paths.ConfigurationPath;
+            if (string.IsNullOrEmpty(configPath))
+            {
+                _api.Dialogs.ShowErrorMessage("Playnite did not report a configuration path.",
+                                              "GameHQ Integration");
+                return;
+            }
+
+            var logFile = System.IO.Path.Combine(configPath, "playnite.log");
+            OpenUrl(System.IO.File.Exists(logFile) ? logFile : configPath);
+        }
+
+        private void OpenUrl(string target)
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(target);
+            }
+            catch (Exception ex)
+            {
+                _api.Dialogs.ShowErrorMessage("Could not open " + target + ": " + ex.Message,
+                                              "GameHQ Integration");
+            }
         }
 
         private void TestConnection()
         {
             TestConnectionStatusText = "Testing...";
+            _testInFlight = true;
             _plugin.Client.TriggerReconnect();
 
             Task.Run(() =>
@@ -135,14 +237,18 @@ namespace GameHQ.Playnite.Settings
                 }
 
                 var finalState = _plugin.Client.State;
+                // Deliberately version-free: the live version is one row above,
+                // and repeating a snapshot of it here left a stale number on
+                // screen after GameHQ was restarted on a newer build.
                 var result = finalState == IntegrationConnectionState.Connected
-                    ? "Test succeeded — connected to GameHQ " + (_plugin.Client.RemoteAppVersion ?? "?")
+                    ? "Connection test succeeded."
                     : "Test failed: " + (_plugin.Client.LastError ?? "could not reach GameHQ");
 
                 Application.Current.Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    TestConnectionStatusText = result;
+                    _testInFlight = false;
                     RefreshConnectionStatus();
+                    TestConnectionStatusText = result;
                 }));
             });
         }
@@ -157,7 +263,7 @@ namespace GameHQ.Playnite.Settings
             var sb = new StringBuilder();
             sb.AppendLine("GameHQ Integration plugin: " + PluginVersion());
             sb.AppendLine("Playnite API version: " + _api.ApplicationInfo.ApplicationVersion);
-            sb.AppendLine("GameHQ path: " + (string.IsNullOrEmpty(Settings.ExePath) ? "(auto-detected)" : Settings.ExePath));
+            sb.AppendLine("GameHQ path: " + ResolvedExePathText + " (" + LocationSourceText + ")");
             sb.AppendLine("GameHQ version: " + DetectedGameHQVersionText);
             sb.AppendLine("Protocol: " + ProtocolCompatibilityText);
             sb.AppendLine("Connection state: " + ConnectionStatusText);
@@ -176,6 +282,23 @@ namespace GameHQ.Playnite.Settings
             OnPropertyChanged(nameof(DetectedGameHQVersionText));
             OnPropertyChanged(nameof(ProtocolCompatibilityText));
             OnPropertyChanged(nameof(LastErrorText));
+            RefreshLocation();
+        }
+
+        private void RefreshLocation()
+        {
+            OnPropertyChanged(nameof(ResolvedExePath));
+            OnPropertyChanged(nameof(ResolvedExePathText));
+            OnPropertyChanged(nameof(IsGameHQFound));
+            OnPropertyChanged(nameof(LocationSourceText));
+            OnPropertyChanged(nameof(SelectExeButtonText));
+        }
+
+        // Called whenever the live connection moves. A test result describes
+        // one past moment, so it must not outlive the connection it described.
+        private void ClearTestResult()
+        {
+            TestConnectionStatusText = null;
         }
 
         private static string DescribeState(IntegrationConnectionState state)

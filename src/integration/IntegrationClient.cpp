@@ -89,12 +89,14 @@ bool IntegrationClient::readObject(QLocalSocket &socket, QJsonObject &object,
 
 bool IntegrationClient::forwardSecondInstance(const QStringList &arguments,
                                               const QString &appVersion,
-                                              QString &error)
+                                              QString &error,
+                                              const QString &serverName)
 {
     error.clear();
+    const QString name = serverName.isEmpty() ? QString::fromLatin1(LocalIntegrationServer::ServerName)
+                                               : serverName;
     QLocalSocket socket;
-    socket.connectToServer(QString::fromLatin1(LocalIntegrationServer::ServerName),
-                           QIODevice::ReadWrite);
+    socket.connectToServer(name, QIODevice::ReadWrite);
     if (!socket.waitForConnected(kConnectTimeoutMs)) {
         error = QStringLiteral("the running app's local channel is unavailable");
         return false;

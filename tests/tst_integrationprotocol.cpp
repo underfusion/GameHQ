@@ -3,6 +3,7 @@
 #include "integration/IntegrationProtocol.h"
 #include "integration/LocalIntegrationServer.h"
 
+#include <QCoreApplication>
 #include <QJsonObject>
 #include <QLocalSocket>
 #include <QtEndian>
@@ -27,6 +28,13 @@ QByteArray prefix(quint32 length)
     QByteArray bytes(4, Qt::Uninitialized);
     qToLittleEndian<quint32>(length, bytes.data());
     return bytes;
+}
+
+// A real GameHQ.exe instance already listening on the production pipe name
+// would otherwise make these tests bind (or connect) to the wrong server.
+QString testServerName()
+{
+    return QStringLiteral("GameHQ.Local.Test.%1").arg(QCoreApplication::applicationPid());
 }
 }
 
@@ -111,14 +119,15 @@ void IntegrationProtocolTest::liveServerAcceptsFrame()
 {
     LocalIntegrationServer server;
     QString error;
-    QVERIFY2(server.start(error), qPrintable(error));
+    const QString name = testServerName();
+    QVERIFY2(server.start(error, name), qPrintable(error));
     bool received = false;
     connect(&server, &LocalIntegrationServer::messageReceived, this,
             [&received](quint64, const integration::Message &message) {
                 received = message.type == QStringLiteral("hello");
             });
     QLocalSocket client;
-    client.connectToServer(QString::fromLatin1(LocalIntegrationServer::ServerName));
+    client.connectToServer(name);
     QVERIFY(client.waitForConnected(1000));
     const QByteArray frame = integration::encodeFrame(
         { { QStringLiteral("type"), QStringLiteral("hello") } }, error);
@@ -131,9 +140,10 @@ void IntegrationProtocolTest::liveServerDropsMalformedClient()
 {
     LocalIntegrationServer server;
     QString error;
-    QVERIFY2(server.start(error), qPrintable(error));
+    const QString name = testServerName();
+    QVERIFY2(server.start(error, name), qPrintable(error));
     QLocalSocket client;
-    client.connectToServer(QString::fromLatin1(LocalIntegrationServer::ServerName));
+    client.connectToServer(name);
     QVERIFY(client.waitForConnected(1000));
     QCOMPARE(client.write(prefix(0)), 4);
     client.flush();

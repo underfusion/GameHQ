@@ -13,7 +13,11 @@ public:
     explicit IntegrationService(QString appVersion, QObject *parent = nullptr,
                                 int disconnectGraceMs = 10000);
 
-    bool start(QString &error) { return m_server.start(error); }
+    // serverName overrides the production pipe name; only tests should pass one.
+    bool start(QString &error, const QString &serverName = QString())
+    {
+        return m_server.start(error, serverName);
+    }
     integration::ExternalGameContext *externalContext() { return &m_context; }
     int clientCount() const { return m_server.clientCount(); }
 

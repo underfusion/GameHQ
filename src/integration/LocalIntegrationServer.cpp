@@ -24,16 +24,17 @@ LocalIntegrationServer::~LocalIntegrationServer()
     stop();
 }
 
-bool LocalIntegrationServer::start(QString &error)
+bool LocalIntegrationServer::start(QString &error, const QString &serverName)
 {
     error.clear();
     if (m_server.isListening())
         return true;
-    if (!m_server.listen(QString::fromLatin1(ServerName))) {
+    const QString name = serverName.isEmpty() ? QString::fromLatin1(ServerName) : serverName;
+    if (!m_server.listen(name)) {
         error = m_server.errorString();
         return false;
     }
-    qInfo() << "Integration server listening on" << ServerName
+    qInfo() << "Integration server listening on" << name
             << "with same-user access";
     return true;
 }

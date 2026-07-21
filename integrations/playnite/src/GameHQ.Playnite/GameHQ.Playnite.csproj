@@ -4,7 +4,7 @@
     <TargetFramework>net462</TargetFramework>
     <RootNamespace>GameHQ.Playnite</RootNamespace>
     <AssemblyName>GameHQ.Playnite</AssemblyName>
-    <Version>0.4.3</Version>
+    <Version>0.4.10</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <UseWPF>true</UseWPF>
@@ -34,6 +34,9 @@
 
   <ItemGroup>
     <None Include="extension.yaml" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Embedded so the settings header can show the logo via a pack URI,
+         independently of the icon.png the packaging script drops next to the DLL. -->
+    <Resource Include="..\..\icon.png" Link="icon.png" />
   </ItemGroup>
 
 </Project>

@@ -5,67 +5,204 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              mc:Ignorable="d"
              d:DesignWidth="520">
-    <StackPanel Margin="12">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        <!-- Inverse of the above, for the "GameHQ not found" block. -->
+        <Style x:Key="MissingOnly" TargetType="Button">
+            <Setter Property="Visibility" Value="Visible" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsGameHQFound}" Value="True">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
 
-        <TextBlock Text="Connection" FontWeight="Bold" Margin="0,0,0,6" />
-        <Grid Margin="0,0,0,6">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <TextBox Grid.Column="0" Text="{Binding Settings.ExePath, UpdateSourceTrigger=PropertyChanged}"
-                     ToolTip="Leave blank to auto-detect GameHQ." Margin="0,0,6,0" />
-            <Button Grid.Column="1" Content="Select..." Command="{Binding SelectExeCommand}" />
-        </Grid>
+        <!-- Section title: bigger, brighter, always separated from what precedes it. -->
+        <Style x:Key="SectionTitle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
 
-        <Grid Margin="0,0,0,2">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="140" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="Plugin version:" />
-            <TextBlock Grid.Column="1" Text="{Binding PluginVersionText}" />
-        </Grid>
-        <Grid Margin="0,0,0,2">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="140" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="Status:" />
-            <TextBlock Grid.Column="1" Text="{Binding ConnectionStatusText}" />
-        </Grid>
-        <Grid Margin="0,0,0,2">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="140" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="GameHQ version:" />
-            <TextBlock Grid.Column="1" Text="{Binding DetectedGameHQVersionText}" />
-        </Grid>
-        <Grid Margin="0,0,0,2">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="140" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="Protocol:" />
-            <TextBlock Grid.Column="1" Text="{Binding ProtocolCompatibilityText}" />
-        </Grid>
-        <Button Content="Test connection" Command="{Binding TestConnectionCommand}"
-                HorizontalAlignment="Left" Margin="0,4,0,2" />
-        <TextBlock Text="{Binding TestConnectionStatusText}" Foreground="Gray" Margin="0,0,0,12" />
+        <!-- Secondary explanatory text: dimmer and smaller than the labels it describes. -->
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#B7BDC6" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
 
-        <TextBlock Text="Startup" FontWeight="Bold" Margin="0,0,0,6" />
-        <CheckBox Content="Start GameHQ with Playnite" IsChecked="{Binding Settings.StartWithPlaynite}" Margin="0,0,0,4" />
-        <CheckBox Content="Start GameHQ when a Playnite game launches if it is not running"
-                  IsChecked="{Binding Settings.StartOnGameLaunchIfNotRunning}" Margin="0,0,0,12" />
+        <!-- Small caps-ish label in front of a value in the status grid. -->
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#9AA3AE" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
 
-        <TextBlock Text="Support" FontWeight="Bold" Margin="0,0,0,6" />
-        <StackPanel Orientation="Horizontal">
-            <Button Content="Open GameHQ" Command="{Binding OpenGameHQCommand}" Margin="0,0,6,0" />
-            <Button Content="Website" Command="{Binding OpenWebsiteCommand}" Margin="0,0,6,0" />
-            <Button Content="Copy diagnostic summary" Command="{Binding CopyDiagnosticSummaryCommand}" />
+        <Style x:Key="FieldValue" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
+        <!-- Horizontal rule between sections. -->
+        <Style x:Key="SectionRule" TargetType="Border">
+            <Setter Property="Height" Value="1" />
+            <Setter Property="Background" Value="#33FFFFFF" />
+            <Setter Property="Margin" Value="0,18,0,18" />
+        </Style>
+
+        <!-- Read-only "URL bubble" used for the resolved GameHQ path. -->
+        <Style x:Key="PathBubble" TargetType="TextBox">
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="IsReadOnlyCaretVisible" Value="True" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="CaretBrush" Value="White" />
+            <Setter Property="Background" Value="#22FFFFFF" />
+            <Setter Property="BorderBrush" Value="#40FFFFFF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="FontFamily" Value="Consolas, Segoe UI" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          Margin="{TemplateBinding Padding}"
+                                          VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ToolbarButton" TargetType="Button">
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="MinHeight" Value="28" />
+        </Style>
+
+        <Style x:Key="SettingCheckBox" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Margin" Value="0,0,0,10" />
+        </Style>
+    </UserControl.Resources>
+
+    <!-- The host window does not scroll the settings view for us, so it scrolls itself. -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                  Padding="0,0,6,0">
+    <StackPanel Margin="14" TextElement.Foreground="White">
+
+        <!-- ============================== Header ============================== -->
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+            <Image Source="pack://application:,,,/GameHQ.Playnite;component/icon.png"
+                   Width="44" Height="44" Margin="0,0,12,0"
+                   VerticalAlignment="Center"
+                   RenderOptions.BitmapScalingMode="HighQuality" />
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="GameHQ Integration" FontSize="18" FontWeight="SemiBold"
+                           Foreground="White" />
+                <TextBlock Text="Playnite companion plugin" Style="{StaticResource Hint}" />
+            </StackPanel>
         </StackPanel>
-        <TextBlock Text="{Binding LastErrorText, StringFormat='Last error: {0}'}" Margin="0,6,0,0" TextWrapping="Wrap" />
+
+        <Border Style="{StaticResource SectionRule}" Margin="0,14,0,18" />
+
+        <!-- ============================ Connection ============================ -->
+        <TextBlock Text="Connection" Style="{StaticResource SectionTitle}" />
+        <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,14"
+                   Text="Tells the separate GameHQ desktop app which game is running. GameHQ must be installed separately — this plugin never downloads or installs it." />
+
+        <TextBlock Text="GameHQ location" Foreground="White" Margin="0,0,0,4" />
+        <TextBox Text="{Binding ResolvedExePathText, Mode=OneWay}"
+                 Style="{StaticResource PathBubble}" Margin="0,0,0,4" />
+        <TextBlock Text="{Binding LocationSourceText}" Style="{StaticResource Hint}" Margin="2,0,0,10" />
+
+        <StackPanel Orientation="Horizontal">
+            <Button Content="{Binding SelectExeButtonText}" Command="{Binding SelectExeCommand}"
+                    Style="{StaticResource ToolbarButton}" />
+            <Button Content="Open folder" Command="{Binding OpenFolderCommand}"
+                    Style="{StaticResource ToolbarButton}"
+                    Visibility="{Binding IsGameHQFound, Converter={StaticResource BoolToVisibility}}" />
+            <Button Content="Download GameHQ" Command="{Binding DownloadGameHQCommand}"
+                    Style="{StaticResource MissingOnly}" Padding="10,4" MinHeight="28" />
+        </StackPanel>
+
+        <!-- Status block, visually grouped in its own card. -->
+        <Border Background="#14FFFFFF" BorderBrush="#26FFFFFF" BorderThickness="1"
+                CornerRadius="6" Padding="12,10" Margin="0,14,0,0">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="130" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Status" Style="{StaticResource FieldLabel}" Margin="0,0,0,5" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding ConnectionStatusText}" Style="{StaticResource FieldValue}" Margin="0,0,0,5" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="GameHQ version" Style="{StaticResource FieldLabel}" Margin="0,0,0,5" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DetectedGameHQVersionText}" Style="{StaticResource FieldValue}" Margin="0,0,0,5" />
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Plugin version" Style="{StaticResource FieldLabel}" Margin="0,0,0,5" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding PluginVersionText}" Style="{StaticResource FieldValue}" Margin="0,0,0,5" />
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Protocol" Style="{StaticResource FieldLabel}" />
+                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding ProtocolCompatibilityText}" Style="{StaticResource FieldValue}" />
+                </Grid>
+
+                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                    <Button Content="Test connection" Command="{Binding TestConnectionCommand}"
+                            Style="{StaticResource ToolbarButton}" />
+                    <TextBlock Text="{Binding TestConnectionStatusText}" Style="{StaticResource Hint}"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource SectionRule}" />
+
+        <!-- ============================== Startup ============================= -->
+        <TextBlock Text="Startup" Style="{StaticResource SectionTitle}" />
+        <CheckBox Content="Start GameHQ together with Playnite"
+                  Style="{StaticResource SettingCheckBox}"
+                  IsChecked="{Binding Settings.StartWithPlaynite}" />
+        <CheckBox Content="Start GameHQ when a game launches, if it is not already running"
+                  Style="{StaticResource SettingCheckBox}"
+                  IsChecked="{Binding Settings.StartOnGameLaunchIfNotRunning}" />
+
+        <Border Style="{StaticResource SectionRule}" />
+
+        <!-- ============================== Support ============================= -->
+        <TextBlock Text="Support" Style="{StaticResource SectionTitle}" />
+        <WrapPanel>
+            <Button Content="Open GameHQ" Command="{Binding OpenGameHQCommand}" Style="{StaticResource ToolbarButton}" />
+            <Button Content="Open Playnite log" Command="{Binding OpenPlayniteLogCommand}" Style="{StaticResource ToolbarButton}" />
+            <Button Content="Website" Command="{Binding OpenWebsiteCommand}" Style="{StaticResource ToolbarButton}" />
+            <Button Content="Copy diagnostics" Command="{Binding CopyDiagnosticSummaryCommand}" Style="{StaticResource ToolbarButton}" />
+        </WrapPanel>
+        <TextBlock Style="{StaticResource Hint}" Margin="0,8,0,0"
+                   Text="Plugin messages go to Playnite's main log." />
+        <TextBlock Text="{Binding LastErrorText, StringFormat='Last error: {0}'}"
+                   Style="{StaticResource Hint}" Margin="0,4,0,0" />
+
+        <Border Style="{StaticResource SectionRule}" />
+
+        <!-- ============================== About =============================== -->
+        <TextBlock Text="About this integration" Style="{StaticResource SectionTitle}" />
+        <TextBlock Style="{StaticResource Hint}"
+                   Text="GameHQ receives the name of the Playnite game you are playing, so detection and capture organisation are more reliable. It does not record gameplay, upload data, or install anything. GameHQ keeps working without Playnite." />
 
     </StackPanel>
+    </ScrollViewer>
 </UserControl>

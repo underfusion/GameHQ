@@ -7,6 +7,96 @@ is versioned and released independently of the main GameHQ application (see
 `../../VERSION` for that) — releases are tagged `playnite-vX.Y.Z` in this
 same repository.
 
+## [0.4.10] - 2026-07-21
+
+### Added
+
+- The settings page now opens with a branded header: the GameHQ logo next to
+  "GameHQ Integration / Playnite companion plugin", separated from the rest by a
+  rule. `icon.png` is embedded in the assembly as a WPF `Resource` and loaded
+  through a pack URI, so it renders regardless of where Playnite unpacks the
+  extension.
+
+## [0.4.9] - 2026-07-21
+
+### Fixed
+
+- The settings page was clipped at the bottom in Playnite's add-on window (the
+  *About this integration* paragraph was cut off). The whole page is now wrapped
+  in a `ScrollViewer` with an automatic vertical scrollbar.
+
+## [0.4.8] - 2026-07-21
+
+### Changed
+
+- Reworked the settings page for readability: sections are separated by
+  horizontal rules, headings are larger, the resolved GameHQ path now sits in a
+  rounded read-only "bubble" text box that can be selected and copied, and the
+  connection status fields plus the *Test connection* button are grouped into
+  one card.
+- Removed the descriptive captions under the two Startup checkboxes; the
+  checkbox labels themselves now carry the meaning.
+- Trimmed the Connection and Support blurbs, and hints are now smaller and
+  dimmer (`#B7BDC6`) than the labels they describe, so the page no longer reads
+  as one undifferentiated wall of same-sized text.
+
+## [0.4.7] - 2026-07-21
+
+### Fixed
+
+- The 0.4.6 fix didn't hold: `BasedOn="{StaticResource {x:Type ...}}"` relied on
+  Playnite exposing implicit type styles to plugin-hosted controls, which it
+  does not, so text stayed on WPF's default near-black foreground. Replaced
+  with an explicit `Foreground="White"` on the `Hint` style and
+  `TextElement.Foreground="White"` on the root panel, so every label inherits
+  a visible color regardless of the host theme's resource wiring.
+
+## [0.4.6] - 2026-07-21
+
+### Fixed
+
+- Hint text and the "Download GameHQ" button were invisible on dark Playnite
+  themes: the local `Hint` and `MissingOnly` styles had no `BasedOn`, so they
+  replaced Playnite's implicit theme style instead of extending it, leaving
+  those elements with WPF's default black foreground. Both styles now chain
+  `BasedOn="{StaticResource {x:Type ...}}"` onto the correct target type.
+
+## [0.4.5] - 2026-07-21
+
+### Added
+
+- An "Open Playnite log" button under Support, with a line explaining that the
+  integration writes into Playnite's main log rather than keeping one of its
+  own. It opens `playnite.log` in Playnite's configuration folder, or the
+  folder itself if the file does not exist yet.
+
+## [0.4.4] - 2026-07-21
+
+### Added
+
+- The settings page now explains itself. Two lines under "Connection" say what
+  the plugin does and that GameHQ is a separate application the plugin never
+  downloads or installs, both startup checkboxes carry a one-line description,
+  and an "About this integration" section states what is shared, that no
+  gameplay is recorded or uploaded, and that GameHQ works without Playnite.
+- A "Download GameHQ" button, shown only while no installation is found, opens
+  the releases page.
+- An "Open folder" button reveals the resolved installation.
+
+### Fixed
+
+- The connection path was an empty, unexplained text box. It was bound to the
+  manual override, so a successful auto-detection left it blank and the page
+  looked broken. The page now shows the resolved `GameHQ.exe`, whether it was
+  detected automatically or selected manually, and "GameHQ was not found on
+  this PC" when there is nothing to show.
+- The "Select..." button now reads "Locate GameHQ.exe..." when no install is
+  found and "Change location..." when one is.
+- The connection-test result outlived the connection it described: after
+  restarting GameHQ on a newer build the page showed the live version in one
+  row and an older version in the stale test line. The result is now cleared
+  whenever the connection state moves, and no longer repeats the version.
+
 ## [0.4.3] - 2026-07-21
 
 ### Fixed

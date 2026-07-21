@@ -9,9 +9,11 @@ class QJsonObject;
 class IntegrationClient
 {
 public:
+    // serverName overrides the production pipe name; only tests should pass one.
     static bool forwardSecondInstance(const QStringList &arguments,
                                       const QString &appVersion,
-                                      QString &error);
+                                      QString &error,
+                                      const QString &serverName = QString());
 
 private:
     static bool writeObject(QLocalSocket &socket, const QJsonObject &object,

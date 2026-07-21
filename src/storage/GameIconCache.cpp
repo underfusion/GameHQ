@@ -165,6 +165,17 @@ QString GameIconCache::formatVersion()
     return QString::fromLatin1(kCacheFormat);
 }
 
+QStringList GameIconCache::manifestLogoReferencesForTesting(const QString& manifestPath)
+{
+    return manifestLogoReferences(manifestPath);
+}
+
+QString GameIconCache::resolveManifestAssetForTesting(const QString& manifestDir,
+                                                       const QString& reference)
+{
+    return resolveManifestAsset(manifestDir, reference);
+}
+
 QString GameIconCache::iconPathForExecutable(const QString& executablePath)
 {
     if (executablePath.isEmpty() || !QFileInfo::exists(executablePath)) {

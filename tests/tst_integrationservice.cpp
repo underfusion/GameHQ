@@ -3,6 +3,7 @@
 #include "integration/IntegrationProtocol.h"
 #include "integration/IntegrationService.h"
 
+#include <QCoreApplication>
 #include <QJsonDocument>
 #include <QLocalSocket>
 #include <QtEndian>
@@ -51,6 +52,13 @@ bool takeObject(QLocalSocket &socket, QJsonObject &object)
     return true;
 }
 
+// A real GameHQ.exe instance already listening on the production pipe name
+// would otherwise make these tests bind (or connect) to the wrong server.
+QString testServerName()
+{
+    return QStringLiteral("GameHQ.Local.Test.%1").arg(QCoreApplication::applicationPid());
+}
+
 QJsonObject hello(int minimum = 1, int maximum = 1,
                   const QString &client = QStringLiteral("GameHQ.Test"))
 {
@@ -69,9 +77,10 @@ void IntegrationServiceTest::handshakeActionsAndStatus()
 {
     IntegrationService service(QStringLiteral("9.8.7"));
     QString error;
-    QVERIFY2(service.start(error), qPrintable(error));
+    const QString name = testServerName();
+    QVERIFY2(service.start(error, name), qPrintable(error));
     QLocalSocket client;
-    client.connectToServer(QString::fromLatin1(LocalIntegrationServer::ServerName));
+    client.connectToServer(name);
     QVERIFY(client.waitForConnected(1000));
 
     sendObject(client, { { QStringLiteral("type"), QStringLiteral("status.request") },
@@ -111,9 +120,10 @@ void IntegrationServiceTest::incompatibleHandshakeCloses()
 {
     IntegrationService service(QStringLiteral("9.8.7"));
     QString error;
-    QVERIFY2(service.start(error), qPrintable(error));
+    const QString name = testServerName();
+    QVERIFY2(service.start(error, name), qPrintable(error));
     QLocalSocket client;
-    client.connectToServer(QString::fromLatin1(LocalIntegrationServer::ServerName));
+    client.connectToServer(name);
     QVERIFY(client.waitForConnected(1000));
     sendObject(client, hello(2, 3));
     QJsonObject reply;
@@ -128,9 +138,10 @@ void IntegrationServiceTest::lifecycleSyncAndDisconnectExpiry()
 {
     IntegrationService service(QStringLiteral("9.8.7"), nullptr, 50);
     QString error;
-    QVERIFY2(service.start(error), qPrintable(error));
+    const QString name = testServerName();
+    QVERIFY2(service.start(error, name), qPrintable(error));
     QLocalSocket client;
-    client.connectToServer(QString::fromLatin1(LocalIntegrationServer::ServerName));
+    client.connectToServer(name);
     QVERIFY(client.waitForConnected(1000));
     sendObject(client, hello(1, 1, QStringLiteral("GameHQ.Playnite")));
     QJsonObject reply;

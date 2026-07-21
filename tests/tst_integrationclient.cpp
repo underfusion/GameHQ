@@ -2,6 +2,7 @@
 
 #include "integration/IntegrationClient.h"
 
+#include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QProcess>
 
@@ -14,6 +15,16 @@ private slots:
     void unavailableServerIsBounded();
 };
 
+namespace
+{
+// A real GameHQ.exe instance already listening on the production pipe name
+// would otherwise make these tests bind (or connect) to the wrong server.
+QString testServerName()
+{
+    return QStringLiteral("GameHQ.Local.Test.%1").arg(QCoreApplication::applicationPid());
+}
+}
+
 void IntegrationClientTest::forwardsActivation_data()
 {
     QTest::addColumn<QString>("argument");
@@ -24,8 +35,10 @@ void IntegrationClientTest::forwardsActivation_data()
 void IntegrationClientTest::forwardsActivation()
 {
     QFETCH(QString, argument);
+    const QString name = testServerName();
     QProcess fixture;
     fixture.setProgram(QStringLiteral(INTEGRATION_SERVER_FIXTURE));
+    fixture.setArguments({ name });
     fixture.start();
     QVERIFY(fixture.waitForStarted(1000));
     QVERIFY(fixture.waitForReadyRead(1000));
@@ -34,7 +47,7 @@ void IntegrationClientTest::forwardsActivation()
     QString error;
     QVERIFY2(IntegrationClient::forwardSecondInstance(
                  { QStringLiteral("GameHQ.exe"), argument },
-                 QStringLiteral("1.2.3"), error), qPrintable(error));
+                 QStringLiteral("1.2.3"), error, name), qPrintable(error));
     QVERIFY(fixture.waitForFinished(1000));
     QCOMPARE(fixture.exitCode(), 0);
 }
@@ -45,7 +58,7 @@ void IntegrationClientTest::unavailableServerIsBounded()
     timer.start();
     QString error;
     QVERIFY(!IntegrationClient::forwardSecondInstance(
-        { QStringLiteral("GameHQ.exe") }, QStringLiteral("1.2.3"), error));
+        { QStringLiteral("GameHQ.exe") }, QStringLiteral("1.2.3"), error, testServerName()));
     QVERIFY(!error.isEmpty());
     QVERIFY(timer.elapsed() < 1000);
 }

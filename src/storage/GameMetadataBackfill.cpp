@@ -7,14 +7,11 @@
 #include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
-#include <QHash>
 #include <QRegularExpression>
 #include <QSqlError>
 #include <QSqlQuery>
-#include <QStringList>
 #include <QTextStream>
 #include <QVariant>
-#include <QVector>
 #include <QDebug>
 
 namespace
@@ -36,64 +33,38 @@ void updateGameExecutable(QSqlDatabase& db, int gameId, const QString& executabl
     if (!q.exec())
         qWarning() << "DB: could not backfill game executable/icon:" << q.lastError().text();
 }
-} // namespace
 
-void GameMetadataBackfill::run(QSqlDatabase& db)
+const QRegularExpression& detectorLineRegex()
 {
-    QFile log(Paths::logsDir() + QStringLiteral("/gamehq.log"));
-    if (!log.open(QIODevice::ReadOnly | QIODevice::Text))
-        return;
-
-    struct MissingGame { int id; QString key; QString name; };
-    QVector<MissingGame> missing;
-    QSqlQuery games(db);
-    games.prepare(QStringLiteral(
-        "SELECT id, display_name FROM games "
-        "WHERE (executable_path IS NULL OR executable_path = '') "
-        "   OR (icon_path IS NULL OR icon_path = '')"));
-    if (!games.exec())
-        return;
-    while (games.next()) {
-        missing.append({ games.value(0).toInt(),
-                         GameIdentity::key(games.value(1).toString()),
-                         games.value(1).toString() });
-    }
-    if (missing.isEmpty())
-        return;
-
     static const QRegularExpression re(
         QStringLiteral(R"(GameDetector title candidates for .* \| steam: ([^|]+) \| window: ([^|]+) \| ProductName: ([^|]+) \| FileDescription: ([^|]+) \| fromExe: ([^|]+) \| path: (.+)$)"));
+    return re;
+}
 
-    // Every title candidate the detector logged is a way back to the row, not
-    // just the Steam one: a non-Steam title (Xbox/MSIX, itch, standalone) logs
-    // `steam: <none>`, and only accepting that field is why those games kept an
-    // empty icon_path forever.
-    //
-    // The fields are not equally trustworthy, though, so a match carries the
-    // rank of the field it came from and the whole log is scanned before
-    // anything is written. A launcher shim gets logged under the game's window
-    // title ("gamingservicesui.exe | window: Vampire Crawlers") one line BEFORE
-    // the real executable, so first-match-wins would bind the shim's path.
-    // `fromExe` outranks it: the executable named after the game IS the game.
-    enum CandidateRank { RankFromExe = 0, RankProduct, RankSteam, RankWindow, RankCount };
-    // Capture index per rank, matching the regex groups below.
-    static const int kCaptureForRank[RankCount] = { 5, 3, 1, 2 };
+// Capture index per rank (RankFromExe, RankProduct, RankSteam, RankWindow).
+constexpr int kCaptureForRank[] = { 5, 3, 1, 2 };
+constexpr int kRankCount = 4;
+constexpr int kRankProduct = 1;
+} // namespace
 
-    struct Best { QString path; int rank = RankCount; };
+QHash<int, QString> GameMetadataBackfill::selectBestPaths(
+    const QStringList& logLines, const QVector<Target>& targets,
+    const std::function<bool(const QString&)>& pathExists)
+{
+    struct Best { QString path; int rank = kRankCount; };
     QHash<int, Best> best;   // game id -> best evidence seen so far
+    const QRegularExpression& re = detectorLineRegex();
 
-    QTextStream in(&log);
-    while (!in.atEnd()) {
-        const QString line = in.readLine();
+    for (const QString& line : logLines) {
         const auto m = re.match(line);
         if (!m.hasMatch())
             continue;
 
         const QString path = m.captured(6).trimmed();
-        if (path == QLatin1String("<none>") || !QFileInfo::exists(path))
+        if (path == QLatin1String("<none>") || !pathExists(path))
             continue;
 
-        for (int rank = 0; rank < RankCount; ++rank) {
+        for (int rank = 0; rank < kRankCount; ++rank) {
             const QString name = m.captured(kCaptureForRank[rank]).trimmed();
             if (name.isEmpty() || name == QLatin1String("<none>"))
                 continue;
@@ -101,12 +72,10 @@ void GameMetadataBackfill::run(QSqlDatabase& db)
             if (key.isEmpty())
                 continue;
 
-            for (const MissingGame& game : missing) {
-                if (game.key != key)
+            for (const Target& target : targets) {
+                if (target.key != key)
                     continue;
-                // FileDescription (capture 4) shares RankProduct with
-                // ProductName; it is folded in by the loop below.
-                Best& current = best[game.id];
+                Best& current = best[target.id];
                 if (rank < current.rank)
                     current = { path, rank };
             }
@@ -117,24 +86,67 @@ void GameMetadataBackfill::run(QSqlDatabase& db)
         const QString description = m.captured(4).trimmed();
         if (!description.isEmpty() && description != QLatin1String("<none>")) {
             const QString key = GameIdentity::key(description);
-            for (const MissingGame& game : missing) {
-                if (game.key != key || key.isEmpty())
-                    continue;
-                Best& current = best[game.id];
-                if (RankProduct < current.rank)
-                    current = { path, RankProduct };
+            if (!key.isEmpty()) {
+                for (const Target& target : targets) {
+                    if (target.key != key)
+                        continue;
+                    Best& current = best[target.id];
+                    if (kRankProduct < current.rank)
+                        current = { path, kRankProduct };
+                }
             }
         }
     }
 
+    QHash<int, QString> result;
+    for (auto it = best.constBegin(); it != best.constEnd(); ++it) {
+        if (!it.value().path.isEmpty())
+            result.insert(it.key(), it.value().path);
+    }
+    return result;
+}
+
+void GameMetadataBackfill::run(QSqlDatabase& db, const QString& logFilePath)
+{
+    QFile log(logFilePath.isEmpty() ? Paths::logsDir() + QStringLiteral("/gamehq.log") : logFilePath);
+    if (!log.open(QIODevice::ReadOnly | QIODevice::Text))
+        return;
+
+    QVector<Target> missing;
+    struct MissingGame { int id; QString name; };
+    QVector<MissingGame> missingNames;
+    QSqlQuery games(db);
+    games.prepare(QStringLiteral(
+        "SELECT id, display_name FROM games "
+        "WHERE (executable_path IS NULL OR executable_path = '') "
+        "   OR (icon_path IS NULL OR icon_path = '')"));
+    if (!games.exec())
+        return;
+    while (games.next()) {
+        const int id = games.value(0).toInt();
+        const QString name = games.value(1).toString();
+        missing.append({ id, GameIdentity::key(name) });
+        missingNames.append({ id, name });
+    }
+    if (missing.isEmpty())
+        return;
+
+    QStringList lines;
+    QTextStream in(&log);
+    while (!in.atEnd())
+        lines.append(in.readLine());
+
+    const QHash<int, QString> best = selectBestPaths(
+        lines, missing, [](const QString& path) { return QFileInfo::exists(path); });
+
     int updates = 0;
-    for (const MissingGame& game : missing) {
+    for (const MissingGame& game : missingNames) {
         const auto it = best.constFind(game.id);
-        if (it == best.constEnd() || it->path.isEmpty())
+        if (it == best.constEnd())
             continue;
-        updateGameExecutable(db, game.id, it->path);
+        updateGameExecutable(db, game.id, it.value());
         qInfo() << "DB: backfilled game icon from historical detection for"
-                << game.name << "->" << it->path;
+                << game.name << "->" << it.value();
         ++updates;
     }
 

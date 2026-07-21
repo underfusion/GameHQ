@@ -17,7 +17,9 @@ public:
     explicit LocalIntegrationServer(QObject *parent = nullptr);
     ~LocalIntegrationServer() override;
 
-    bool start(QString &error);
+    // serverName overrides the production pipe name; only tests should ever
+    // pass one, so a real running instance can never collide with the suite.
+    bool start(QString &error, const QString &serverName = QString());
     void stop();
     bool send(quint64 clientId, const QJsonObject &message);
     void disconnectClient(quint64 clientId);

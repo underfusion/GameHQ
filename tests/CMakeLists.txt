@@ -85,6 +85,34 @@ target_compile_definitions(tst_integrationclient PRIVATE
     INTEGRATION_SERVER_FIXTURE="$<TARGET_FILE:integration_server_fixture>")
 add_dependencies(tst_integrationclient integration_server_fixture)
 
+gamehq_add_test(tst_gamemetadatabackfill
+    tst_gamemetadatabackfill.cpp
+    "${CMAKE_SOURCE_DIR}/src/storage/GameMetadataBackfill.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameIconCache.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/Paths.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/LegacyMigration.cpp"
+    "${CMAKE_SOURCE_DIR}/src/core/GameIdentity.cpp")
+target_link_libraries(tst_gamemetadatabackfill PRIVATE Qt6::Sql Qt6::Gui Qt6::Widgets)
+
+gamehq_add_test(tst_gameiconcache
+    tst_gameiconcache.cpp
+    "${CMAKE_SOURCE_DIR}/src/storage/GameIconCache.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/Paths.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/LegacyMigration.cpp")
+target_link_libraries(tst_gameiconcache PRIVATE Qt6::Gui Qt6::Widgets)
+
+gamehq_add_test(tst_captureiconrefresh
+    tst_captureiconrefresh.cpp
+    "${CMAKE_SOURCE_DIR}/src/storage/CaptureDatabase.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/CaptureQueries.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameRowRepair.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameMetadataBackfill.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameIconCache.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/Paths.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/LegacyMigration.cpp"
+    "${CMAKE_SOURCE_DIR}/src/core/GameIdentity.cpp")
+target_link_libraries(tst_captureiconrefresh PRIVATE Qt6::Sql Qt6::Gui Qt6::Widgets)
+
 gamehq_add_test(tst_updatedownloader
     tst_updatedownloader.cpp
     "${CMAKE_SOURCE_DIR}/src/updates/UpdateDownloader.cpp")
