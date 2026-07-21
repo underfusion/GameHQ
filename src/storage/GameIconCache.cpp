@@ -4,28 +4,201 @@
 
 #include <QCryptographicHash>
 #include <QDir>
+#include <QFile>
 #include <QFileIconProvider>
 #include <QFileInfo>
 #include <QIcon>
+#include <QImage>
 #include <QPixmap>
+#include <QXmlStreamReader>
+
+namespace {
+
+// MSIX/Appx titles (Xbox app installs under <drive>\XboxGames\<title>\Content)
+// ship an executable with no embedded icon resource, so the shell only ever
+// hands back the generic application icon. The real artwork lives in the
+// package manifest, which sits at the package root next to the executable.
+//
+// Two manifest flavours matter here. Store/MSIX packages carry
+// AppxManifest.xml; GDK titles installed by the Xbox app carry
+// MicrosoftGame.config instead, which declares the same logos as attributes on
+// its <ShellVisuals> element. Only looking for the Appx one is why XboxGames
+// installs kept falling through to the generic .exe glyph.
+QString packageManifestFor(const QString& executablePath)
+{
+    static const QStringList kManifestNames{
+        QStringLiteral("MicrosoftGame.config"),
+        QStringLiteral("AppxManifest.xml"),
+    };
+
+    QDir dir = QFileInfo(executablePath).absoluteDir();
+    for (int depth = 0; depth < 4; ++depth) {
+        for (const QString& name : kManifestNames) {
+            const QString candidate = dir.filePath(name);
+            if (QFileInfo::exists(candidate))
+                return candidate;
+        }
+        if (!dir.cdUp())
+            break;
+    }
+    return {};
+}
+
+// Logo references in preferred order: the largest square tile first, because
+// it is the one that carries the actual key art rather than a stripped glyph.
+QStringList manifestLogoReferences(const QString& manifestPath)
+{
+    QFile file(manifestPath);
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+
+    static const QStringList wanted{
+        QStringLiteral("Square480x480Logo"),   // GDK <ShellVisuals>
+        QStringLiteral("Square310x310Logo"),
+        QStringLiteral("Square150x150Logo"),
+        QStringLiteral("Square44x44Logo"),
+        QStringLiteral("Logo"),
+    };
+    QStringList byPriority(wanted.size(), QString());
+
+    QXmlStreamReader xml(&file);
+    while (!xml.atEnd()) {
+        if (xml.readNext() != QXmlStreamReader::StartElement)
+            continue;
+        for (const QXmlStreamAttribute& attr : xml.attributes()) {
+            const int rank = wanted.indexOf(attr.name().toString());
+            if (rank >= 0 && byPriority.at(rank).isEmpty())
+                byPriority[rank] = attr.value().toString();
+        }
+        // <Properties><Logo>Assets\StoreLogo.png</Logo></Properties> is an
+        // element, not an attribute.
+        if (xml.name() == QLatin1String("Logo")) {
+            const QString text = xml.readElementText();
+            const int rank = wanted.indexOf(QStringLiteral("Logo"));
+            if (!text.isEmpty() && byPriority.at(rank).isEmpty())
+                byPriority[rank] = text;
+        }
+    }
+
+    QStringList references;
+    for (const QString& reference : byPriority) {
+        if (!reference.isEmpty())
+            references.append(reference);
+    }
+    return references;
+}
+
+// Manifests name a logical asset ("Assets\Square150x150Logo.png"); what is on
+// disk are its qualified variants ("Square150x150Logo.scale-200.png"). Fall
+// back to the fattest matching variant, which is the highest-resolution one.
+QString resolveManifestAsset(const QString& manifestDir, const QString& reference)
+{
+    QString relative = reference;
+    relative.replace(QLatin1Char('\\'), QLatin1Char('/'));
+    const QFileInfo direct(QDir(manifestDir).filePath(relative));
+    if (direct.isFile())
+        return direct.absoluteFilePath();
+
+    QDir assetDir(direct.absolutePath());
+    if (!assetDir.exists())
+        return {};
+
+    const QString suffix = direct.suffix().isEmpty() ? QStringLiteral("png") : direct.suffix();
+    const QStringList variants = assetDir.entryList(
+        {direct.completeBaseName() + QStringLiteral(".*.") + suffix}, QDir::Files);
+
+    QString best;
+    qint64 bestSize = -1;
+    for (const QString& variant : variants) {
+        const QFileInfo info(assetDir.filePath(variant));
+        if (info.size() > bestSize) {
+            bestSize = info.size();
+            best = info.absoluteFilePath();
+        }
+    }
+    return best;
+}
+
+QPixmap packageLogoPixmap(const QString& executablePath)
+{
+    const QString manifestPath = packageManifestFor(executablePath);
+    if (manifestPath.isEmpty()) {
+        // Not a packaged title, or the manifest sits deeper than the walk goes.
+        // Normal for plain Win32 games, so this stays at debug volume.
+        qInfo() << "GameIconCache: no package manifest near" << executablePath;
+        return {};
+    }
+
+    const QStringList references = manifestLogoReferences(manifestPath);
+    if (references.isEmpty()) {
+        qWarning() << "GameIconCache: manifest declares no logo" << manifestPath;
+        return {};
+    }
+
+    const QString manifestDir = QFileInfo(manifestPath).absolutePath();
+    for (const QString& reference : references) {
+        const QString assetPath = resolveManifestAsset(manifestDir, reference);
+        if (assetPath.isEmpty())
+            continue;
+        QImage image(assetPath);
+        if (image.isNull())
+            continue;
+        if (image.width() > 64 || image.height() > 64)
+            image = image.scaled(64, 64, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        qInfo() << "GameIconCache: using package logo" << assetPath << "from" << manifestPath;
+        return QPixmap::fromImage(image);
+    }
+    qWarning() << "GameIconCache: no logo asset on disk for" << references << "declared by"
+               << manifestPath;
+    return {};
+}
+
+// The extractor's format version. It keys the on-disk cache below and is also
+// persisted next to every pinned icon path, so a library filled in by an older
+// extractor can be spotted and re-extracted.
+const QByteArray kCacheFormat = QByteArrayLiteral("v3");
+
+} // namespace
+
+QString GameIconCache::formatVersion()
+{
+    return QString::fromLatin1(kCacheFormat);
+}
 
 QString GameIconCache::iconPathForExecutable(const QString& executablePath)
 {
-    if (executablePath.isEmpty() || !QFileInfo::exists(executablePath))
+    if (executablePath.isEmpty() || !QFileInfo::exists(executablePath)) {
+        qWarning() << "GameIconCache: icon extraction skipped, executable path is empty or missing:"
+                   << executablePath;
         return {};
+    }
 
     QDir().mkpath(Paths::gameIconsDir());
-    const QByteArray hash = QCryptographicHash::hash(executablePath.toUtf8(),
-                                                     QCryptographicHash::Sha1).toHex();
+    // The cache key carries the extractor's format version. A cache hit short
+    // circuits everything below, so without it every executable already cached
+    // under the old shell-icon-only extractor would keep serving that generic
+    // .exe glyph and the package-manifest path would never run.
+    const QByteArray hash = QCryptographicHash::hash(
+        kCacheFormat + '\0' + executablePath.toUtf8(), QCryptographicHash::Sha1).toHex();
     const QString outPath = Paths::gameIconsDir() + QLatin1Char('/')
                             + QString::fromLatin1(hash) + QStringLiteral(".png");
     if (QFileInfo::exists(outPath))
         return outPath;
 
-    QFileIconProvider provider;
-    const QIcon icon = provider.icon(QFileInfo(executablePath));
-    const QPixmap pixmap = icon.pixmap(64, 64);
-    if (pixmap.isNull() || !pixmap.save(outPath, "png"))
+    QPixmap pixmap = packageLogoPixmap(executablePath);
+    if (pixmap.isNull()) {
+        QFileIconProvider provider;
+        const QIcon icon = provider.icon(QFileInfo(executablePath));
+        pixmap = icon.pixmap(64, 64);
+    }
+    if (pixmap.isNull()) {
+        qWarning() << "GameIconCache: no icon resource found in executable:" << executablePath;
         return {};
+    }
+    if (!pixmap.save(outPath, "png")) {
+        qWarning() << "GameIconCache: failed to write extracted icon to" << outPath
+                   << "for executable" << executablePath;
+        return {};
+    }
     return outPath;
 }

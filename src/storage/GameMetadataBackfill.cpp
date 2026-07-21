@@ -7,9 +7,11 @@
 #include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QRegularExpression>
 #include <QSqlError>
 #include <QSqlQuery>
+#include <QStringList>
 #include <QTextStream>
 #include <QVariant>
 #include <QVector>
@@ -62,9 +64,26 @@ void GameMetadataBackfill::run(QSqlDatabase& db)
     static const QRegularExpression re(
         QStringLiteral(R"(GameDetector title candidates for .* \| steam: ([^|]+) \| window: ([^|]+) \| ProductName: ([^|]+) \| FileDescription: ([^|]+) \| fromExe: ([^|]+) \| path: (.+)$)"));
 
-    int updates = 0;
+    // Every title candidate the detector logged is a way back to the row, not
+    // just the Steam one: a non-Steam title (Xbox/MSIX, itch, standalone) logs
+    // `steam: <none>`, and only accepting that field is why those games kept an
+    // empty icon_path forever.
+    //
+    // The fields are not equally trustworthy, though, so a match carries the
+    // rank of the field it came from and the whole log is scanned before
+    // anything is written. A launcher shim gets logged under the game's window
+    // title ("gamingservicesui.exe | window: Vampire Crawlers") one line BEFORE
+    // the real executable, so first-match-wins would bind the shim's path.
+    // `fromExe` outranks it: the executable named after the game IS the game.
+    enum CandidateRank { RankFromExe = 0, RankProduct, RankSteam, RankWindow, RankCount };
+    // Capture index per rank, matching the regex groups below.
+    static const int kCaptureForRank[RankCount] = { 5, 3, 1, 2 };
+
+    struct Best { QString path; int rank = RankCount; };
+    QHash<int, Best> best;   // game id -> best evidence seen so far
+
     QTextStream in(&log);
-    while (!in.atEnd() && !missing.isEmpty()) {
+    while (!in.atEnd()) {
         const QString line = in.readLine();
         const auto m = re.match(line);
         if (!m.hasMatch())
@@ -74,22 +93,49 @@ void GameMetadataBackfill::run(QSqlDatabase& db)
         if (path == QLatin1String("<none>") || !QFileInfo::exists(path))
             continue;
 
-        const QString steamName = m.captured(1).trimmed();
-        if (steamName.isEmpty() || steamName == QLatin1String("<none>"))
-            continue;
-        const QString candidateKey = GameIdentity::key(steamName);
-
-        for (int i = 0; i < missing.size(); ++i) {
-            if (candidateKey != missing.at(i).key)
+        for (int rank = 0; rank < RankCount; ++rank) {
+            const QString name = m.captured(kCaptureForRank[rank]).trimmed();
+            if (name.isEmpty() || name == QLatin1String("<none>"))
+                continue;
+            const QString key = GameIdentity::key(name);
+            if (key.isEmpty())
                 continue;
 
-            updateGameExecutable(db, missing.at(i).id, path);
-            qInfo() << "DB: backfilled game icon from historical detection for"
-                    << missing.at(i).name;
-            missing.removeAt(i);
-            ++updates;
-            break;
+            for (const MissingGame& game : missing) {
+                if (game.key != key)
+                    continue;
+                // FileDescription (capture 4) shares RankProduct with
+                // ProductName; it is folded in by the loop below.
+                Best& current = best[game.id];
+                if (rank < current.rank)
+                    current = { path, rank };
+            }
         }
+
+        // FileDescription is the same strength as ProductName but lives in its
+        // own capture, so it gets a second pass at that rank.
+        const QString description = m.captured(4).trimmed();
+        if (!description.isEmpty() && description != QLatin1String("<none>")) {
+            const QString key = GameIdentity::key(description);
+            for (const MissingGame& game : missing) {
+                if (game.key != key || key.isEmpty())
+                    continue;
+                Best& current = best[game.id];
+                if (RankProduct < current.rank)
+                    current = { path, RankProduct };
+            }
+        }
+    }
+
+    int updates = 0;
+    for (const MissingGame& game : missing) {
+        const auto it = best.constFind(game.id);
+        if (it == best.constEnd() || it->path.isEmpty())
+            continue;
+        updateGameExecutable(db, game.id, it->path);
+        qInfo() << "DB: backfilled game icon from historical detection for"
+                << game.name << "->" << it->path;
+        ++updates;
     }
 
     if (updates > 0)

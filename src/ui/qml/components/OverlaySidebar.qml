@@ -61,31 +61,47 @@ Rectangle {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.margins: Theme.s12
-        height: brandRow.implicitHeight
+        height: brandColumn.implicitHeight
 
-        Row {
-            id: brandRow
+        Column {
+            id: brandColumn
             anchors.horizontalCenter: parent.horizontalCenter
-            spacing: Theme.s8
+            spacing: Theme.s4
 
-            Image {
-                id: brandIcon
-                anchors.verticalCenter: parent.verticalCenter
-                source: "qrc:/icons/gamehq.svg"
-                width: Theme.fontTitle
-                height: Theme.fontTitle
-                sourceSize.width: Theme.fontTitle
-                sourceSize.height: Theme.fontTitle
+            Row {
+                id: brandRow
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: Theme.s8
+
+                Image {
+                    id: brandIcon
+                    anchors.verticalCenter: parent.verticalCenter
+                    source: "qrc:/icons/gamehq.svg"
+                    width: Theme.fontTitle
+                    height: Theme.fontTitle
+                    sourceSize.width: Theme.fontTitle
+                    sourceSize.height: Theme.fontTitle
+                }
+
+                Text {
+                    id: brandLabel
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: Brand.name
+                    color: Theme.text
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontTitle
+                    font.weight: Font.DemiBold
+                }
             }
 
             Text {
-                id: brandLabel
-                anchors.verticalCenter: parent.verticalCenter
-                text: Brand.name
-                color: Theme.text
+                id: brandVersion
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "v" + app.version
+                color: Theme.textFaint
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontTitle
-                font.weight: Font.DemiBold
+                font.pixelSize: Theme.fontCaption
+                font.letterSpacing: Theme.letterSpacingWide
             }
         }
     }

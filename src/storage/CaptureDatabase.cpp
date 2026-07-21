@@ -179,6 +179,7 @@ bool CaptureDatabase::migrate()
     } else {
         qInfo() << "DB: one-time game-row/metadata repairs already done, skipping (repairs_v1)";
     }
+    refreshIconsForExtractorFormat();
     if (repairTx && !m_db.commit()) {
         qWarning() << "DB: repair transaction commit failed:" << m_db.lastError().text();
         m_db.rollback();
@@ -551,6 +552,66 @@ void CaptureDatabase::markRepairsV1Done()
     q.bindValue(QStringLiteral(":k"), QStringLiteral("internal.repairs_v1_done"));
     if (!q.exec())
         qWarning() << "DB: could not record repairs_v1 sentinel:" << q.lastError().text();
+}
+
+// An icon is extracted once and then pinned in games.icon_path, and the only
+// thing that ever rewrites it is detecting that game running again. So teaching
+// the extractor a new trick does nothing for a library that is already filled
+// in: every row keeps serving the icon the old extractor produced, possibly
+// forever, because the user has no reason to relaunch the game.
+//
+// Re-extract for every game with a known executable whenever the extractor's
+// format version moves. That version is bumped precisely when the output can
+// change, so this costs one pass per upgrade and nothing on every other start.
+void CaptureDatabase::refreshIconsForExtractorFormat()
+{
+    const QString format = GameIconCache::formatVersion();
+
+    QSqlQuery stored(m_db);
+    stored.prepare(QStringLiteral("SELECT value FROM settings WHERE key = :k"));
+    stored.bindValue(QStringLiteral(":k"), QStringLiteral("internal.icon_format"));
+    if (stored.exec() && stored.next() && stored.value(0).toString() == format)
+        return;
+
+    QSqlQuery select(m_db);
+    if (!select.exec(QStringLiteral(
+            "SELECT id, executable_path FROM games "
+            "WHERE executable_path IS NOT NULL AND executable_path <> ''"))) {
+        qWarning() << "DB: icon refresh could not list games:" << select.lastError().text();
+        return;
+    }
+
+    struct Candidate { int id; QString executablePath; };
+    QVector<Candidate> candidates;
+    while (select.next())
+        candidates.append({ select.value(0).toInt(), select.value(1).toString() });
+
+    int refreshed = 0;
+    for (const Candidate& candidate : candidates) {
+        const QString iconPath = GameIconCache::iconPathForExecutable(candidate.executablePath);
+        if (iconPath.isEmpty())
+            continue;   // extractor already logged why
+        QSqlQuery update(m_db);
+        update.prepare(QStringLiteral("UPDATE games SET icon_path = :icon WHERE id = :id"));
+        update.bindValue(QStringLiteral(":icon"), iconPath);
+        update.bindValue(QStringLiteral(":id"), candidate.id);
+        if (update.exec())
+            ++refreshed;
+        else
+            qWarning() << "DB: icon refresh update failed:" << update.lastError().text();
+    }
+
+    QSqlQuery mark(m_db);
+    mark.prepare(QStringLiteral(
+        "INSERT INTO settings (key, value) VALUES (:k, :v) "
+        "ON CONFLICT(key) DO UPDATE SET value = :v"));
+    mark.bindValue(QStringLiteral(":k"), QStringLiteral("internal.icon_format"));
+    mark.bindValue(QStringLiteral(":v"), format);
+    if (!mark.exec())
+        qWarning() << "DB: could not record icon format sentinel:" << mark.lastError().text();
+
+    qInfo() << "DB: re-extracted icons for" << refreshed << "of" << candidates.size()
+            << "games (extractor format" << format << ")";
 }
 
 int CaptureDatabase::findOrCreateGame(const QString& displayName, const QString& executablePath)

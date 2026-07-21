@@ -123,6 +123,7 @@ private:
     bool ensureGameMetadataColumns();
     bool repairsV1Done() const;
     void markRepairsV1Done();
+    void refreshIconsForExtractorFormat();
     int findOrCreateGame(const QString& displayName, const QString& executablePath = QString());
     void updateGameExecutable(int gameId, const QString& executablePath);
 

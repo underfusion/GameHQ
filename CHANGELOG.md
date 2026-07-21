@@ -4,6 +4,91 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.21] - 2026-07-21
+
+### Fixed
+
+- Improving the icon extractor never reached games already in the library. An
+  icon is extracted once and pinned in `games.icon_path`, and the only thing
+  that rewrote it was detecting that game running again — so an Xbox title sat
+  on the generic `.exe` glyph indefinitely, because there was no reason to
+  relaunch it. The database now re-extracts icons for every game with a known
+  executable whenever `GameIconCache`'s format version moves, recorded as
+  `internal.icon_format`.
+
+## [0.6.20] - 2026-07-21
+
+### Fixed
+
+- Xbox app game installs still showed the generic `.exe` glyph. The 0.6.18
+  package-manifest lookup only searched for `AppxManifest.xml`, but GDK titles
+  under `XboxGames\<title>\Content` ship `MicrosoftGame.config` instead, which
+  declares the same artwork as attributes on its `<ShellVisuals>` element.
+  `GameIconCache` now accepts either manifest and also reads GDK's
+  `Square480x480Logo`.
+- Icon extraction was silent about why it fell back to the shell icon. It now
+  logs the manifest it found, the logo asset it used, and the specific failure
+  (no manifest nearby, manifest declares no logo, or no declared asset present
+  on disk).
+
+### Changed
+
+- The icon cache format version moved to `v3`, so executables cached as the
+  generic glyph by 0.6.19 are re-extracted through the fixed manifest lookup.
+
+## [0.6.19] - 2026-07-21
+
+### Added
+
+- The overlay capture strip's hover icons are now live for the mouse: the
+  heart toggles the favourite, the folder icon reveals the capture on disk,
+  and the trash icon opens a clickable "Delete capture?" confirmation. They
+  previously only rendered — every click was swallowed, and deleting from the
+  overlay needed the pad's action menu.
+
+### Fixed
+
+- Games without a Steam name (Xbox/MSIX, itch, standalone launchers) never got
+  an icon. The historical-detection backfill only accepted the log line's
+  `steam:` candidate, so a `steam: <none>` title was skipped and its
+  `icon_path` stayed empty forever; it now matches on any logged candidate
+  (window title, `ProductName`, `FileDescription` or executable name). The
+  candidates are ranked and the whole log is scanned before anything is
+  written, because a launcher shim is logged under the game's window title one
+  line ahead of the real executable — first-match-wins would have bound the
+  shim's path (`gamingservicesui.exe`) as the game.
+- The icon cache key now carries an extractor format version. A cache hit
+  short-circuits extraction, so executables already cached by the previous
+  shell-icon-only extractor kept serving the generic `.exe` glyph and never
+  reached the 0.6.18 package-manifest path.
+
+## [0.6.18] - 2026-07-21
+
+### Added
+
+- The overlay sidebar now prints the running app version under the GameHQ
+  logo, so the build in use is readable without opening Settings.
+
+### Fixed
+
+- MSIX/Appx games (Xbox app installs under `XboxGames\<title>\Content`) showed
+  the generic Windows application icon in the sidebar. Their executables carry
+  no icon resource — the artwork lives in `AppxManifest.xml` — so
+  `GameIconCache` now resolves the manifest's logo (largest square tile first,
+  falling back through `Square310x310Logo`, `Square44x44Logo` and
+  `<Properties><Logo>`) and picks the highest-resolution qualified variant on
+  disk (`Square150x150Logo.scale-200.png` and friends) before falling back to
+  the shell icon.
+
+## [0.6.17] - 2026-07-21
+
+### Fixed
+
+- `GameIconCache::iconPathForExecutable` failed silently on every error path
+  (missing file, no embedded icon resource, PNG write failure), leaving no
+  trace of why a detected game ended up with a blank icon. All three cases
+  now log a `qWarning`.
+
 ## [0.6.16] - 2026-07-21
 
 ### Changed

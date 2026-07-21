@@ -9,6 +9,14 @@ Rectangle {
     property bool usingGamepad: false
     property bool videoFocused: false
 
+    // Mouse path for the per-tile hover icons. The strip owns no capture
+    // actions itself — it moves the selection to the tile that was clicked
+    // (so the preview follows the mouse exactly like it follows the pad) and
+    // hands the row to the host, which already owns delete/folder/favourite.
+    signal deleteRequested(int index)
+    signal openFolderRequested(int index)
+    signal favoriteToggleRequested(int index)
+
     function decrementCurrentIndex() { strip.decrementCurrentIndex() }
     function incrementCurrentIndex() { strip.incrementCurrentIndex() }
 
@@ -112,6 +120,18 @@ Rectangle {
                 favorite: model.favorite
                 selected: strip.currentIndex === index
                 onActivated: strip.currentIndex = index
+                onRequestDelete: {
+                    strip.currentIndex = index
+                    root.deleteRequested(index)
+                }
+                onRequestOpenFolder: {
+                    strip.currentIndex = index
+                    root.openFolderRequested(index)
+                }
+                onToggleFavoriteRequested: {
+                    strip.currentIndex = index
+                    root.favoriteToggleRequested(index)
+                }
             }
         }
     }
