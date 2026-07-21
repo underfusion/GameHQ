@@ -174,5 +174,10 @@ private slots:
     }
 };
 
-QTEST_GUILESS_MAIN(TestCaptureIconRefresh)
+// QApplication, not QTEST_GUILESS_MAIN: the refresh path reaches
+// GameIconCache::iconPathForExecutable, which falls back to QFileIconProvider.
+// That is a QtWidgets class and dereferences the platform theme, so under a
+// bare QCoreApplication it segfaults instead of returning a null icon. The app
+// itself always runs as a QApplication, so this matches production.
+QTEST_MAIN(TestCaptureIconRefresh)
 #include "tst_captureiconrefresh.moc"

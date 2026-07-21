@@ -154,9 +154,14 @@ private slots:
             QVERIFY(db.open());
             QSqlQuery create(db);
             QVERIFY2(create.exec(QStringLiteral(
+                // last_seen_at is part of the real games table (CaptureDatabase
+                // migration "last_seen_at") and run() writes it. Leaving it out
+                // here made every UPDATE fail to prepare, which QSQLITE reports
+                // as "Parameter count mismatch".
                 "CREATE TABLE games ("
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, display_name TEXT NOT NULL, "
-                "executable_path TEXT, icon_path TEXT, created_at TEXT NOT NULL)")),
+                "executable_path TEXT, icon_path TEXT, created_at TEXT NOT NULL, "
+                "last_seen_at TEXT)")),
                 qPrintable(create.lastError().text()));
 
             QSqlQuery insertComplete(db);
@@ -217,5 +222,8 @@ private slots:
     }
 };
 
-QTEST_GUILESS_MAIN(TestGameMetadataBackfill)
+// QApplication, not QTEST_GUILESS_MAIN: run() re-extracts icons through
+// GameIconCache, whose QFileIconProvider fallback is a QtWidgets class that
+// needs a GUI application object. See tst_captureiconrefresh.cpp.
+QTEST_MAIN(TestGameMetadataBackfill)
 #include "tst_gamemetadatabackfill.moc"

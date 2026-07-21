@@ -4,6 +4,22 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.22] - 2026-07-21
+
+### Fixed
+
+- The automated test suite could not be run unattended. Test executables are
+  not deployed with the Qt runtime, so a plain `ctest` opened one modal
+  "Qt6Core.dll was not found" dialog per test and then waited for a human.
+  CTest now hands every test the project-local Qt binary directory.
+- Two of the new icon tests crashed instead of reporting a result. They ran
+  under `QTEST_GUILESS_MAIN`, while the icon extractor's fallback path uses
+  `QFileIconProvider` — a QtWidgets class that needs a GUI application object,
+  as the app itself always has. Both now run as `QApplication` tests.
+- The metadata backfill test used a `games` table without the `last_seen_at`
+  column the real database has, so every backfill update silently failed to
+  prepare and the test never exercised what it claimed to.
+
 ## [0.6.21] - 2026-07-21
 
 ### Fixed
