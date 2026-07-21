@@ -48,6 +48,10 @@ gamehq_add_test(tst_versionnumber
     tst_versionnumber.cpp
     "${CMAKE_SOURCE_DIR}/src/updates/VersionNumber.cpp")
 
+gamehq_add_test(tst_releasenotes
+    tst_releasenotes.cpp
+    "${CMAKE_SOURCE_DIR}/src/app/ReleaseNotes.cpp")
+
 gamehq_add_test(tst_updatemaintenance
     tst_updatemaintenance.cpp
     "${CMAKE_SOURCE_DIR}/src/core/UpdateMaintenance.cpp")

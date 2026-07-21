@@ -3,6 +3,7 @@
 #include <QVariantList>
 #include <QUrl>
 #include <memory>
+#include "app/ReleaseNotes.h"
 #include "capture/HdrCapabilities.h"
 #include "ui/GalleryModel.h"
 
@@ -23,6 +24,8 @@ class AppController : public QObject
     Q_OBJECT
     Q_PROPERTY(GalleryModel* gallery READ gallery CONSTANT)
     Q_PROPERTY(QString version READ version CONSTANT)
+    Q_PROPERTY(QString releaseNotesVersion READ releaseNotesVersion CONSTANT)
+    Q_PROPERTY(QVariantList releaseNotesSections READ releaseNotesSections CONSTANT)
     Q_PROPERTY(QVariantList games READ games NOTIFY gamesChanged)
     Q_PROPERTY(QString category READ category NOTIFY filterChanged)
     Q_PROPERTY(int gameId READ gameId NOTIFY filterChanged)
@@ -56,6 +59,8 @@ public:
 
     GalleryModel* gallery() const { return m_gallery; }
     QString version() const;
+    QString releaseNotesVersion() const { return m_releaseNotes.version(); }
+    QVariantList releaseNotesSections() const { return m_releaseNotes.sections(); }
     QVariantList games() const;
     QString category() const { return m_category; }
     int gameId() const { return m_gameId; }
@@ -174,6 +179,7 @@ private:
     std::unique_ptr<CaptureLibraryService> m_captureLibrary;
     std::unique_ptr<CurrentGameService> m_currentGame;
     std::unique_ptr<SettingsRouter> m_settings;
+    ReleaseNotes m_releaseNotes;
     QString m_category = QStringLiteral("all");
     int m_gameId = -1;
     bool m_replayBufferActive = false;

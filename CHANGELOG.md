@@ -4,6 +4,25 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.23] - 2026-07-21
+
+### Added
+
+- The passive version label at the bottom of the main sidebar is now a full
+  **About GameHQ** row. It opens a compact, controller-friendly About and
+  What's New modal without leaving the current gallery or Settings page.
+- Current-version release notes are bundled as validated structured data, so
+  What's New remains available offline. A distinct sidebar mark indicates
+  unread notes, while an available update changes the row and action explicitly.
+
+### Changed
+
+- The one-time post-update greeting now opens the same useful What's New modal
+  after the desktop window becomes active. It never appears in the game overlay,
+  and closing it records the installed version as read.
+- Update controls and technical project links remain on Settings -> About; the
+  compact modal only presents status, release highlights, and key actions.
+
 ## [0.6.22] - 2026-07-21
 
 ### Fixed

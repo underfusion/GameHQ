@@ -12,6 +12,9 @@ Rectangle {
     property string label
     property string glyph: ""          // small unicode glyph stands in for icons pre-1.0
     property string iconSource: ""
+    property string trailingText: ""
+    property string trailingGlyph: ""
+    property color trailingGlyphColor: Theme.accent
     readonly property real gameIconSize: Theme.s12 * 1.2
     property bool active: false
     property bool sidebarHovered: false
@@ -98,12 +101,38 @@ Rectangle {
             width: Math.max(0, contentRow.width
                             - (root.iconSource !== "" ? root.gameIconSize + contentRow.spacing
                                : root.glyph !== "" ? Theme.s24 + contentRow.spacing
-                               : 0))
+                               : 0)
+                            - (trailing.visible ? trailing.implicitWidth + contentRow.spacing : 0))
             elide: Text.ElideRight
             color: root.active ? Theme.text : Theme.textMuted
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontBody
             anchors.verticalCenter: parent.verticalCenter
+        }
+
+        Row {
+            id: trailing
+            visible: root.trailingText !== "" || root.trailingGlyph !== ""
+            spacing: Theme.s8
+            anchors.verticalCenter: parent.verticalCenter
+
+            Text {
+                visible: root.trailingText !== ""
+                text: root.trailingText
+                color: Theme.textFaint
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontCaption
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            Text {
+                visible: root.trailingGlyph !== ""
+                text: root.trailingGlyph
+                color: root.trailingGlyphColor
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontCaption
+                font.weight: Font.DemiBold
+                anchors.verticalCenter: parent.verticalCenter
+            }
         }
     }
 

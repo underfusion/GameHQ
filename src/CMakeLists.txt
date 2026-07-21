@@ -1,6 +1,7 @@
 qt_add_executable(GameHQ
     main.cpp
     app/App.cpp            app/App.h
+    app/ReleaseNotes.cpp   app/ReleaseNotes.h
     app/StartupManager.cpp app/StartupManager.h
     capture/CaptureUtil.h
     capture/HdrCapabilities.cpp capture/HdrCapabilities.h
@@ -119,6 +120,7 @@ qt_add_qml_module(GameHQ
         ui/qml/components/ConfirmDialog.qml
         ui/qml/components/Toast.qml
         ui/qml/components/UpdateBanner.qml
+        ui/qml/components/AboutWhatsNewDialog.qml
         ui/qml/components/Lightbox.qml
         ui/qml/components/MediaStage.qml
         ui/qml/components/PlayerControls.qml
@@ -160,6 +162,12 @@ qt_add_resources(GameHQ "sounds"
         "${CMAKE_SOURCE_DIR}/assets/sounds/error.wav"
         "${CMAKE_SOURCE_DIR}/assets/sounds/screenshot.wav"
         "${CMAKE_SOURCE_DIR}/assets/sounds/replay_saved.wav"
+)
+
+qt_add_resources(GameHQ "release_notes"
+    PREFIX "/release-notes"
+    BASE "${CMAKE_SOURCE_DIR}/assets"
+    FILES "${CMAKE_SOURCE_DIR}/assets/release-notes.json"
 )
 
 target_include_directories(GameHQ PRIVATE

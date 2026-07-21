@@ -57,19 +57,55 @@ ApplicationWindow {
     property bool helpOpen: false
     property string pendingPostUpdateVersion: app
         ? app.config("internal.updates.pending_post_update_version", "") : ""
+    property string whatsNewSeenVersion: app
+        ? app.config("internal.ui.whats_new_seen_version", "") : ""
 
     function maybeShowPostUpdateGreeting() {
-        if (!window.visible || pendingPostUpdateVersion === "")
+        if (!window.visible || !window.active || lightbox.visible
+                || aboutDialog.visible || pendingPostUpdateVersion === "")
             return
-        if (app.config("internal.updates.last_seen_version", "") === pendingPostUpdateVersion)
+        if (app.config("internal.ui.whats_new_seen_version", "") === pendingPostUpdateVersion) {
+            app.setConfig("internal.updates.pending_post_update_version", "")
+            pendingPostUpdateVersion = ""
             return
-        postUpdateDialog.open()
+        }
+        window.openAbout(true)
     }
 
     function acknowledgePostUpdateGreeting() {
-        app.setConfig("internal.updates.last_seen_version", pendingPostUpdateVersion)
+        app.setConfig("internal.ui.whats_new_seen_version", pendingPostUpdateVersion)
         app.setConfig("internal.updates.pending_post_update_version", "")
         pendingPostUpdateVersion = ""
+    }
+
+    function aboutSidebarIndex() {
+        return window.sidebarCategories.length + app.games.length + 2
+    }
+
+    function openAbout(asPostUpdateGreeting) {
+        if (lightbox.visible)
+            return
+        window.menuOpen = false
+        window.sidebarFocused = false
+        aboutDialog.open(asPostUpdateGreeting)
+        sounds.play("nav_tick")
+    }
+
+    function finishAbout() {
+        app.setConfig("internal.ui.whats_new_seen_version", app.version)
+        if (pendingPostUpdateVersion !== "")
+            window.acknowledgePostUpdateGreeting()
+        window.sidebarHoverIndex = window.aboutSidebarIndex()
+        window.sidebarFocused = true
+        desktopSidebar.focusAboutLauncher()
+    }
+
+    function openAboutSettings() {
+        aboutDialog.close()
+        window.helpOpen = false
+        window.settingsOpen = true
+        window.sidebarFocused = false
+        settingsView.selectCategory(settingsView.categories.length - 1, true)
     }
 
     Connections {
@@ -78,6 +114,8 @@ ApplicationWindow {
             if (key === "internal.updates.pending_post_update_version") {
                 window.pendingPostUpdateVersion = value
                 window.maybeShowPostUpdateGreeting()
+            } else if (key === "internal.ui.whats_new_seen_version") {
+                window.whatsNewSeenVersion = value
             }
         }
     }
@@ -102,7 +140,7 @@ ApplicationWindow {
     property bool usingGamepad: false
     // Sidebar focus region: when true the "cursor" has left the grid (L1 from
     // the pad — the only entry path) and now lives in the sidebar. UP/DOWN
-    // walks the flat sidebar list (categories → games → Settings → Help),
+    // walks the flat sidebar list (categories → games → Settings → Help → About),
     // R1 (or activating an entry, or Esc) returns focus to the grid.
     property bool sidebarFocused: false
     // Flat index into the sidebar list while sidebarFocused. Layout:
@@ -110,6 +148,7 @@ ApplicationWindow {
     //   catCount .. catCount+gameCount-1                 → games
     //   catCount+gameCount                               → Settings
     //   catCount+gameCount+1                             → Help
+    //   catCount+gameCount+2                             → About / What's New
     property int sidebarHoverIndex: 0
 
     // Gallery zoom target — the *ideal* tile size in px (160 → 480). The actual
@@ -169,7 +208,11 @@ ApplicationWindow {
         app.setConfig("ui.zoom_level", window.zoomLevel)
     }
 
-    onActiveChanged: input.setDesktopFocused(window.active || lightbox.active)
+    onActiveChanged: {
+        input.setDesktopFocused(window.active || lightbox.active)
+        if (window.active)
+            Qt.callLater(window.maybeShowPostUpdateGreeting)
+    }
     // OS-level minimize (title bar button or taskbar): when enabled, drop
     // straight to the tray instead of leaving a taskbar entry. showWindow()
     // (tray click / gallery open) restores to the normal windowed state.
@@ -304,7 +347,7 @@ ApplicationWindow {
 
     // ───────────────── Flat sidebar list helpers (sidebarFocused mode) ─────────────────
     function sidebarFlatCount() {
-        return window.sidebarCategories.length + app.games.length + 2  // +Settings +Help
+        return window.sidebarCategories.length + app.games.length + 3  // +Settings +Help +About
     }
 
     function refreshSidebarHoverIndex() {
@@ -332,8 +375,11 @@ ApplicationWindow {
             app.setGame(app.games[i - catCount].id)
         } else if (i === catCount + gameCount) {
             window.helpOpen = false; window.settingsOpen = true
-        } else {  // Help
+        } else if (i === catCount + gameCount + 1) {
             window.settingsOpen = false; window.helpOpen = true
+        } else {  // About / What's New is a modal over the current page.
+            window.openAbout(false)
+            return
         }
         sounds.play("nav_tick")
         // Always drop back to the grid — for Settings/Help this means the
@@ -358,6 +404,10 @@ ApplicationWindow {
     }
 
     function padTabStep(direction) {
+        if (aboutDialog.visible) {
+            aboutDialog.padStep(direction)
+            return
+        }
         if (window.settingsOpen) {
             settingsView.padCategoryStep(direction)
             return
@@ -386,6 +436,10 @@ ApplicationWindow {
     }
 
     function padNavigate(direction) {
+        if (aboutDialog.visible) {
+            aboutDialog.padStep(direction)
+            return
+        }
         // Settings is three panels — sidebar │ categories │ options — and
         // Left/Right walks between them. Right off the sidebar enters the
         // categories; Left past the categories returns to the sidebar.
@@ -439,6 +493,10 @@ ApplicationWindow {
     }
 
     function padNavigateVertical(direction) {
+        if (aboutDialog.visible) {
+            aboutDialog.padStep(direction)
+            return
+        }
         if (window.settingsOpen) {
             // Up/Down moves inside whichever panel is focused, never across.
             if (window.sidebarFocused)
@@ -481,6 +539,7 @@ ApplicationWindow {
     }
 
     function padConfirm() {
+        if (aboutDialog.visible) { aboutDialog.padConfirm(); return }
         if (deleteDialog.visible) { deleteDialog.confirmed(); deleteDialog.close(); return }
         if (bulkDeleteDialog.visible) { window.bulkConfirmDelete(); bulkDeleteDialog.close(); return }
         if (window.settingsOpen) {
@@ -511,7 +570,7 @@ ApplicationWindow {
     }
 
     function padFavorite() {
-        if (window.menuOpen || window.settingsOpen || window.helpOpen)
+        if (aboutDialog.visible || window.menuOpen || window.settingsOpen || window.helpOpen)
             return
         if (window.sidebarFocused)
             return  // favorites only act on a grid tile
@@ -524,7 +583,7 @@ ApplicationWindow {
     }
 
     function padToggleMenu() {
-        if (window.settingsOpen || grid.count === 0)
+        if (aboutDialog.visible || window.settingsOpen || grid.count === 0)
             return
         if (window.sidebarFocused)
             return  // action menu only acts on a grid tile
@@ -555,6 +614,7 @@ ApplicationWindow {
     }
 
     function padBack() {
+        if (aboutDialog.visible) { aboutDialog.close(); return }
         if (deleteDialog.visible) { deleteDialog.canceled(); deleteDialog.close(); return }
         if (bulkDeleteDialog.visible) { bulkDeleteDialog.canceled(); bulkDeleteDialog.close(); return }
         if (window.settingsOpen) {
@@ -635,13 +695,13 @@ ApplicationWindow {
         function onDesktopBack() { window.usingGamepad = true; window.padBack() }
         function onDesktopSettings() {
             window.usingGamepad = true
-            if (lightbox.visible)
+            if (lightbox.visible || aboutDialog.visible)
                 return
             window.openSettings()
         }
         function onDesktopZoom(direction) {
             window.usingGamepad = true
-            if (lightbox.visible || window.settingsOpen || window.helpOpen)
+            if (lightbox.visible || aboutDialog.visible || window.settingsOpen || window.helpOpen)
                 return
             if (direction > 0)
                 window.zoomIn()
@@ -650,7 +710,7 @@ ApplicationWindow {
         }
         function onDesktopBulkToggle() {
             window.usingGamepad = true
-            if (lightbox.visible || window.settingsOpen || window.helpOpen)
+            if (lightbox.visible || aboutDialog.visible || window.settingsOpen || window.helpOpen)
                 return
             window.padBulkToggle()
         }
@@ -700,9 +760,16 @@ ApplicationWindow {
 
         // ───────────────────────── Sidebar ─────────────────────────
         DesktopSidebar {
+            id: desktopSidebar
             categories: window.sidebarCategories
             settingsOpen: window.settingsOpen
             helpOpen: window.helpOpen
+            aboutUnread: window.whatsNewSeenVersion !== app.version
+            updateAvailable: updates.latestVersion !== ""
+                             && ["UpdateAvailable", "Downloading", "ReadyToInstall",
+                                 "PreparingForUpdate", "Quiescent", "Installing",
+                                 "Failed"].includes(updates.stateName)
+            availableVersion: updates.latestVersion
             sidebarFocused: window.sidebarFocused
             sidebarHoverIndex: window.sidebarHoverIndex
             onPageClosed: {
@@ -717,6 +784,7 @@ ApplicationWindow {
                 window.settingsOpen = false
                 window.helpOpen = true
             }
+            onAboutRequested: window.openAbout(false)
         }
         // ───────────────────────── Settings ─────────────────────────
         SettingsView {
@@ -852,20 +920,12 @@ ApplicationWindow {
         onConfirmed: window.bulkConfirmDelete()
     }
 
-    ConfirmDialog {
-        id: postUpdateDialog
+    AboutWhatsNewDialog {
+        id: aboutDialog
         anchors.fill: parent
         z: 500
-        title: "GameHQ was updated to " + window.pendingPostUpdateVersion
-        message: "The update completed successfully. Your recordings, settings, and storage mode were preserved."
-        cancelLabel: "Continue"
-        confirmLabel: "What's New"
-        onCanceled: window.acknowledgePostUpdateGreeting()
-        onConfirmed: {
-            const version = window.pendingPostUpdateVersion
-            window.acknowledgePostUpdateGreeting()
-            Qt.openUrlExternally(Brand.releasesUrl + "/tag/v" + version)
-        }
+        onClosed: window.finishAbout()
+        onUpdateSettingsRequested: window.openAboutSettings()
     }
 
     // ───────────────────────── Pad action menu (Square) ─────────────────────────

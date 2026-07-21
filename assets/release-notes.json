@@ -1,0 +1,19 @@
+{
+  "version": "0.6.23",
+  "sections": [
+    {
+      "title": "Added",
+      "items": [
+        "Open About GameHQ and What's New directly from the main sidebar.",
+        "Read the current version's release notes even while offline.",
+        "See update availability and run the appropriate update action from the same compact window."
+      ]
+    },
+    {
+      "title": "Changed",
+      "items": [
+        "The post-update greeting now opens once as a useful What's New view instead of sending you straight to GitHub."
+      ]
+    }
+  ]
+}

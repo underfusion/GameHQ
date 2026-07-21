@@ -77,7 +77,8 @@ identical after any update, successful or rolled back.
 
 1. **Discovery** — `UpdateService` asks the GitHub Releases API for the
    latest stable release, compares it against the installed `VERSION`, and
-   surfaces a non-modal banner when a newer stable release exists. Automatic
+   surfaces a non-modal banner and a distinct About-sidebar state when a newer
+   stable release exists. Automatic
    checks run at most once every 24 hours and are silent on failure. The
    first automatic check fires 15-30s after startup (`App::init()`); a
    coarse hourly timer then re-checks the 24h window rather than scheduling
@@ -88,8 +89,9 @@ identical after any update, successful or rolled back.
    always bypasses the 24h cache and surfaces real errors. The banner itself
    lives only in the desktop gallery window
    (`Main.qml`), never in `OverlayWindow.qml`, so it can never appear over a
-   running game or the pad overlay; its "View on GitHub" action is the
-   standalone fallback until download/install lands in Phase 2 below.
+   running game or the pad overlay. The compact About / What's New modal exposes
+   the same state and primary action without duplicating the detailed controls
+   on Settings -> About.
 2. **Download** — the update zip and its `.sha256` are streamed to a
    `.partial` file in a staging directory, then atomically published and
    verified against the checksum. Downloads accept HTTPS only (including
@@ -113,8 +115,11 @@ identical after any update, successful or rolled back.
 6. **Health check** — the new process must reach a running, initialized state
    within a bounded window and write a success token; otherwise the helper
    restores the backup and restarts the previous version.
-7. **Post-update greeting** — on the next desktop window open, the user sees
-   a one-time "GameHQ was updated to X" panel with a What's New link.
+7. **Post-update greeting** — when the desktop window next becomes active, the
+   user sees the About / What's New modal once. Current-version notes come from
+   bundled `assets/release-notes.json`, work offline, and are marked read through
+   `internal.ui.whats_new_seen_version` when the modal closes. The modal is never
+   created in the game overlay.
 
 ## Implementation stages
 

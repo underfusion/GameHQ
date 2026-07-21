@@ -71,6 +71,9 @@ inline constexpr QLatin1StringView InternalUpdatesEtag{ "internal.updates.etag" 
 inline constexpr QLatin1StringView InternalUpdatesLastCheckUtc{ "internal.updates.last_check_utc" };
 inline constexpr QLatin1StringView InternalUpdatesLastSeenVersion{ "internal.updates.last_seen_version" };
 inline constexpr QLatin1StringView InternalUpdatesPendingPostUpdateVersion{ "internal.updates.pending_post_update_version" };
+// Version whose bundled What's New notes the user last closed. Unlike the
+// updater greeting keys above, this also covers opening About manually.
+inline constexpr QLatin1StringView InternalUiWhatsNewSeenVersion{ "internal.ui.whats_new_seen_version" };
 // Hidden, default-off HDR capture gate (t24/t22): not exposed in Settings.
 // Even when true, the SDR path is still used unless HdrCapabilities reports
 // the capture target's display as HDR-active AND the FP16 tone-map stage

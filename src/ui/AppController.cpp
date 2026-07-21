@@ -68,6 +68,7 @@ AppController::AppController(CaptureDatabase* db, CaptureScanner* scanner,
     , m_captureLibrary(std::make_unique<CaptureLibraryService>(db, gallery, overlayGallery))
     , m_currentGame(std::make_unique<CurrentGameService>(db))
     , m_settings(std::make_unique<SettingsRouter>(startup, locations))
+    , m_releaseNotes(ReleaseNotes::loadBundled())
 {
     connect(m_config, &ConfigManager::valueChanged,
             this, &AppController::configChanged);
