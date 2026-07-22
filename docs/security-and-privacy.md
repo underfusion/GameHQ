@@ -56,3 +56,8 @@ detection.
 Security vulnerabilities must be reported through the repository's enabled
 [private vulnerability-reporting form](https://github.com/underfusion/GameHQ/security/advisories/new).
 See [SECURITY.md](../SECURITY.md) for the response policy.
+
+The complete endpoint and consent inventory is maintained in
+[Privacy and network data flows](privacy-data-flow.md). Maintainer identity
+handling for signing is documented separately in
+[Maintainer identity privacy](maintainer-privacy.md).

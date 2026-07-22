@@ -57,6 +57,10 @@ if ($sdkMatch.Success -and
 if ($installerManifest -match "Initial scaffold|Not yet functional") {
     $failures += "InstallerManifest.yaml still contains scaffold release copy"
 }
+if ((Get-FileHash -LiteralPath (Join-Path $root 'LICENSE') -Algorithm SHA256).Hash -ne
+    '835AFB738215E42F79ABAF39E12A5A3F936A722CCA5870B753A9B1D1B19C0A7F') {
+    $failures += 'Playnite LICENSE must remain the reviewed MIT text'
+}
 
 $requiredPaths = @(
     "src\GameHQ.Playnite\GameHQ.Playnite.csproj",
@@ -65,6 +69,7 @@ $requiredPaths = @(
     "RELEASE_CHECKLIST.md",
     "CHANGELOG.md",
     "README.md",
+    "LICENSE",
     "LICENSES\BouncyCastle.Cryptography.txt"
 )
 foreach ($relative in $requiredPaths) {

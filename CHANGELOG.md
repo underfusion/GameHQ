@@ -4,6 +4,19 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.28] - 2026-07-22
+
+### Changed
+
+- Confirmed that GameHQ remains under MIT and aligned product, package,
+  contribution, trademark, and SignPath materials with that decision.
+- Added dependency and asset provenance plus optional source-archive tooling.
+
+### Security
+
+- Release validation now rejects license drift, unclassified dependencies or
+  assets, private identity data, secret files, credentials, and personal paths.
+
 ## [0.6.27] - 2026-07-22
 
 ### Added

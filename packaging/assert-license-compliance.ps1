@@ -1,0 +1,115 @@
+# Validates the MIT project boundary and, when present, the release payload.
+[CmdletBinding()]
+param(
+    [string]$PayloadDirectory = 'dist\.program-payload',
+    [switch]$SkipPackage
+)
+
+$ErrorActionPreference = 'Stop'
+$root = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+$failures = [Collections.Generic.List[string]]::new()
+
+function Require-File([string]$Path, [string]$Label) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { $failures.Add("missing $Label") }
+}
+function Require-Match([string]$Path, [string]$Pattern, [string]$Label) {
+    Require-File $Path $Label
+    if (Test-Path -LiteralPath $Path -PathType Leaf) {
+        $content = Get-Content -LiteralPath $Path -Raw
+        if ($content -notmatch $Pattern) { $failures.Add("stale or missing $Label") }
+    }
+}
+
+$expectedMit = '835AFB738215E42F79ABAF39E12A5A3F936A722CCA5870B753A9B1D1B19C0A7F'
+$licensePaths = @(
+    @{ Path = 'LICENSE'; Label = 'root MIT license' },
+    @{ Path = 'integrations\playnite\LICENSE'; Label = 'Playnite MIT license' },
+    @{ Path = 'docs\integration-protocol.LICENSE'; Label = 'protocol MIT license' }
+)
+foreach ($entry in $licensePaths) {
+    $path = Join-Path $root $entry.Path
+    Require-File $path $entry.Label
+    if ((Test-Path -LiteralPath $path -PathType Leaf) -and
+        (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $expectedMit) {
+        $failures.Add("modified $($entry.Label)")
+    }
+}
+
+Require-Match (Join-Path $root 'docs\licensing.md') 'GameHQ first-party source code and assets are available under the\s+\*\*MIT License\*\*' 'MIT boundary documentation'
+Require-Match (Join-Path $root 'docs\integration-protocol.md') 'SPDX-License-Identifier:\s*MIT' 'protocol SPDX marker'
+Require-Match (Join-Path $root 'CMakeLists.txt') 'miniz/archive/refs/tags/3\.1\.2\.tar\.gz' 'miniz 3.1.2 pin'
+Require-Match (Join-Path $root 'CMakeLists.txt') 'monocypher-4\.0\.3\.tar\.gz' 'Monocypher 4.0.3 pin'
+Require-Match (Join-Path $root 'packaging\inno-toolchain.psd1') "Version\s*=\s*'6\.7\.3'" 'Inno Setup 6.7.3 pin'
+Require-Match (Join-Path $root 'integrations\playnite\src\GameHQ.Playnite\GameHQ.Playnite.csproj') 'BouncyCastle\.Cryptography"\s+Version="2\.6\.2"' 'Bouncy Castle 2.6.2 pin'
+Require-Match (Join-Path $root 'integrations\playnite\src\GameHQ.Playnite\GameHQ.Playnite.csproj') 'PlayniteSDK"\s+Version="6\.16\.0"' 'Playnite SDK 6.16.0 pin'
+
+$stalePatterns = @(
+    @{ Pattern = 'GameHQ[^\r\n]{0,100}GPL-3\.0-only'; Label = 'GPL GameHQ claim' },
+    @{ Pattern = 'GPL-3\.0-only[^\r\n]{0,100}GameHQ'; Label = 'GPL GameHQ claim' },
+    @{ Pattern = 'SOURCE_OFFER\.txt'; Label = 'GPL source-offer claim' },
+    @{ Pattern = 'MIT-legacy\.txt'; Label = 'legacy-license boundary claim' }
+)
+$claimFiles = @(& git -C $root ls-files --cached --others --exclude-standard -- `
+    '*.md' '*.html' '*.qml' '*.txt' '*.ps1' '*.psd1' '*.cpp') |
+    Where-Object { $_ -notmatch '^(docs/plans/|licenses/|docs/licensing-audit\.md$|docs/dependency-licenses\.md$|packaging/assert-license-compliance\.ps1$)' }
+foreach ($relative in $claimFiles) {
+    $path = Join-Path $root $relative
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+    $content = Get-Content -LiteralPath $path -Raw
+    foreach ($entry in $stalePatterns) {
+        if ($content -match $entry.Pattern) { $failures.Add("$($entry.Label): $relative") }
+    }
+}
+
+$expectedAssets = @(
+    'assets/icons/gamehq.ico', 'assets/icons/gamehq.rc', 'assets/icons/gamehq.svg',
+    'assets/icons/generate_icon.py', 'assets/icons/icongen.cpp', 'assets/icons/icon-preview.html',
+    'assets/release-notes.json', 'assets/sounds/README.md', 'assets/sounds/generate_sounds.py',
+    'assets/sounds/confirm.wav', 'assets/sounds/error.wav', 'assets/sounds/favorite.wav',
+    'assets/sounds/nav_tick.wav', 'assets/sounds/overlay_close.wav',
+    'assets/sounds/overlay_open.wav', 'assets/sounds/replay_saved.wav',
+    'assets/sounds/screenshot.wav'
+) | Sort-Object
+$actualAssets = @(& git -C $root ls-files --cached --others --exclude-standard 'assets/**' | Sort-Object)
+if (($expectedAssets -join "`n") -ne ($actualAssets -join "`n")) {
+    $failures.Add('asset inventory changed without dependency-license review')
+}
+
+if (-not $SkipPackage) {
+    $payload = if ([IO.Path]::IsPathRooted($PayloadDirectory)) {
+        [IO.Path]::GetFullPath($PayloadDirectory)
+    } else { [IO.Path]::GetFullPath((Join-Path $root $PayloadDirectory)) }
+    $approvedPayload = [IO.Path]::GetFullPath((Join-Path $root 'dist\.program-payload'))
+    if (-not [StringComparer]::OrdinalIgnoreCase.Equals($payload, $approvedPayload)) {
+        throw "License package validation is restricted to $approvedPayload"
+    }
+    foreach ($relative in @('LICENSE.txt', 'THIRD_PARTY_NOTICES.md',
+            'licenses\LGPL-2.1.txt', 'licenses\LGPL-3.0.txt',
+            'licenses\GCC-RUNTIME-EXCEPTION.txt', 'licenses\MINGW-W64-RUNTIME.txt',
+            'licenses\miniz.txt', 'licenses\monocypher.txt', 'licenses\Inno-Setup.txt',
+            'licenses\qt-sbom\qtbase-6.8.3.spdx',
+            'licenses\qt-sbom\qtdeclarative-6.8.3.spdx',
+            'licenses\qt-sbom\qtmultimedia-6.8.3.spdx',
+            'licenses\qt-sbom\qtsvg-6.8.3.spdx')) {
+        Require-File (Join-Path $payload $relative) "package $relative"
+    }
+    $packagedLicense = Join-Path $payload 'LICENSE.txt'
+    if ((Test-Path -LiteralPath $packagedLicense -PathType Leaf) -and
+        (Get-FileHash -LiteralPath $packagedLicense -Algorithm SHA256).Hash -ne $expectedMit) {
+        $failures.Add('package root license is not exact MIT text')
+    }
+    $owned = @('GameHQ.exe', 'GameHQUpdater.exe', 'app/GameHQ.exe')
+    foreach ($binary in Get-ChildItem -LiteralPath $payload -Recurse -File |
+            Where-Object Extension -in @('.exe', '.dll')) {
+        $relative = $binary.FullName.Substring($payload.TrimEnd('\', '/').Length + 1).Replace('\', '/')
+        if ($relative -in $owned) { continue }
+        if ($binary.Extension -eq '.exe' -or $relative -notlike 'app/*.dll') {
+            $failures.Add("unclassified release binary: $relative")
+        }
+    }
+}
+
+if ($failures.Count) {
+    throw "License compliance failed:`n - $($failures -join "`n - ")"
+}
+Write-Host '[license] MIT boundary, dependency pins, assets, notices, and package inventory passed'

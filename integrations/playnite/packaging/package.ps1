@@ -41,6 +41,7 @@ $licenseSource = Join-Path $root "LICENSES\BouncyCastle.Cryptography.txt"
 $licenseTarget = Join-Path $stagingDir "LICENSES"
 New-Item -ItemType Directory -Path $licenseTarget -Force | Out-Null
 Copy-Item -LiteralPath $licenseSource -Destination $licenseTarget
+Copy-Item -LiteralPath (Join-Path $root "LICENSE") -Destination (Join-Path $stagingDir "LICENSE")
 
 $iconSource = Join-Path $root "icon.png"
 if (Test-Path $iconSource) {
@@ -63,5 +64,22 @@ if (Test-Path $zipPath) {
 Compress-Archive -Path (Join-Path $stagingDir "*") -DestinationPath $zipPath
 Move-Item $zipPath $pextPath
 Remove-Item $stagingDir -Recurse -Force
+
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$archive = [System.IO.Compression.ZipFile]::OpenRead($pextPath)
+try {
+    $entries = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') } | Sort-Object)
+} finally { $archive.Dispose() }
+$expectedEntries = @(
+    'BouncyCastle.Cryptography.dll',
+    'extension.yaml',
+    'GameHQ.Playnite.dll',
+    'icon.png',
+    'LICENSE',
+    'LICENSES/BouncyCastle.Cryptography.txt'
+) | Sort-Object
+if (($entries -join "`n") -ne ($expectedEntries -join "`n")) {
+    throw "Packaged extension has an unexpected file set: $($entries -join ', ')"
+}
 
 Write-Host "[playnite-package] wrote $pextPath"

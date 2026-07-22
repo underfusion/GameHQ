@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: MIT -->
+
 # Local Integration Protocol
 
 How other local tools — currently the Playnite companion plugin, and any

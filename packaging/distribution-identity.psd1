@@ -23,6 +23,8 @@
         Portable = 'GameHQ-{0}-win64-portable.zip'
         Update = 'GameHQ-{0}-win64-update.zip'
         UpdateChecksum = 'GameHQ-{0}-win64-update.zip.sha256'
+        Source = 'GameHQ-{0}-source.zip'
+        SourceChecksum = 'GameHQ-{0}-source.zip.sha256'
         ReleaseManifest = 'gamehq-release.json'
         ReleaseSignature = 'gamehq-release.sig'
     }

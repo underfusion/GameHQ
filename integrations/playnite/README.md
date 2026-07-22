@@ -62,4 +62,6 @@ Releases are tagged `playnite-vX.Y.Z` in the `underfusion/GameHQ` repository
 
 ## License
 
-MIT, same as GameHQ — see `../../LICENSE`.
+The Playnite integration is under the MIT License; see its local
+[`LICENSE`](LICENSE). The GameHQ core uses the same MIT terms at the repository
+root.

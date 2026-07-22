@@ -93,7 +93,10 @@ Capture modes: **only when game active (default)** · only whitelisted games · 
 
 ## 11. Storage Layout
 
-Never mix into Game Bar's `Videos\Captures` by default. Default root: `C:\Users\VIVE\Videos\GameHQ\<Game>\{Screenshots,Clips}\` (+ `Unknown Game`). Can watch/import: Game Bar, Steam, NVIDIA, OBS, custom folders — GameHQ becomes the central gallery while its own files stay clean.
+Never mix into Game Bar's `Videos\Captures` by default. Default root:
+`%USERPROFILE%\Videos\GameHQ\<Game>\{Screenshots,Clips}\` (+ `Unknown Game`).
+Can watch/import: Game Bar, Steam, NVIDIA, OBS, custom folders — GameHQ becomes
+the central gallery while its own files stay clean.
 
 ## 12. Portable Mode
 

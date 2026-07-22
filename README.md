@@ -62,6 +62,20 @@ bypass it or disable Windows security. See
 [Download verification](docs/download-verification.md) and
 [Security & privacy](docs/security-and-privacy.md).
 
+### Portable, installed, and uninstall behavior
+
+Portable keeps its profile and default captures beside the extracted app.
+Installed mode uses the current user's AppData and `Videos\GameHQ`. On a fresh,
+empty installed profile, **Settings > Advanced > Portable profile** can import
+an existing portable configuration and library. The transactional importer
+rebases portable paths but leaves the portable source and all capture media in
+place; populated installed libraries are never merged in version one.
+
+Uninstall removes only installed program files, shortcuts, and registry values
+still owned by that installation. It does not remove AppData, captures, watched
+folders, portable copies, or media, and it does not change the license rights
+already granted for any downloaded release.
+
 ## Code signing policy
 
 GameHQ's [Code signing policy](docs/code-signing-policy.md) defines release
@@ -119,9 +133,10 @@ Vulnerabilities can be reported privately through the repository's enabled
 
 ## License
 
-GameHQ source code is available under the [MIT License](LICENSE). Distributed
-packages also contain Qt, FFmpeg, and compiler runtime components under their
-respective licenses; see [Third-Party Notices](THIRD_PARTY_NOTICES.md).
+GameHQ source code is available under the [MIT License](LICENSE). See
+[Licensing](docs/licensing.md) for the project boundary and
+[Third-Party Notices](THIRD_PARTY_NOTICES.md) for redistributed Qt, FFmpeg,
+compiler-runtime, and other components under their respective licenses.
 
 GameHQ is an independent project and is not affiliated with or endorsed by
 Sony Interactive Entertainment, Microsoft, Valve, NVIDIA, or OBS Project.

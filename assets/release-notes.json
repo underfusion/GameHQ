@@ -1,18 +1,18 @@
 {
-  "version": "0.6.27",
+  "version": "0.6.28",
   "sections": [
     {
       "title": "Added",
       "items": [
-        "Import an existing portable profile from Advanced settings into a fresh installed profile.",
-        "Stage and validate configuration, database, path rewrites, and referenced sounds before publishing."
+        "Dependency, contribution, privacy, and official-branding boundaries are documented.",
+        "Release checks now detect license drift, unclassified assets, private data, and secret files."
       ]
     },
     {
       "title": "Changed",
       "items": [
-        "Portable captures and watched media stay in place while derived thumbnails and icons are rebuilt.",
-        "Failed or unsupported imports roll back without modifying the portable source."
+        "GameHQ remains under MIT across the core, Playnite integration, and public protocol.",
+        "Optional source archives can be generated and validated for release convenience."
       ]
     }
   ]

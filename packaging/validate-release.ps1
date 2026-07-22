@@ -12,6 +12,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+& (Join-Path $PSScriptRoot 'assert-privacy.ps1') -ReleaseDirectory $ReleaseDirectory
+& (Join-Path $PSScriptRoot 'assert-license-compliance.ps1')
 $releaseRoot = if ([System.IO.Path]::IsPathRooted($ReleaseDirectory)) {
     [System.IO.Path]::GetFullPath($ReleaseDirectory)
 } else { [System.IO.Path]::GetFullPath((Join-Path $root $ReleaseDirectory)) }
@@ -142,7 +144,6 @@ $checksumText = (Get-Content -LiteralPath $checksum -Raw).Trim()
 if ($checksumText -notmatch $expectedChecksum) { throw 'Update checksum file has an invalid format or filename.' }
 $actualHash = (Get-FileHash -LiteralPath $updateZip -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actualHash -ne $Matches[1]) { throw 'Update ZIP checksum does not match.' }
-
 $packagedApp = Join-Path $root 'dist\GameHQ\app\GameHQ.exe'
 $versionCheck = Start-Process -FilePath $packagedApp `
     -ArgumentList @('--assert-version', $version) -WindowStyle Hidden -Wait -PassThru
@@ -188,6 +189,7 @@ $evidence = [ordered]@{
     trustMode = $TrustMode
     manifestMode = $ManifestMode
     innoSetup = [ordered]@{ version = $toolchain.Version; installerSha256 = $toolchain.Sha256 }
+    compliance = [ordered]@{ license = 'passed'; privacy = 'passed' }
     artifacts = $artifactEvidence
     authenticode = $signatures
 } | ConvertTo-Json -Depth 6

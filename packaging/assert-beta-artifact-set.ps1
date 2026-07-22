@@ -38,6 +38,10 @@ if ($evidence.schemaVersion -ne 1 -or $evidence.version -ne $version -or
     $evidence.trustMode -ne 'unsigned-beta' -or $evidence.manifestMode -ne 'test') {
     throw 'Release evidence does not describe the expected unsigned-Beta/test-key build.'
 }
+if ($evidence.compliance.license -ne 'passed' -or
+    $evidence.compliance.privacy -ne 'passed') {
+    throw 'Release evidence is missing passed license or privacy compliance.'
+}
 $recordedNames = @($evidence.artifacts | ForEach-Object fileName | Sort-Object)
 if (($expectedPayload | Sort-Object) -join "`n" -ne ($recordedNames -join "`n")) {
     throw 'Release evidence does not list exactly the approved payload artifacts.'

@@ -1,7 +1,7 @@
 # Third-Party Notices
 
-GameHQ itself is licensed under the [MIT License](LICENSE). The Windows package
-also redistributes shared runtime components under their own licenses.
+GameHQ first-party code is licensed under the MIT License. The Windows package
+also redistributes runtime components under their own licenses.
 
 ## Qt 6.8.3
 
@@ -17,8 +17,11 @@ The shared libraries remain replaceable in the package's `app` directory.
 
 ## FFmpeg 7.1
 
-The Qt Multimedia runtime includes FFmpeg shared libraries. Qt identifies its
-FFmpeg build as LGPL 2.1-or-later with additional permissively licensed parts.
+The Qt Multimedia runtime includes dynamically loaded FFmpeg shared libraries.
+The shipped `avcodec-61.dll` reports FFmpeg 7.1 (`61.19.100`), LGPL 2.1-or-later,
+and this configuration:
+
+`--prefix=installed --disable-programs --disable-doc --disable-debug --enable-network --disable-lzma --enable-pic --disable-vulkan --disable-v4l2-m2m --disable-decoder=truemotion1 --enable-shared --disable-static`
 
 - FFmpeg legal information: https://ffmpeg.org/legal.html
 - FFmpeg source code: https://ffmpeg.org/download.html#get-sources
@@ -49,5 +52,38 @@ BSD license option; the complete license is included at
 `licenses/monocypher.txt`.
 
 - Source: https://monocypher.org/download/
+
+## Mesa llvmpipe
+
+Qt's Windows deployment includes `opengl32sw.dll`, its Mesa llvmpipe software
+OpenGL fallback. Mesa and the LLVM components in this binary use permissive
+licenses recorded by Qt; upstream attribution is available at:
+
+- https://doc.qt.io/qtcreator/qtcreator-binary-attribution-llvmpipe.html
+
+## Microsoft D3DCompiler
+
+The Windows package contains Microsoft's redistributable
+`D3Dcompiler_47.dll` as an application-local Qt runtime dependency. It remains
+Microsoft software and is not part of GameHQ.
+
+- Redistribution guidance: https://learn.microsoft.com/windows/win32/directx-sdk--august-2009-
+
+## Inno Setup 6.7.3
+
+The Windows Setup executable and uninstaller are produced with Inno Setup.
+Its complete permissive license is included at `licenses/Inno-Setup.txt`.
+
+- Source and project: https://github.com/jrsoftware/issrc
+
+## Playnite integration dependencies
+
+The separately packaged Playnite integration dynamically uses Playnite's MIT
+SDK supplied by the host and ships Bouncy Castle C# 2.6.2 under its MIT-style
+license. Its complete notice is included in the integration package at
+`LICENSES/BouncyCastle.Cryptography.txt`.
+
+- Playnite license: https://github.com/JosefNemec/Playnite/blob/master/LICENSE.md
+- Bouncy Castle license: https://www.bouncycastle.org/about/license/
 
 No ownership of these third-party components is claimed by the GameHQ project.

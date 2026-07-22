@@ -40,12 +40,14 @@ checks; the complete behavior is described in
 ## Signing order
 
 1. Build from the reviewed tag with pinned toolchains.
-2. Sign GameHQ-built inner EXE/DLL files with the approved publisher and RFC
+2. Generate and validate an exact source archive and checksum when that optional
+   convenience artifact is included in the release.
+3. Sign GameHQ-built inner EXE/DLL files with the approved publisher and RFC
    3161 timestamp, then verify them.
-3. Package portable, update, and full offline Setup artifacts.
-4. Sign Setup and the generated Inno uninstaller, then verify every signature
+4. Package portable, update, and full offline Setup artifacts.
+5. Sign Setup and the generated Inno uninstaller, then verify every signature
    and timestamp again from the final artifacts.
-5. Generate hashes and the byte-exact release manifest only after final bytes
+6. Generate hashes and the byte-exact release manifest only after final bytes
    are fixed.
 
 Third-party Qt, FFmpeg, compiler-runtime, and Playnite files keep their upstream

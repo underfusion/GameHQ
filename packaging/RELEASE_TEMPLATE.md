@@ -12,6 +12,8 @@
 - Unsigned Beta wording: **Open-source Beta · Not yet code-signed; Windows may show an Unknown publisher warning.**
 - Never describe an unsigned release as Stable.
 - Setup is the recommended download; Portable is the explicit no-install alternative.
+- State that the GameHQ core, Playnite integration, and public protocol use MIT.
+- If attached, link the optional `GameHQ-<version>-source.zip` and its checksum.
 - Link [Download verification](https://github.com/underfusion/GameHQ/blob/main/docs/download-verification.md).
 - Link the [Code signing policy](https://github.com/underfusion/GameHQ/blob/main/docs/code-signing-policy.md)
   using that exact term; never imply SignPath enrollment or signatures before they are active.
