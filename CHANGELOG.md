@@ -4,6 +4,33 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.27] - 2026-07-22
+
+### Added
+
+- Added an installed-only portable-profile import flow under Advanced settings.
+- Added transactional staging, strict path rebasing, source immutability checks,
+  SQLite validation, evidence output and automatic rollback.
+
+### Security
+
+- Portable imports reject populated destinations, package escapes, unknown
+  portable path fields, unsupported schemas and invalid referenced assets.
+
+## [0.6.26] - 2026-07-22
+
+### Added
+
+- Added a clean-Windows unsigned-Beta CI gate that builds and tests GameHQ,
+  then produces Setup, Portable, Update, manifest, signature and evidence.
+- Added a strict pre-upload audit that recomputes every recorded size and
+  SHA-256 value and rejects missing or unexpected release files.
+
+### Security
+
+- CI artifacts remain short-lived test-key evidence and are never published as
+  a GitHub Release; publishable tags continue to reject test-key manifests.
+
 ## [0.6.25] - 2026-07-22
 
 ### Added

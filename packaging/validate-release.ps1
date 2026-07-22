@@ -158,7 +158,13 @@ if ($ManifestMode -eq 'test') {
     }
 }
 if (-not $SkipTests) {
-    $ctest = Join-Path $root 'tools\cmake\bin\ctest.exe'
+    $localCtest = Join-Path $root 'tools\cmake\bin\ctest.exe'
+    $ctest = if (Test-Path -LiteralPath $localCtest -PathType Leaf) {
+        $localCtest
+    } else {
+        $command = Get-Command ctest.exe -ErrorAction Stop
+        $command.Source
+    }
     $env:PATH = (Join-Path $root 'tools\Qt\6.8.3\mingw_64\bin') + ';' + $env:PATH
     & $ctest --test-dir (Join-Path $root 'out') -R 'tst_(updatedownloader|updatepreflight|updateinstaller|updatertransaction)' --output-on-failure
     if ($LASTEXITCODE -ne 0) { throw 'Updater validation tests failed.' }

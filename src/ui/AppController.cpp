@@ -21,6 +21,8 @@
 #include <QGuiApplication>
 #include <QHash>
 #include <QImage>
+#include <QFileInfo>
+#include <QProcess>
 #include <QVariantMap>
 #include <QVideoFrame>
 #include <QVideoSink>
@@ -136,6 +138,28 @@ void AppController::openDataFolder()
 void AppController::openLogsFolder()
 {
     ShellActions::openFile(Paths::logsDir());
+}
+
+QString AppController::beginPortableImport(const QUrl& folderUrl)
+{
+    if (portableMode())
+        return QStringLiteral("Portable profiles can only be imported by an installed copy of GameHQ.");
+    if (!folderUrl.isLocalFile())
+        return QStringLiteral("Select a local GameHQ portable folder.");
+    const QString source = QDir::cleanPath(folderUrl.toLocalFile());
+    if (!QFileInfo(source + QStringLiteral("/portable.flag")).isFile()
+        || !QFileInfo(source + QStringLiteral("/GameHQ.exe")).isFile()
+        || !QFileInfo(source + QStringLiteral("/gamehq-data")).isDir())
+        return QStringLiteral("The selected folder is not a GameHQ portable package.");
+
+    const QStringList arguments {
+        QStringLiteral("--import-portable"), source,
+        QStringLiteral("--wait-for-pid"), QString::number(QCoreApplication::applicationPid())
+    };
+    if (!QProcess::startDetached(QCoreApplication::applicationFilePath(), arguments))
+        return QStringLiteral("GameHQ could not start the portable import process.");
+    QCoreApplication::quit();
+    return {};
 }
 
 void AppController::quitApplication()

@@ -62,6 +62,15 @@ bypass it or disable Windows security. See
 [Download verification](docs/download-verification.md) and
 [Security & privacy](docs/security-and-privacy.md).
 
+## Code signing policy
+
+GameHQ's [Code signing policy](docs/code-signing-policy.md) defines release
+roles, MFA, privacy, signed-file scope, manual approval and verification. The
+planned open-source signing attribution is: **Free code signing provided by
+SignPath.io, certificate by SignPath Foundation.** It applies to distributed
+binaries only after SignPath Foundation accepts the project and the verified
+workflow is active; current Beta downloads remain unsigned as stated above.
+
 ## Default controls
 
 | Input | Action |

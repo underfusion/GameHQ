@@ -1,8 +1,16 @@
 # Portable-to-installed import inventory
 
-This document defines the path rewrite contract for importing a portable GameHQ
-profile into a fresh installed profile. It is an implementation prerequisite,
-not an importer: the source profile and media remain untouched.
+This document defines the implemented path rewrite contract for importing a
+portable GameHQ profile into a fresh installed profile. The entry point is
+Settings > Advanced > Portable profile; GameHQ restarts before replacing any
+profile files so the database is closed throughout publication.
+
+`PortableProfileImporter` stages configuration and SQLite state beside the
+installed data root, validates and publishes the directory atomically, and
+writes count-only `import-evidence.json`. `tst_portableprofileimporter` covers
+success, malformed and unsupported inputs, source immutability, path escapes,
+destination rejection, derived-cache clearing, injected rollback points and
+durable-journal recovery after hard interruption on either side of publication.
 
 ## Safety contract
 

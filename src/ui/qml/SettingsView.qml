@@ -242,8 +242,29 @@ Item {
                     restoreCategoryDialog.category = category
                     restoreCategoryDialog.open()
                 }
+                onImportPortableRequested: function(folderUrl) {
+                    portableImportDialog.folderUrl = folderUrl
+                    portableImportDialog.open()
+                }
             }
             AboutSettingsPage {}
+            }
+        }
+    }
+
+    ConfirmDialog {
+        id: portableImportDialog
+        property url folderUrl
+        anchors.fill: parent
+        z: 100
+        title: "Import this portable profile?"
+        message: "Only a fresh installed profile is accepted. Portable captures stay where they are, the source is never modified, and GameHQ restarts to complete the import."
+        confirmLabel: "Import and restart"
+        onConfirmed: {
+            const error = app.beginPortableImport(folderUrl)
+            if (error !== "") {
+                notifications.post("Portable import failed", error, "", "error")
+                sounds.play("error")
             }
         }
     }

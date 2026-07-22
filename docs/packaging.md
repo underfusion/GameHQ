@@ -154,6 +154,22 @@ rejects a missing/invalid signature or inconsistent publisher.
 verification consumers with an explicitly public test key. Production key
 activation and public signed-manifest mode remain separately gated.
 
+The `Unsigned Beta release gate` workflow repeats that exact path on a clean
+Windows runner for pull requests and pushes to `dev` or `main`. Before upload,
+`assert-beta-artifact-set.ps1` requires the exact seven-file CI artifact set and
+recomputes every size and SHA-256 value recorded in `release-evidence.json`.
+The uploaded bundle is short-lived CI evidence, not a GitHub Release. A
+separate negative step proves that a publishable tag cannot validate while the
+public test key is selected. Production signing configuration remains absent
+until the separately authorized production-key and Authenticode tasks.
+
+Installed builds expose **Settings > Advanced > Portable profile**. Import is
+available only when the installed library is empty. GameHQ closes the live
+database, restarts into a dedicated importer, rebases audited `portable:/`
+paths, clears derived thumbnail/icon references, validates SQLite, then swaps
+the staged profile into place. Capture media and the portable source remain
+untouched; any failure restores the original empty installed profile.
+
 `start.bat` automates the first two commands. It incrementally builds in `out/`,
 stops the running app, refreshes only generated content in `build/`, preserves
 `build/Captures/` and `build/gamehq-data/`, then launches the root executable.

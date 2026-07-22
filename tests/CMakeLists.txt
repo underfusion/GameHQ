@@ -35,6 +35,11 @@ gamehq_add_test(tst_configmanager
     tst_configmanager.cpp
     "${CMAKE_SOURCE_DIR}/src/config/ConfigManager.cpp")
 
+gamehq_add_test(tst_portableprofileimporter
+    tst_portableprofileimporter.cpp
+    "${CMAKE_SOURCE_DIR}/src/config/PortableProfileImporter.cpp")
+target_link_libraries(tst_portableprofileimporter PRIVATE Qt6::Sql)
+
 gamehq_add_test(tst_gamerowrepair
     tst_gamerowrepair.cpp
     "${CMAKE_SOURCE_DIR}/src/storage/GameRowRepair.cpp"

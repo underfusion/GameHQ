@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import GameHQ
 import "../components"
@@ -7,6 +8,7 @@ SettingsPage {
     signal restoreAllRequested()
     signal restoreCategoryRequested(string category)
     signal restoreInputRequested()
+    signal importPortableRequested(url folderUrl)
     SettingsSection {
         title: "Diagnostics"
         description: "Open " + Brand.name + "-owned folders for logs, configuration, database, and cached support data."
@@ -34,6 +36,21 @@ SettingsPage {
                 onClicked: { app.copyDiagnosticSummary(); sounds.play("confirm") }
             }
         }
+    }
+    SettingsSection {
+        title: "Portable profile"
+        description: "Import settings and library metadata from a portable copy without moving its captures. The installed profile must be empty."
+        visible: !app.portableMode
+        SettingsRow {
+            label: "Import portable data"
+            description: "GameHQ validates and stages the profile, then restarts to publish it atomically."
+            AccentButton { label: "Choose folder..."; primary: true; onClicked: portableFolderDialog.open() }
+        }
+    }
+    FolderDialog {
+        id: portableFolderDialog
+        title: "Select the GameHQ portable folder"
+        onAccepted: importPortableRequested(selectedFolder)
     }
     SettingsSection {
         title: "Restore"

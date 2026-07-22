@@ -6,12 +6,14 @@
 #include <QFileInfo>
 #include <QIcon>
 #include <QLockFile>
+#include <QMessageBox>
 #include <QSaveFile>
 #include <QProcess>
 #include <QTimer>
 #include "app/App.h"
 #include "Brand.h"
 #include "config/Paths.h"
+#include "config/PortableProfileImporter.h"
 #include "input/HidCloakMonitor.h"
 #include "integration/IntegrationClient.h"
 #include "core/ApplicationMutex.h"
@@ -65,6 +67,33 @@ void cleanCompletedUpdateArtifacts()
                                  QStringLiteral("transaction.json") })
         QFile::remove(update + QLatin1Char('/') + name);
 }
+
+bool waitForParentProcess(const QStringList& arguments, QString& error)
+{
+    const qsizetype at = arguments.indexOf(QStringLiteral("--wait-for-pid"));
+    if (at < 0)
+        return true;
+    if (at + 1 >= arguments.size()) {
+        error = QStringLiteral("The portable import parent-process argument is incomplete.");
+        return false;
+    }
+    bool ok = false;
+    const DWORD pid = arguments.at(at + 1).toULong(&ok);
+    if (!ok || pid == 0) {
+        error = QStringLiteral("The portable import parent-process identifier is invalid.");
+        return false;
+    }
+    HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, pid);
+    if (!process)
+        return true;
+    const DWORD waitResult = WaitForSingleObject(process, 60000);
+    CloseHandle(process);
+    if (waitResult != WAIT_OBJECT_0) {
+        error = QStringLiteral("The running GameHQ instance did not close in time.");
+        return false;
+    }
+    return true;
+}
 }
 
 int main(int argc, char* argv[])
@@ -111,6 +140,32 @@ int main(int argc, char* argv[])
     QString postUpdateVersion;
     QString postUpdateToken;
     const QStringList arguments = qtApp.arguments();
+    const qsizetype importAt = arguments.indexOf(QStringLiteral("--import-portable"));
+    if (importAt >= 0) {
+        QString importError;
+        if (importAt + 1 >= arguments.size())
+            importError = QStringLiteral("The portable import source folder is missing.");
+        else if (Paths::isPortable())
+            importError = QStringLiteral("Run portable import from an installed copy of GameHQ.");
+        else if (waitForParentProcess(arguments, importError)) {
+            PortableProfileImporter::Result result;
+            PortableProfileImporter::Options options {
+                arguments.at(importAt + 1), Paths::dataDir(),
+                PortableProfileImporter::FailurePoint::None
+            };
+            PortableProfileImporter::importProfile(options, result, importError);
+        }
+        if (!importError.isEmpty()) {
+            if (arguments.contains(QStringLiteral("--import-portable-only"))) {
+                qCritical().noquote() << importError;
+                return 7;
+            }
+            QMessageBox::critical(nullptr, QStringLiteral("Portable import failed"), importError);
+            return 7;
+        }
+        if (arguments.contains(QStringLiteral("--import-portable-only")))
+            return 0;
+    }
     const qsizetype postUpdateAt = arguments.indexOf(QStringLiteral("--post-update"));
     if (postUpdateAt >= 0) {
         if (postUpdateAt + 2 >= arguments.size())

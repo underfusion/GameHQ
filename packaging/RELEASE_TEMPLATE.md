@@ -13,3 +13,5 @@
 - Never describe an unsigned release as Stable.
 - Setup is the recommended download; Portable is the explicit no-install alternative.
 - Link [Download verification](https://github.com/underfusion/GameHQ/blob/main/docs/download-verification.md).
+- Link the [Code signing policy](https://github.com/underfusion/GameHQ/blob/main/docs/code-signing-policy.md)
+  using that exact term; never imply SignPath enrollment or signatures before they are active.

@@ -1,0 +1,115 @@
+name: Unsigned Beta release gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - dev
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unsigned-beta-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-verify:
+    name: Build and verify unsigned Beta
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      RELEASE_TRUST_MODE: unsigned-beta
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install pinned Qt and MinGW toolchain
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check aqtinstall==3.3.0
+          python -m aqt install-qt windows desktop 6.8.3 win64_mingw `
+            -O "$PWD\tools\Qt" -m qtmultimedia qtsvg
+          python -m aqt install-tool windows desktop tools_mingw1310 `
+            -O "$PWD\tools\Qt"
+
+      - name: Configure and build release binaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $qt = "$PWD\tools\Qt\6.8.3\mingw_64"
+          $mingw = "$PWD\tools\Qt\Tools\mingw1310_64\bin"
+          $env:PATH = "$mingw;$qt\bin;$env:PATH"
+          cmake -S . -B out -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DGAMEHQ_BUILD_TESTS=ON `
+            "-DCMAKE_PREFIX_PATH=$qt" `
+            "-DCMAKE_C_COMPILER=$mingw\gcc.exe" `
+            "-DCMAKE_CXX_COMPILER=$mingw\g++.exe" `
+            -DCMAKE_MAKE_PROGRAM=ninja.exe
+          cmake --build out --parallel 4
+
+      - name: Run native and Playnite tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $qt = "$PWD\tools\Qt\6.8.3\mingw_64"
+          $env:PATH = "$qt\bin;$env:PATH"
+          ctest --test-dir out --output-on-failure
+          dotnet restore integrations/playnite/tests/GameHQ.Playnite.Tests/GameHQ.Playnite.Tests.csproj --locked-mode
+          dotnet test integrations/playnite/tests/GameHQ.Playnite.Tests/GameHQ.Playnite.Tests.csproj `
+            --configuration Release --no-restore
+
+      - name: Bootstrap pinned Inno Setup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & packaging/bootstrap-inno.ps1
+
+      - name: Build and verify the complete Beta artifact set
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $qt = "$PWD\tools\Qt\6.8.3\mingw_64"
+          $mingw = "$PWD\tools\Qt\Tools\mingw1310_64\bin"
+          $env:PATH = "$mingw;$qt\bin;$env:PATH"
+          & packaging/make-dist.ps1 -TrustMode unsigned-beta -ManifestMode test
+          & packaging/assert-beta-artifact-set.ps1
+
+      - name: Prove test keys cannot validate a publishable tag
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = (Get-Content VERSION -Raw).Trim()
+          $rejected = $false
+          try {
+            & packaging/validate-release.ps1 -TrustMode unsigned-beta `
+              -ManifestMode test -GitTag "v$version" -SkipTests
+          } catch {
+            $rejected = $_.Exception.Message -like '*Test-key manifests*'
+          }
+          if (-not $rejected) {
+            throw 'The publishable-tag test-key guard did not reject the release.'
+          }
+          Write-Host '[guard] publishable tags reject test-key manifests'
+
+      # This is CI evidence, not a GitHub Release. Production signing remains
+      # unavailable until t48 provisions an external key and t30 adds Authenticode.
+      - name: Upload verified Beta evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: GameHQ-unsigned-beta-test-key-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            dist/releases/GameHQ-*-win64-setup.exe
+            dist/releases/GameHQ-*-win64-portable.zip
+            dist/releases/GameHQ-*-win64-update.zip
+            dist/releases/GameHQ-*-win64-update.zip.sha256
+            dist/releases/gamehq-release.json
+            dist/releases/gamehq-release.sig
+            dist/releases/release-evidence.json

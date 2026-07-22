@@ -121,6 +121,7 @@ public:
     Q_INVOKABLE QString resetCaptureRoot(const QString& kind);
     Q_INVOKABLE void openDataFolder();
     Q_INVOKABLE void openLogsFolder();
+    Q_INVOKABLE QString beginPortableImport(const QUrl& folderUrl);
     Q_INVOKABLE void quitApplication();
     // Copies version/mode/paths to the clipboard for bug reports (Advanced page).
     Q_INVOKABLE void copyDiagnosticSummary() const;

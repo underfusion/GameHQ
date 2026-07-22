@@ -42,6 +42,7 @@ Thumbs.db
 
 # Local planning and diagnostic scratch space
 .tmp/
+/dev-backups/
 /*diff*.txt
 /launch_*.txt
 /head_*.qml

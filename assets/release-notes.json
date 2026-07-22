@@ -1,18 +1,18 @@
 {
-  "version": "0.6.25",
+  "version": "0.6.27",
   "sections": [
     {
       "title": "Added",
       "items": [
-        "Generate and verify a byte-exact Ed25519 release manifest in an isolated test-key mode.",
-        "Share the same signed-manifest test vectors across GameHQ, the updater, and Playnite."
+        "Import an existing portable profile from Advanced settings into a fresh installed profile.",
+        "Stage and validate configuration, database, path rewrites, and referenced sounds before publishing."
       ]
     },
     {
       "title": "Changed",
       "items": [
-        "Release validation now checks artifact names, sizes, hashes, signatures, and rollback sequences.",
-        "Production keys remain disabled until their separate activation review."
+        "Portable captures and watched media stay in place while derived thumbnails and icons are rebuilt.",
+        "Failed or unsupported imports roll back without modifying the portable source."
       ]
     }
   ]
