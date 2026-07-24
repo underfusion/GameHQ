@@ -8,9 +8,14 @@ Item {
     signal closeRequested()
 
     property var categories: [
-        { label: "General" }, { label: "Capture" }, { label: "Replay" },
-        { label: "Input" }, { label: "Library" },
-        { label: "Notifications & Sound" }, { label: "Advanced" }, { label: "About" }
+        { label: "General", icon: "\u2699", description: "Appearance, startup, and windows." },
+        { label: "Capture", icon: "\u25A3", description: "Screenshot behavior and storage." },
+        { label: "Replay", icon: "\u21BA", description: "Rolling buffer and clip quality." },
+        { label: "Input", icon: "\u2328", description: "Shortcuts, devices, and bindings." },
+        { label: "Library", icon: "\u25A4", description: "Managed and watched folders." },
+        { label: "Notifications & Sound", icon: "\u266B", description: "Visual and audio feedback." },
+        { label: "Advanced", icon: "\u2261", description: "Diagnostics, HDR, and recovery." },
+        { label: "About", icon: "\u24D8", description: "Version, updates, and project links." }
     ]
     property int currentCategory: Math.max(0, Math.min(categories.length - 1,
         Number(app.config("ui.settings_category", 0))))
@@ -146,6 +151,12 @@ Item {
             return
         }
         const active = Window.window ? Window.window.activeFocusItem : null
+        if (active && isInside(active, currentPage()))
+            activePanel = panelOptions
+        if (activePanel === panelCategories) {
+            enterPanel(panelOptions)
+            return
+        }
         if (!active)
             return
         // A combo opens its list; anything else (toggle, button) just fires.
@@ -175,26 +186,32 @@ Item {
         return false
     }
 
-    onVisibleChanged: if (visible) Qt.callLater(activate)
+    onVisibleChanged: {
+        if (!visible)
+            return
+        activePanel = panelCategories
+        padCombo = null
+        Qt.callLater(activate)
+    }
 
-    ColumnLayout {
+    // A section-wide focus wash is a controller affordance. Moving the mouse
+    // switches back to the existing per-control hover/focus treatment.
+    HoverHandler {
+        acceptedDevices: PointerDevice.Mouse
+        onPointChanged: if (Window.window) Window.window.usingGamepad = false
+    }
+
+    Keys.onPressed: function(event) {
+        if (Window.window)
+            Window.window.usingGamepad = false
+        event.accepted = false
+    }
+
+    RowLayout {
         anchors.fill: parent
         spacing: Theme.s16
 
-        Text {
-            text: "Settings"
-            color: Theme.text
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontDisplay
-            font.weight: Font.Light
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            spacing: Theme.s16
-
-            Rectangle {
+        Rectangle {
             Layout.preferredWidth: Theme.s48 * 4
             Layout.fillHeight: true
             radius: Theme.radiusL
@@ -212,11 +229,24 @@ Item {
                     delegate: SettingsCategoryButton {
                         Layout.fillWidth: true
                         label: modelData.label
+                        glyph: modelData.icon
                         selected: index === root.currentCategory
-                        onClicked: root.selectCategory(index, true)
-                        Keys.onUpPressed: root.selectCategory((index - 1 + root.categories.length) % root.categories.length, true)
-                        Keys.onDownPressed: root.selectCategory((index + 1) % root.categories.length, true)
-                        Keys.onRightPressed: root.padFocusStep(1)
+                        onClicked: {
+                            root.activePanel = root.panelCategories
+                            root.selectCategory(index, true)
+                        }
+                        Keys.onUpPressed: {
+                            if (Window.window) Window.window.usingGamepad = false
+                            root.selectCategory((index - 1 + root.categories.length) % root.categories.length, true)
+                        }
+                        Keys.onDownPressed: {
+                            if (Window.window) Window.window.usingGamepad = false
+                            root.selectCategory((index + 1) % root.categories.length, true)
+                        }
+                        Keys.onRightPressed: {
+                            if (Window.window) Window.window.usingGamepad = false
+                            root.padFocusStep(1)
+                        }
                         Keys.onEscapePressed: root.closeRequested()
                     }
                 }
@@ -224,9 +254,10 @@ Item {
             }
         }
 
-            StackLayout {
+        StackLayout {
             id: pageStack
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
             Layout.fillHeight: true
             currentIndex: root.currentCategory
             GeneralSettingsPage {}
@@ -248,7 +279,6 @@ Item {
                 }
             }
             AboutSettingsPage {}
-            }
         }
     }
 

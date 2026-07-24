@@ -1,4 +1,5 @@
 #include "capture/hdr/GpuToneMapper.h"
+#include "capture/hdr/HdrToneMapMath.h"
 
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -31,6 +32,11 @@ VSOut VSMain(uint id : SV_VertexID)
 const char* kPixelShaderSrc = R"(
 Texture2D<float4> HdrTex : register(t0);
 SamplerState PointSampler : register(s0);
+cbuffer ToneMapParams : register(b0)
+{
+    float SceneToSdrScale;
+    float3 Padding;
+};
 
 static const float KneeStart = 0.9;
 
@@ -50,7 +56,7 @@ float SrgbEncode(float c)
 float4 PSMain(float4 pos : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET
 {
     float4 hdr = HdrTex.Sample(PointSampler, uv);
-    float3 c = max(hdr.rgb, 0.0);
+    float3 c = max(hdr.rgb * SceneToSdrScale, 0.0);
     c = float3(ShoulderCurve(c.r), ShoulderCurve(c.g), ShoulderCurve(c.b));
     c = float3(SrgbEncode(c.r), SrgbEncode(c.g), SrgbEncode(c.b));
     return float4(c, saturate(hdr.a));
@@ -90,6 +96,7 @@ GpuToneMapper::~GpuToneMapper()
 
 void GpuToneMapper::releaseAll()
 {
+    if (m_params)      { m_params->Release();      m_params = nullptr; }
     if (m_outputRtv)   { m_outputRtv->Release();   m_outputRtv = nullptr; }
     if (m_outputTex)   { m_outputTex->Release();   m_outputTex = nullptr; }
     if (m_rasterizer)  { m_rasterizer->Release();  m_rasterizer = nullptr; }
@@ -114,7 +121,7 @@ bool GpuToneMapper::checkFp16Support(ID3D11Device* device)
 }
 
 bool GpuToneMapper::init(ID3D11Device* device, ID3D11DeviceContext* context,
-                         unsigned width, unsigned height)
+                         unsigned width, unsigned height, float sdrWhiteLevelNits)
 {
     releaseAll();
     if (!device || !context || width == 0 || height == 0)
@@ -175,6 +182,26 @@ bool GpuToneMapper::init(ID3D11Device* device, ID3D11DeviceContext* context,
     hr = device->CreateRasterizerState(&rastDesc, &m_rasterizer);
     if (FAILED(hr)) {
         qWarning().nospace() << "GpuToneMapper: CreateRasterizerState failed hr=0x"
+                             << Qt::hex << quint32(hr);
+        releaseAll();
+        return false;
+    }
+
+    struct ToneMapParams
+    {
+        float sceneToSdrScale;
+        float padding[3];
+    };
+    const ToneMapParams params{ sceneToSdrScale(sdrWhiteLevelNits), {} };
+    D3D11_BUFFER_DESC paramsDesc{};
+    paramsDesc.ByteWidth = sizeof(ToneMapParams);
+    paramsDesc.Usage = D3D11_USAGE_IMMUTABLE;
+    paramsDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    D3D11_SUBRESOURCE_DATA paramsData{};
+    paramsData.pSysMem = &params;
+    hr = device->CreateBuffer(&paramsDesc, &paramsData, &m_params);
+    if (FAILED(hr)) {
+        qWarning().nospace() << "GpuToneMapper: CreateBuffer(params) failed hr=0x"
                              << Qt::hex << quint32(hr);
         releaseAll();
         return false;
@@ -242,6 +269,8 @@ ID3D11Texture2D* GpuToneMapper::apply(ID3D11Texture2D* fp16Src)
     m_context->PSSetShaderResources(0, 1, srvs);
     ID3D11SamplerState* samplers[] = { m_sampler };
     m_context->PSSetSamplers(0, 1, samplers);
+    ID3D11Buffer* params[] = { m_params };
+    m_context->PSSetConstantBuffers(0, 1, params);
 
     m_context->Draw(3, 0);
 

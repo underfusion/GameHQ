@@ -647,14 +647,9 @@ ApplicationWindow {
         if (bulkDeleteDialog.visible) { bulkDeleteDialog.canceled(); bulkDeleteDialog.close(); return }
         if (window.settingsOpen) {
             // Circle unwinds one step at a time: dropdown → options →
-            // categories → sidebar → out of Settings entirely.
+            // categories → out of Settings entirely.
             if (!window.sidebarFocused && settingsView.padBack())
                 return
-            if (!window.sidebarFocused) {
-                window.sidebarFocused = true
-                window.refreshSidebarHoverIndex()
-                return
-            }
             window.settingsOpen = false
             window.sidebarFocused = false
             grid.forceActiveFocus()
@@ -818,6 +813,7 @@ ApplicationWindow {
             id: settingsView
             visible: window.settingsOpen
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
             Layout.fillHeight: true
             onCloseRequested: {
                 window.settingsOpen = false

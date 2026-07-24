@@ -4,7 +4,7 @@ qt_add_executable(GameHQ
     app/ReleaseNotes.cpp   app/ReleaseNotes.h
     app/StartupManager.cpp app/StartupManager.h
     capture/CaptureUtil.h
-    capture/HdrCapabilities.cpp capture/HdrCapabilities.h
+      capture/HdrCapabilities.cpp capture/HdrCapabilities.h capture/hdr/HdrStateResolver.h
     capture/ScreenshotService.cpp capture/ScreenshotService.h
     capture/FramePumpService.cpp capture/FramePumpService.h capture/wgc_shims.h
     capture/hdr/HdrToneMapMath.cpp capture/hdr/HdrToneMapMath.h
@@ -132,11 +132,19 @@ qt_add_qml_module(GameHQ
         ui/qml/components/NavRepeat.qml
         ui/qml/components/SettingsCombo.qml
         ui/qml/components/SettingsPage.qml
+        ui/qml/components/SettingsPageHeader.qml
         ui/qml/components/SettingsSection.qml
         ui/qml/components/SettingsRow.qml
         ui/qml/components/SettingsToggle.qml
         ui/qml/components/SettingsSlider.qml
         ui/qml/components/SettingsCategoryButton.qml
+        ui/qml/components/SettingsSegmentedControl.qml
+        ui/qml/components/SettingsPathRow.qml
+        ui/qml/components/SettingsLinkRow.qml
+        ui/qml/components/SettingsStatusStrip.qml
+        ui/qml/components/SettingsActionTile.qml
+        ui/qml/components/SettingsEmptyState.qml
+        ui/qml/components/SettingsDisclosure.qml
         ui/qml/settings/GeneralSettingsPage.qml
         ui/qml/settings/CaptureSettingsPage.qml
         ui/qml/settings/ReplaySettingsPage.qml

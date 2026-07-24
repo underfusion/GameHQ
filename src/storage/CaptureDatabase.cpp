@@ -429,7 +429,9 @@ bool CaptureDatabase::upsertBindingOverride(const BindingOverrideRow& row)
         "trigger_code = excluded.trigger_code, activation = excluded.activation, "
         "hold_ms = excluded.hold_ms, unbound = excluded.unbound"));
     q.bindValue(QStringLiteral(":group"), row.deviceGroup);
-    q.bindValue(QStringLiteral(":profile"), row.deviceProfile);
+    q.bindValue(QStringLiteral(":profile"), row.deviceProfile.isEmpty()
+                                              ? QStringLiteral("")
+                                              : row.deviceProfile);
     q.bindValue(QStringLiteral(":action"), row.actionId);
     q.bindValue(QStringLiteral(":slot"), row.slot);
     q.bindValue(QStringLiteral(":trigger"), row.triggerCode.isEmpty() ? QVariant() : row.triggerCode);
@@ -451,7 +453,9 @@ bool CaptureDatabase::clearBindingOverride(const QString& deviceGroup, const QSt
         "DELETE FROM binding_overrides WHERE device_group = :group AND device_profile = :profile "
         "AND action_id = :action AND slot = :slot"));
     q.bindValue(QStringLiteral(":group"), deviceGroup);
-    q.bindValue(QStringLiteral(":profile"), deviceProfile);
+    q.bindValue(QStringLiteral(":profile"), deviceProfile.isEmpty()
+                                              ? QStringLiteral("")
+                                              : deviceProfile);
     q.bindValue(QStringLiteral(":action"), actionId);
     q.bindValue(QStringLiteral(":slot"), slot);
     return q.exec();
@@ -472,7 +476,9 @@ bool CaptureDatabase::clearBindingOverridesForProfile(const QString& deviceGroup
     q.prepare(QStringLiteral(
         "DELETE FROM binding_overrides WHERE device_group = :group AND device_profile = :profile"));
     q.bindValue(QStringLiteral(":group"), deviceGroup);
-    q.bindValue(QStringLiteral(":profile"), deviceProfile);
+    q.bindValue(QStringLiteral(":profile"), deviceProfile.isEmpty()
+                                              ? QStringLiteral("")
+                                              : deviceProfile);
     return q.exec();
 }
 

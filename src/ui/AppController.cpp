@@ -23,9 +23,12 @@
 #include <QImage>
 #include <QFileInfo>
 #include <QProcess>
+#include <QTimer>
 #include <QVariantMap>
 #include <QVideoFrame>
 #include <QVideoSink>
+
+#include <utility>
 
 namespace
 {
@@ -78,6 +81,15 @@ AppController::AppController(CaptureDatabase* db, CaptureScanner* scanner,
             this, &AppController::configGroupReset);
     connect(m_locations, &CaptureLocations::locationsChanged,
             this, &AppController::captureLocationsChanged);
+
+    // Qt's screen topology signals do not fire when Windows' per-display HDR
+    // toggle changes. Poll only the lightweight DXGI/DisplayConfig snapshot;
+    // the slow HEVC encoder probe remains a startup/manual-refresh operation.
+    m_hdrPollTimer = new QTimer(this);
+    m_hdrPollTimer->setInterval(1000);
+    m_hdrPollTimer->setTimerType(Qt::CoarseTimer);
+    connect(m_hdrPollTimer, &QTimer::timeout, this, &AppController::pollHdrStatus);
+    m_hdrPollTimer->start();
 }
 
 AppController::~AppController() = default;
@@ -184,10 +196,36 @@ void AppController::copyDiagnosticSummary() const
 
 void AppController::refreshHdrStatus()
 {
-    m_hdr = capture::HdrCapabilities::query();
+    const bool experimentalHdrEnabled =
+        m_config->value(ConfigKeys::InternalCaptureExperimentalHdr, false).toBool();
+    const capture::HdrReport refreshed =
+        capture::HdrCapabilities::query(experimentalHdrEnabled);
+    const bool displayChanged =
+        m_hdrProbed && !capture::HdrCapabilities::sameDisplayState(m_hdr, refreshed);
+    m_hdr = refreshed;
     m_hdrProbed = true;
     capture::HdrCapabilities::logReport(m_hdr);
     emit hdrStatusChanged();
+    if (displayChanged)
+        emit hdrDisplayConfigurationChanged();
+}
+
+void AppController::pollHdrStatus()
+{
+    if (!m_hdrProbed)
+        return;
+
+    const bool experimentalHdrEnabled =
+        m_config->value(ConfigKeys::InternalCaptureExperimentalHdr, false).toBool();
+    capture::HdrReport refreshed =
+        capture::HdrCapabilities::refreshDisplayState(m_hdr, experimentalHdrEnabled);
+    if (capture::HdrCapabilities::sameDisplayState(m_hdr, refreshed))
+        return;
+
+    m_hdr = std::move(refreshed);
+    capture::HdrCapabilities::logReport(m_hdr);
+    emit hdrStatusChanged();
+    emit hdrDisplayConfigurationChanged();
 }
 
 bool AppController::hdrDisplayActive() const
@@ -335,10 +373,8 @@ void AppController::resetCategory(const QString& category)
 {
     for (const QString& prefix : SettingsCategories::groups().value(category))
         resetConfigGroup(prefix);
-    if (category == SettingsCategories::CaptureCategory) {
-        for (const QString& key : SettingsCategories::captureOnlyKeys())
-            resetConfig(key);
-    }
+    for (const QString& key : SettingsCategories::keys().value(category))
+        resetConfig(key);
 }
 
 QString AppController::version() const

@@ -34,6 +34,7 @@
 #include <memory>
 
 #include <algorithm>
+#include <cstring>
 
 #include <roapi.h>       // RoInitialize / RoUninitialize / RoGetActivationFactory
 #include <winstring.h>   // WindowsCreateString / WindowsDeleteString
@@ -177,6 +178,53 @@ long long qpcNow100ns()
     return CaptureUtil::qpcNow100ns();
 }
 
+QImage readBgraTexture(ID3D11Texture2D* texture, ID3D11Device* device,
+                       ID3D11DeviceContext* context)
+{
+    if (!texture || !device || !context)
+        return {};
+
+    D3D11_TEXTURE2D_DESC sourceDesc{};
+    texture->GetDesc(&sourceDesc);
+    if (sourceDesc.Format != DXGI_FORMAT_B8G8R8A8_UNORM
+        || sourceDesc.Width == 0 || sourceDesc.Height == 0)
+        return {};
+
+    D3D11_TEXTURE2D_DESC stagingDesc = sourceDesc;
+    stagingDesc.MipLevels = 1;
+    stagingDesc.ArraySize = 1;
+    stagingDesc.SampleDesc.Count = 1;
+    stagingDesc.SampleDesc.Quality = 0;
+    stagingDesc.Usage = D3D11_USAGE_STAGING;
+    stagingDesc.BindFlags = 0;
+    stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    stagingDesc.MiscFlags = 0;
+
+    ID3D11Texture2D* staging = nullptr;
+    if (FAILED(device->CreateTexture2D(&stagingDesc, nullptr, &staging)) || !staging)
+        return {};
+
+    context->CopyResource(staging, texture);
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    const HRESULT mapHr = context->Map(staging, 0, D3D11_MAP_READ, 0, &mapped);
+    if (FAILED(mapHr)) {
+        staging->Release();
+        return {};
+    }
+
+    QImage image(int(sourceDesc.Width), int(sourceDesc.Height), QImage::Format_ARGB32);
+    const size_t rowBytes = size_t(sourceDesc.Width) * 4;
+    for (UINT y = 0; y < sourceDesc.Height; ++y) {
+        std::memcpy(image.scanLine(int(y)),
+                    static_cast<const unsigned char*>(mapped.pData)
+                        + size_t(y) * mapped.RowPitch,
+                    rowBytes);
+    }
+    context->Unmap(staging, 0);
+    staging->Release();
+    return image;
+}
+
 // Step 9 — stale replay-cache cleanup. On worker start, drop segment files a
 // previous session left behind (same 10-minute threshold the ring restore in
 // SegmentRecorder::begin uses, so a quick app restart keeps its ring) and
@@ -317,9 +365,20 @@ void FramePumpWorker::attachRecorder(Pipeline* pipe, unsigned long pid, int srcW
         }
     }
     const QSize encodeSize = fitInsideEven(QSize(srcW, srcH), QSize(encodeWidth, encodeHeight));
+    QString cacheProfile = QStringLiteral("%1-%2x%3-%4fps")
+                               .arg(pipe->audio ? QStringLiteral("audio")
+                                                : QStringLiteral("video"))
+                               .arg(encodeSize.width())
+                               .arg(encodeSize.height())
+                               .arg(fps);
+    if (pipe->audio) {
+        cacheProfile += QStringLiteral("-%1hz-%2ch")
+                            .arg(pipe->audio->sampleRate())
+                            .arg(pipe->audio->channels());
+    }
     const QString cacheDir = Paths::replayCacheDir() + QLatin1Char('/')
                              + GameIdentity::folderName(pipe->gameName) + QLatin1Char('/')
-                             + (pipe->audio ? QStringLiteral("audio") : QStringLiteral("video"));
+                             + cacheProfile;
     pipe->recorder = new SegmentRecorder();
     if (!pipe->recorder->begin(srcW, srcH, encodeSize.width(), encodeSize.height(),
                                fps, bitrateMbps, segmentSeconds, lengthSeconds, cacheDir,
@@ -371,12 +430,18 @@ bool FramePumpWorker::createSession(Pipeline* pipe, void* hwndVoid, int srcW, in
     if (capture::hdr::shouldAttemptFp16Capture(hdrExperimentalEnabled, displayHdrActive,
                                                gpuFp16Supported)) {
         auto* mapper = new capture::hdr::GpuToneMapper();
-        if (mapper->init(pipe->d3dDevice, pipe->d3dCtx, UINT(srcW), UINT(srcH))) {
+        const float sdrWhiteNits = output.sdrWhiteLevelNits > 0.0f
+            ? output.sdrWhiteLevelNits
+            : capture::hdr::kDefaultSdrWhiteLevelNits;
+        if (mapper->init(pipe->d3dDevice, pipe->d3dCtx, UINT(srcW), UINT(srcH),
+                         sdrWhiteNits)) {
             pipe->hdrToneMapper = mapper;
             poolFormat = DirectXPixelFormat_R16G16B16A16Float;
             qInfo().noquote() << QStringLiteral(
                 "FramePump: experimental HDR path armed (%1) — capturing FP16, "
-                "tone-mapping to BGRA8 before encode").arg(output.describe());
+                "tone-mapping to BGRA8 before encode (SDR white %2 nits)")
+                .arg(output.describe())
+                .arg(sdrWhiteNits, 0, 'f', 0);
         } else {
             delete mapper;
             qWarning() << "FramePump: experimental HDR tone-mapper init failed — "
@@ -501,6 +566,11 @@ void FramePumpWorker::stopPump()
 {
     if (!m_pipe)
         return;
+    if (m_hdrScreenshotPending) {
+        m_hdrScreenshotPending = false;
+        emit hdrScreenshotFailed(
+            QStringLiteral("HDR screenshot cancelled because the capture target changed"));
+    }
     teardown();
     qInfo() << "FramePump: stopped";
 }
@@ -524,6 +594,18 @@ void FramePumpWorker::poll()
             const qint64 rel = m_pipe->audio->startQpc100ns() + t100
                              - m_pipe->encStartQpc100ns;
             m_pipe->recorder->writeAudio(m_pipe->audioBuf.constData(), got, rel);
+        }
+        if (m_pipe->audio->deviceInvalidated()) {
+            // A Windows HDR/display-mode switch can rebuild the HDMI/DP audio
+            // endpoint. Stop this timer immediately so the invalid HRESULT is
+            // not logged every 16 ms, drop the now-incomplete A/V segment, and
+            // let the GUI-thread service rebuild both WGC and WASAPI.
+            if (m_pipe->timer)
+                m_pipe->timer->stop();
+            m_pipe->recorder->discardCurrentSegment();
+            qWarning() << "FramePump: audio endpoint was invalidated — requesting clean re-arm";
+            emit restartRequested(QStringLiteral("Windows audio endpoint changed"));
+            return;
         }
     }
 
@@ -578,6 +660,25 @@ void FramePumpWorker::poll()
                     }
                     // 0.5 Step 4 — feed the live texture to the H.264 segment writer
                     // (throttled to the target fps inside writeFrame).
+                    if (m_hdrScreenshotPending) {
+                        m_hdrScreenshotPending = false;
+                        if (!skipFrame && m_pipe->hdrToneMapActive) {
+                            const QImage image = readBgraTexture(
+                                encodeTex, m_pipe->d3dDevice, m_pipe->d3dCtx);
+                            if (!image.isNull()) {
+                                qInfo() << "Screenshot: captured tone-mapped HDR frame"
+                                        << image.width() << "x" << image.height();
+                                emit hdrScreenshotReady(image, m_pipe->gameName,
+                                                        m_pipe->executablePath);
+                            } else {
+                                emit hdrScreenshotFailed(
+                                    QStringLiteral("could not read back the tone-mapped HDR frame"));
+                            }
+                        } else {
+                            emit hdrScreenshotFailed(
+                                QStringLiteral("HDR tone mapper is not producing frames"));
+                        }
+                    }
                     if (m_pipe->recorder && !skipFrame) {
                         const qint64 t100 = m_pipe->encClock.nsecsElapsed() / 100;
                         m_pipe->recorder->writeFrame(encodeTex, m_pipe->d3dDevice,
@@ -599,6 +700,20 @@ void FramePumpWorker::poll()
         m_pipe->frameCount = 0;
         m_pipe->fpsClock.restart();
     }
+}
+
+void FramePumpWorker::captureScreenshotOnWorker()
+{
+    if (!m_pipe || !m_pipe->hdrToneMapActive) {
+        emit hdrScreenshotFailed(
+            QStringLiteral("HDR replay frame pump is not active for the foreground game"));
+        return;
+    }
+    if (m_hdrScreenshotPending) {
+        emit hdrScreenshotFailed(QStringLiteral("an HDR screenshot is already pending"));
+        return;
+    }
+    m_hdrScreenshotPending = true;
 }
 
 // Preflight: refuse when the buffer is not running or an export is in flight.
@@ -841,9 +956,31 @@ FramePumpService::FramePumpService(ConfigManager* config, CaptureLocations* loca
     connect(&m_thread, &QThread::finished, m_worker, &FramePumpWorker::onThreadFinished,
             Qt::DirectConnection);
     connect(m_worker, &FramePumpWorker::failed, this, &FramePumpService::failed);
+    connect(m_worker, &FramePumpWorker::restartRequested, this,
+            [this](const QString& reason) {
+                qInfo().noquote() << QStringLiteral("FramePump: %1 — rebuilding capture pipeline")
+                                         .arg(reason);
+                restartBuffer();
+            });
     connect(m_worker, &FramePumpWorker::clipSaving, this, &FramePumpService::clipSaving);
     connect(m_worker, &FramePumpWorker::clipSaved, this, &FramePumpService::clipSaved);
     connect(m_worker, &FramePumpWorker::clipFailed, this, &FramePumpService::clipFailed);
+    connect(m_worker, &FramePumpWorker::hdrScreenshotReady, this,
+            [this](const QImage& image, const QString& game, const QString& exePath) {
+                emit hdrScreenshotReady(image, game, exePath);
+                if (m_stopAfterHdrScreenshot) {
+                    m_stopAfterHdrScreenshot = false;
+                    stopBuffer();
+                }
+            });
+    connect(m_worker, &FramePumpWorker::hdrScreenshotFailed, this,
+            [this](const QString& reason) {
+                emit hdrScreenshotFailed(reason);
+                if (m_stopAfterHdrScreenshot) {
+                    m_stopAfterHdrScreenshot = false;
+                    stopBuffer();
+                }
+            });
     connect(m_worker, &FramePumpWorker::exportBusyChanged, this, [this](bool busy) {
         if (m_exportBusy == busy)
             return;
@@ -852,12 +989,14 @@ FramePumpService::FramePumpService(ConfigManager* config, CaptureLocations* loca
     });
     connect(m_worker, &FramePumpWorker::updateReady, this, [this] {
         m_running = false;
+        m_targetHwnd = 0;
         emit recordingStateChanged(false, QString());
         emit updateReady();
     });
     // If a startPump fails, clear the armed flag so auto-arm can retry next tick.
     connect(m_worker, &FramePumpWorker::failed, this, [this] {
         m_running = false;
+        m_targetHwnd = 0;
         emit recordingStateChanged(false, QString());
     });
 
@@ -902,6 +1041,30 @@ void FramePumpService::saveReplay()
                                               : Paths::capturesRoot();
     QMetaObject::invokeMethod(m_worker, "saveReplayOnWorker", Qt::QueuedConnection,
                               Q_ARG(QString, clipsBaseRoot));
+}
+
+void FramePumpService::captureHdrScreenshot(qulonglong hwnd)
+{
+    if (m_preparingForUpdate) {
+        emit hdrScreenshotFailed(
+            QStringLiteral("screenshot capture is paused for an update"));
+        return;
+    }
+
+    if (!m_running || m_targetHwnd != hwnd) {
+        if (m_running)
+            stopBuffer();
+        startBuffer();
+    }
+    if (!m_running || m_targetHwnd != hwnd) {
+        emit hdrScreenshotFailed(
+            QStringLiteral("could not arm HDR capture on the foreground game"));
+        return;
+    }
+
+    m_stopAfterHdrScreenshot = !m_autoEnabled;
+    QMetaObject::invokeMethod(m_worker, "captureScreenshotOnWorker",
+                              Qt::QueuedConnection);
 }
 
 void FramePumpService::prepareForUpdate()
@@ -951,7 +1114,7 @@ void FramePumpService::restartBuffer()
         startBuffer();
         return;
     }
-    qInfo() << "FramePump: replay settings changed — re-arming the buffer";
+    qInfo() << "FramePump: capture conditions changed — re-arming the buffer";
     stopBuffer();
     startBuffer();   // no-op unless a game is still foreground; autoTick covers the rest
 }
@@ -982,8 +1145,15 @@ void FramePumpService::autoTick()
         if (!m_autoEnabled)
             return;
         m_noGameTicks = 0;
-        if (!m_running)
+        const qulonglong foregroundHwnd =
+            qulonglong(reinterpret_cast<quintptr>(g.hwnd));
+        if (!m_running) {
             startBuffer();
+        } else if (m_targetHwnd != foregroundHwnd) {
+            qInfo() << "FramePump: foreground capture target changed — re-arming";
+            stopBuffer();
+            startBuffer();
+        }
     } else {
         if (!g.valid || g.isExcludedProcess)
             emit foregroundGameDetected(QString(), QString());
@@ -1004,6 +1174,7 @@ void FramePumpService::startBuffer()
         return;
 
     m_running = true;
+    m_targetHwnd = qulonglong(reinterpret_cast<quintptr>(g.hwnd));
     m_noGameTicks = 0;
     const int fps  = m_config ? m_config->value(ConfigKeys::ReplayFps, 30).toInt() : 30;
     const int mbps = m_config ? m_config->value(ConfigKeys::ReplayBitrateMbps, 14).toInt() : 14;
@@ -1022,11 +1193,8 @@ void FramePumpService::startBuffer()
         ? m_config->value(ConfigKeys::InternalCaptureExperimentalHdr, false).toBool() : false;
     const QString gameName = g.gameName.isEmpty() ? QStringLiteral("Unknown Game") : g.gameName;
     const QString executablePath = g.executablePath;
-    const QString cacheDir = Paths::replayCacheDir() + QLatin1Char('/') + GameIdentity::folderName(gameName)
-                             + QLatin1Char('/') + (audioOn ? QStringLiteral("audio")
-                                                           : QStringLiteral("video"));
     qInfo() << "FramePump: armed on" << gameName << "(audio:" << (audioOn ? "on" : "off")
-            << ", cache:" << cacheDir << ")";
+            << ")";
     emit recordingStateChanged(true, gameName);
     QMetaObject::invokeMethod(m_worker, "startPump", Qt::QueuedConnection,
                               Q_ARG(qulonglong, qulonglong(reinterpret_cast<quintptr>(g.hwnd))),
@@ -1044,6 +1212,7 @@ void FramePumpService::stopBuffer()
     if (!m_running)
         return;
     m_running = false;
+    m_targetHwnd = 0;
     m_noGameTicks = 0;
     QMetaObject::invokeMethod(m_worker, "stopPump", Qt::QueuedConnection);
     emit recordingStateChanged(false, QString());

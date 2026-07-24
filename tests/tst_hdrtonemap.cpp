@@ -1,4 +1,5 @@
 #include "capture/hdr/HdrToneMapMath.h"
+#include "capture/hdr/HdrStateResolver.h"
 
 #include <QTest>
 
@@ -6,6 +7,7 @@
 #include <limits>
 
 using capture::hdr::shouldAttemptFp16Capture;
+using capture::hdr::sceneToSdrScale;
 using capture::hdr::toneMapPixel;
 
 // Pure-logic CPU oracle for the tone-map math shared with GpuToneMapper's
@@ -27,23 +29,24 @@ private slots:
         QCOMPARE(int(px.a), 0);
     }
 
-    // 18% gray (0.18 linear) sits below the knee (0.9), so it is pure
-    // identity + the standard sRGB OETF — a well-known reference point
-    // (~46% in 8-bit sRGB) independent of this curve's shoulder shape.
+    // WGC raises SDR content to the Windows SDR-white level. At the default
+    // 200 nits, an 18% gray arrives as 0.18 * 200 / 80 = 0.45 scRGB.
+    // Normalization must restore 0.18 before the standard sRGB OETF.
     void eighteenPercentGray_matchesStandardSrgbEncode()
     {
-        const auto px = toneMapPixel(0.18f, 0.18f, 0.18f);
+        const auto px = toneMapPixel(0.45f, 0.45f, 0.45f);
         QVERIFY2(px.r >= 115 && px.r <= 122,
                  qPrintable(QStringLiteral("got %1, expected ~118 (18%% gray sRGB-encoded)").arg(px.r)));
     }
 
-    // SDR white (1.0 scRGB) sits just above the knee, so it is intentionally
+    // SDR white at 200 nits arrives as 2.5 scRGB. After normalization it sits
+    // just above the knee, so it is intentionally
     // NOT quite full 255 — a few percent of headroom is reserved so
     // highlights above white have somewhere to compress to instead of
     // clipping instantly. It must still read as "essentially white."
     void sdrWhite_isNearWhiteNotExact()
     {
-        const auto px = toneMapPixel(1.0f, 1.0f, 1.0f, 1.0f);
+        const auto px = toneMapPixel(2.5f, 2.5f, 2.5f, 1.0f);
         QVERIFY2(px.r > 235 && px.r < 255,
                  qPrintable(QStringLiteral("got %1, expected near-but-not-255").arg(px.r)));
         QCOMPARE(int(px.a), 255);
@@ -55,7 +58,7 @@ private slots:
     {
         int prev = -1;
         for (float v = 0.0f; v <= 0.9f; v += 0.1f) {
-            const auto px = toneMapPixel(v, v, v);
+            const auto px = toneMapPixel(v * 2.5f, v * 2.5f, v * 2.5f);
             QVERIFY(int(px.r) >= prev);
             prev = int(px.r);
         }
@@ -71,7 +74,7 @@ private slots:
         const float values[] = { 1.0f, 1.5f, 2.0f, 4.0f, 8.0f, 16.0f };
         int prev = -1;
         for (float v : values) {
-            const auto px = toneMapPixel(v, v, v);
+            const auto px = toneMapPixel(v * 2.5f, v * 2.5f, v * 2.5f);
             QVERIFY2(int(px.r) > prev,
                      qPrintable(QStringLiteral("value %1 -> %2 not strictly greater than previous %3")
                                     .arg(v).arg(px.r).arg(prev)));
@@ -91,6 +94,23 @@ private slots:
             QVERIFY(px.g <= 255);
             QVERIFY(px.b <= 255);
         }
+    }
+
+    void windowsSdrWhiteLevel_preventsMidtoneBlowout()
+    {
+        // A 50% linear SDR midtone is 1.25 in a 200-nit WGC scRGB frame.
+        // The old unnormalized curve pushed this to ~246; the correct result
+        // is the normal 50% linear sRGB value (~188).
+        const auto px = toneMapPixel(1.25f, 1.25f, 1.25f);
+        QVERIFY2(px.r >= 185 && px.r <= 191,
+                 qPrintable(QStringLiteral("got %1, expected ~188").arg(px.r)));
+    }
+
+    void sceneScale_usesWindowsEightyNitReference()
+    {
+        QVERIFY(std::abs(sceneToSdrScale(200.0f) - 0.4f) < 0.0001f);
+        QVERIFY(std::abs(sceneToSdrScale(160.0f) - 0.5f) < 0.0001f);
+        QVERIFY(std::abs(sceneToSdrScale(0.0f) - 0.4f) < 0.0001f);
     }
 
     // Wide-gamut BT.2020 colors outside sRGB primaries can arrive as negative
@@ -136,6 +156,32 @@ private slots:
         QFETCH(bool, fp16Supported);
         QFETCH(bool, expected);
         QCOMPARE(shouldAttemptFp16Capture(flagEnabled, hdrActive, fp16Supported), expected);
+    }
+
+    void hdrState_prefersWindowsToggleOverStaleDxgi_data()
+    {
+        QTest::addColumn<bool>("dxgiPqActive");
+        QTest::addColumn<bool>("advancedColorKnown");
+        QTest::addColumn<bool>("advancedColorEnabled");
+        QTest::addColumn<bool>("expected");
+
+        QTest::newRow("both active") << true << true << true << true;
+        QTest::newRow("windows off overrides stale DXGI") << true << true << false << false;
+        QTest::newRow("windows settings active") << false << true << true << true;
+        QTest::newRow("both inactive") << false << true << false << false;
+        QTest::newRow("dxgi fallback active") << true << false << false << true;
+        QTest::newRow("unknown and inactive") << false << false << false << false;
+    }
+
+    void hdrState_prefersWindowsToggleOverStaleDxgi()
+    {
+        QFETCH(bool, dxgiPqActive);
+        QFETCH(bool, advancedColorKnown);
+        QFETCH(bool, advancedColorEnabled);
+        QFETCH(bool, expected);
+        const std::optional<bool> advancedColor =
+            advancedColorKnown ? std::optional<bool>(advancedColorEnabled) : std::nullopt;
+        QCOMPARE(capture::hdr::resolveHdrActive(dxgiPqActive, advancedColor), expected);
     }
 };
 

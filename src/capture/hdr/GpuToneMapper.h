@@ -8,6 +8,7 @@ struct ID3D11PixelShader;
 struct ID3D11RenderTargetView;
 struct ID3D11SamplerState;
 struct ID3D11RasterizerState;
+struct ID3D11Buffer;
 
 namespace capture::hdr {
 
@@ -34,7 +35,8 @@ public:
     // Compiles the shaders and allocates a persistent width x height BGRA8
     // render target. Returns false (mapper left safely destructible, no
     // partial state) on any failure — callers must fall back to the SDR path.
-    bool init(ID3D11Device* device, ID3D11DeviceContext* context, unsigned width, unsigned height);
+    bool init(ID3D11Device* device, ID3D11DeviceContext* context, unsigned width,
+              unsigned height, float sdrWhiteLevelNits);
 
     bool isValid() const { return m_valid; }
 
@@ -59,6 +61,7 @@ private:
     ID3D11PixelShader*        m_ps          = nullptr;
     ID3D11SamplerState*       m_sampler     = nullptr;
     ID3D11RasterizerState*    m_rasterizer  = nullptr;
+    ID3D11Buffer*             m_params      = nullptr;
     ID3D11Texture2D*          m_outputTex   = nullptr;
     ID3D11RenderTargetView*   m_outputRtv   = nullptr;
     unsigned                  m_width       = 0;

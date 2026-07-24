@@ -32,11 +32,19 @@ unsigned char quantize(float srgb)
 
 } // namespace
 
-SdrPixel toneMapPixel(float r, float g, float b, float a)
+float sceneToSdrScale(float sdrWhiteLevelNits)
 {
-    r = std::max(r, 0.0f);
-    g = std::max(g, 0.0f);
-    b = std::max(b, 0.0f);
+    if (!std::isfinite(sdrWhiteLevelNits) || sdrWhiteLevelNits <= 0.0f)
+        sdrWhiteLevelNits = kDefaultSdrWhiteLevelNits;
+    return kScRgbReferenceWhiteNits / sdrWhiteLevelNits;
+}
+
+SdrPixel toneMapPixel(float r, float g, float b, float a, float sdrWhiteLevelNits)
+{
+    const float exposure = sceneToSdrScale(sdrWhiteLevelNits);
+    r = std::max(r * exposure, 0.0f);
+    g = std::max(g * exposure, 0.0f);
+    b = std::max(b * exposure, 0.0f);
 
     SdrPixel out;
     out.r = quantize(srgbEncode(shoulderCurve(r)));

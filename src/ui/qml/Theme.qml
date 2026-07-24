@@ -136,6 +136,18 @@ QtObject {
     // Faint hover fill for list rows that have no surface of their own.
     readonly property color hoverTint:  skin.hoverTint
 
+    // Semantic aliases used by the settings card system. They deliberately
+    // derive from every skin's existing palette so the redesign adds no
+    // layout-changing or hard-coded theme branch.
+    readonly property color surfaceElevated: skin.surfaceAlt
+    readonly property color surfaceHover: skin.hoverTint
+    readonly property color accentSoft: Qt.rgba(skin.accent.r, skin.accent.g, skin.accent.b, 0.14)
+    readonly property color warningSoft: Qt.rgba(skin.warning.r, skin.warning.g, skin.warning.b, 0.10)
+    readonly property color dangerSoft: Qt.rgba(skin.danger.r, skin.danger.g, skin.danger.b, 0.10)
+    readonly property color successSoft: Qt.rgba(skin.success.r, skin.success.g, skin.success.b, 0.10)
+    readonly property color focusRing: skin.accent
+    readonly property color divider: skin.stroke
+
     // Video play badge — the circular ▶ marker drawn over a video thumbnail
     // (capture tile, overlay preview, toast). Reads on any frame, so it is
     // deliberately independent of the surface palette.

@@ -16,6 +16,7 @@ class CurrentGameService;
 class ScreenshotService;
 class SettingsRouter;
 class StartupManager;
+class QTimer;
 
 // The single QML-facing bridge ("app" context property). QML never talks to
 // engines or Win32 directly — see docs/architecture.md dependency rules.
@@ -167,8 +168,12 @@ signals:
     void replayBufferStateChanged();
     void lastScanChanged();
     void hdrStatusChanged();
+    // Emitted only after a previously-probed display changes HDR/topology state.
+    void hdrDisplayConfigurationChanged();
 
 private:
+    void pollHdrStatus();
+
     CaptureDatabase* m_db;
     CaptureScanner* m_scanner;
     GalleryModel* m_gallery;
@@ -187,5 +192,6 @@ private:
     QString m_replayBufferGame;
     capture::HdrReport m_hdr;
     bool m_hdrProbed = false;
+    QTimer* m_hdrPollTimer = nullptr;
     int m_lastScanAdded = -1;   // -1 = not yet scanned this session
 };

@@ -140,6 +140,23 @@ gamehq_add_test(tst_captureiconrefresh
     "${CMAKE_SOURCE_DIR}/src/core/GameIdentity.cpp")
 target_link_libraries(tst_captureiconrefresh PRIVATE Qt6::Sql Qt6::Gui Qt6::Widgets)
 
+gamehq_add_test(tst_bindingeditor
+    tst_bindingeditor.cpp
+    "${CMAKE_SOURCE_DIR}/src/input/ActionCatalog.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/BindingEditorModel.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/BindingResolver.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/BindingRuntime.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/CaptureDatabase.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/CaptureQueries.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameRowRepair.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameMetadataBackfill.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameIconCache.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/Paths.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/LegacyMigration.cpp"
+    "${CMAKE_SOURCE_DIR}/src/core/GameIdentity.cpp")
+target_link_libraries(tst_bindingeditor PRIVATE Qt6::Sql Qt6::Gui Qt6::Widgets)
+
 gamehq_add_test(tst_updatedownloader
     tst_updatedownloader.cpp
     "${CMAKE_SOURCE_DIR}/src/updates/UpdateDownloader.cpp")
@@ -152,6 +169,12 @@ gamehq_add_test(tst_updatepreflight
 gamehq_add_test(tst_hdrtonemap
     tst_hdrtonemap.cpp
     "${CMAKE_SOURCE_DIR}/src/capture/hdr/HdrToneMapMath.cpp")
+
+gamehq_add_test(tst_hdrcapabilities
+    tst_hdrcapabilities.cpp
+    "${CMAKE_SOURCE_DIR}/src/capture/HdrCapabilities.cpp")
+target_link_libraries(tst_hdrcapabilities PRIVATE
+    user32 dxgi ole32 mfplat mfuuid mf)
 
 # GPU smoke test (t24): needs a real D3D11 device, so it is not "pure logic"
 # like the tests above — it self-skips via QSKIP when no D3D11 hardware
@@ -187,4 +210,4 @@ target_compile_definitions(tst_updatertransaction PRIVATE
     HEALTH_FIXTURE_EXE="$<TARGET_FILE:updater_health_fixture>"
     GAMEHQ_UPDATER_VERSION="${GAMEHQ_VERSION_FULL}")
 add_dependencies(tst_updatertransaction GameHQUpdater updater_health_fixture)
-target_link_libraries(tst_updatertransaction PRIVATE miniz bcrypt)
+target_link_libraries(tst_updatertransaction PRIVATE miniz bcrypt Qt6::Sql)

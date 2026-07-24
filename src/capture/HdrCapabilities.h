@@ -1,9 +1,8 @@
 #pragma once
 
-// Read-only probe for Windows HDR (Advanced Color) state and for the encoder
-// support GameHQ would need to keep HDR content HDR. Nothing here changes the
-// capture pipeline — 0.6.13 only detects and reports. The tone-mapped SDR path,
-// native HDR screenshots and HDR10 clips land in the later Phase 6 items.
+// Read-only probe for Windows HDR (Advanced Color) state and encoder support.
+// The report also describes the configured capture policy; actual FP16 support
+// is confirmed when FramePumpService arms on a concrete game window.
 
 #include <windows.h>
 
@@ -26,6 +25,8 @@ struct HdrOutputInfo
     float minLuminanceNits = 0.0f;
     float maxLuminanceNits = 0.0f;
     float maxFullFrameLuminanceNits = 0.0f;
+    float sdrWhiteLevelNits = 0.0f;         // Windows "SDR content brightness" on HDR
+    int advancedColorMode = -1;             // -1 unknown, 0 SDR, 1 WCG, 2 HDR
 
     QString describe() const;
 };
@@ -50,7 +51,16 @@ struct HdrReport
 // factory, so they are safe to call from any thread and from any apartment.
 namespace HdrCapabilities {
 
-HdrReport query();
+HdrReport query(bool experimentalHdrEnabled = false);
+
+// Re-enumerates only display state while preserving the encoder capability
+// from a previous full query. Intended for the runtime HDR toggle watcher.
+HdrReport refreshDisplayState(const HdrReport& previous,
+                              bool experimentalHdrEnabled = false);
+
+// Compares only fields that can change with display topology or Windows HDR.
+// Encoder and configured capture-policy descriptions are intentionally ignored.
+bool sameDisplayState(const HdrReport& left, const HdrReport& right);
 
 // Output containing the given monitor/window; an invalid HdrOutputInfo when the
 // monitor cannot be matched (remote session, output removed mid-move).

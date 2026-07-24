@@ -3,69 +3,82 @@ import GameHQ
 import "../components"
 
 SettingsPage {
+    pageTitle: "Notifications & Sound"
+    pageDescription: "Choose how GameHQ confirms captures, clips, and navigation."
+
     SettingsSection {
+        eyebrow: "Visual feedback"
         title: "Notifications"
+        description: "Control the result cards shown after capture and replay actions."
         SettingsRow {
+            icon: "\u25A3"
             label: "Show notifications"
-            description: "Display capture and replay result cards."
+            description: "Master switch for capture and replay result cards."
             SettingsToggle { configKey: "notifications.enabled"; defaultValue: true }
         }
-    }
-    SettingsSection {
-        title: "Sound"
         SettingsRow {
+            icon: "\u25A3"
+            label: "Screenshot captured"
+            SettingsToggle { configKey: "capture.screenshot_notify"; defaultValue: true }
+        }
+        SettingsRow {
+            icon: "\u21BA"
+            label: "Replay saved"
+            showDivider: false
+            SettingsToggle { configKey: "replay.clip_notify"; defaultValue: true }
+        }
+    }
+
+    SettingsSection {
+        eyebrow: "Audio feedback"
+        title: "Sound"
+        description: "Set the master sound switch, volume, and event-specific feedback."
+        SettingsRow {
+            icon: "\u266B"
             label: "UI sounds"
-            description: "Play navigation and capture feedback sounds."
+            description: "Play navigation and action feedback sounds."
             SettingsToggle { configKey: "sounds.enabled"; defaultValue: true }
         }
         SettingsRow {
             label: "Volume"
-            SettingsCombo {
-                configKey: "sounds.volume"; defaultValue: 80
-                options: [
-                    { label: "25%", value: 25 }, { label: "50%", value: 50 },
-                    { label: "75%", value: 75 }, { label: "80%", value: 80 },
-                    { label: "100%", value: 100 }
-                ]
+            SettingsSlider {
+                configKey: "sounds.volume"
+                defaultValue: 80
+                from: 0
+                to: 100
+                stepSize: 5
             }
         }
-    }
-    SettingsSection {
-        title: "Capture & replay feedback"
-        description: "Per-event choices, combined with the master switches above. Also editable on the Capture and Replay pages. Save failures always play a sound and notify, regardless of these switches."
         SettingsRow {
             label: "Screenshot sound"
             SettingsToggle { configKey: "capture.screenshot_sound"; defaultValue: true }
         }
         SettingsRow {
-            label: "Screenshot notification"
-            SettingsToggle { configKey: "capture.screenshot_notify"; defaultValue: true }
-        }
-        SettingsRow {
-            label: "Clip saved sound"
+            label: "Replay saved sound"
+            showDivider: false
             SettingsToggle { configKey: "replay.clip_sound"; defaultValue: true }
         }
-        SettingsRow {
-            label: "Clip saved notification"
-            SettingsToggle { configKey: "replay.clip_notify"; defaultValue: true }
-        }
     }
+
     SettingsSection {
-        title: "Preview feedback"
-        description: "Confirm the current feedback settings without creating a capture."
+        eyebrow: "Preview"
+        title: "Test the current feedback settings"
+        variant: "compact"
+        description: "Confirm notifications and sound without creating a capture."
         SettingsRow {
-            label: "Notification preview"
-            description: "Shows one non-activating test card."
+            label: "Preview feedback"
+            showDivider: false
+            controlWidth: Theme.s48 * 6
             AccentButton {
-                label: "Show test"
-                primary: true
+                label: "Show test notification"
+                quiet: true
                 onClicked: notifications.post(Brand.name + " notification", "Notifications are working.", "", "info")
             }
-        }
-        SettingsRow {
-            label: "Sound preview"
-            description: "Uses the current UI sound toggle and volume."
-            AccentButton { label: "Play test"; primary: true; onClicked: sounds.play("confirm") }
+            AccentButton {
+                label: "Play test sound"
+                primary: true
+                onClicked: sounds.play("confirm")
+            }
         }
     }
 }

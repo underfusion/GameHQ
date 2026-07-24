@@ -4,8 +4,12 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
+#include <QSqlDatabase>
+#include <QSqlError>
+#include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QtTest>
+#include <QUuid>
 #include <miniz.h>
 #include "updater/UpdaterDataSnapshot.h"
 #include "updater/UpdaterSwap.h"
@@ -26,6 +30,7 @@ private Q_SLOTS:
     void rejectsForbiddenDataAndBadManifest();
     void rejectsPackageChangedAfterVerification();
     void snapshotsAndRestoresDataWithoutTouchingCaptures();
+    void restoresARealSqliteDatabaseAfterFailedMigration();
     void failedRestoreKeepsUntouchedDataFiles();
     void swapsOnlyOwnedProgramFiles();
     void lockedFileAbortsAndRollsBack();
@@ -288,6 +293,81 @@ void UpdaterTransactionTest::snapshotsAndRestoresDataWithoutTouchingCaptures()
     QCOMPARE(read(QDir(data).filePath(QStringLiteral("gamehq.db-wal"))), QByteArray("old wal"));
     QVERIFY(!QFileInfo::exists(QDir(data).filePath(QStringLiteral("gamehq.db-shm"))));
     QCOMPARE(read(capture), QByteArray("user media"));
+}
+
+void UpdaterTransactionTest::restoresARealSqliteDatabaseAfterFailedMigration()
+{
+    QTemporaryDir dir(QDir::current().filePath(QStringLiteral("tst-updater-sqlite-XXXXXX")));
+    QVERIFY(dir.isValid());
+    const QString data = QDir(dir.path()).filePath(QStringLiteral("gamehq-data"));
+    const QString databasePath = QDir(data).filePath(QStringLiteral("gamehq.db"));
+    const QString snapshot = QDir(dir.path()).filePath(QStringLiteral(".update/data-snapshot"));
+    QVERIFY(QDir().mkpath(data));
+
+    const auto withDatabase = [&](const auto& operation) {
+        const QString connectionName = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        bool result = false;
+        {
+            QSqlDatabase database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"),
+                                                               connectionName);
+            database.setDatabaseName(databasePath);
+            if (database.open())
+                result = operation(database);
+        }
+        QSqlDatabase::removeDatabase(connectionName);
+        return result;
+    };
+
+    QVERIFY(withDatabase([](QSqlDatabase& database) {
+        QSqlQuery query(database);
+        return query.exec(QStringLiteral("PRAGMA journal_mode=DELETE"))
+            && query.exec(QStringLiteral("PRAGMA user_version=7"))
+            && query.exec(QStringLiteral(
+                "CREATE TABLE captures (id INTEGER PRIMARY KEY, name TEXT NOT NULL)"))
+            && query.exec(QStringLiteral("INSERT INTO captures (name) VALUES ('original')"));
+    }));
+
+    std::string error;
+    QVERIFY2(updater::createDataSnapshot(data.toStdWString(), snapshot.toStdWString(), error),
+             error.c_str());
+
+    QVERIFY(withDatabase([](QSqlDatabase& database) {
+        QSqlQuery query(database);
+        return query.exec(QStringLiteral("ALTER TABLE captures ADD COLUMN migrated TEXT"))
+            && query.exec(QStringLiteral("UPDATE captures SET name = 'changed', migrated = 'yes'"))
+            && query.exec(QStringLiteral("CREATE TABLE migration_only (id INTEGER)"))
+            && query.exec(QStringLiteral("PRAGMA user_version=99"));
+    }));
+
+    QVERIFY2(updater::restoreDataSnapshot(data.toStdWString(), snapshot.toStdWString(), error),
+             error.c_str());
+
+    QVERIFY(withDatabase([](QSqlDatabase& database) {
+        QSqlQuery version(database);
+        if (!version.exec(QStringLiteral("PRAGMA user_version")) || !version.next()
+            || version.value(0).toInt() != 7)
+            return false;
+
+        QSqlQuery capture(database);
+        if (!capture.exec(QStringLiteral("SELECT name FROM captures")) || !capture.next()
+            || capture.value(0).toString() != QStringLiteral("original"))
+            return false;
+
+        QSqlQuery schema(database);
+        if (!schema.exec(QStringLiteral(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
+                "AND name='migration_only'"))
+            || !schema.next() || schema.value(0).toInt() != 0)
+            return false;
+
+        QSqlQuery columns(database);
+        if (!columns.exec(QStringLiteral("PRAGMA table_info(captures)")))
+            return false;
+        int columnCount = 0;
+        while (columns.next())
+            ++columnCount;
+        return columnCount == 2;
+    }));
 }
 
 void UpdaterTransactionTest::failedRestoreKeepsUntouchedDataFiles()

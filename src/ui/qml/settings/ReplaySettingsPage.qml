@@ -3,21 +3,23 @@ import GameHQ
 import "../components"
 
 SettingsPage {
+    pageTitle: "Replay"
+    pageDescription: "Manage the rolling buffer used for instant replay clips."
+
     SettingsSection {
+        eyebrow: "Current status"
         title: "Replay buffer"
-        description: "Recording changes restart an active rolling buffer so new values apply immediately. Feedback-only options below never interrupt it."
-        SettingsRow {
-            label: "Buffer state"
-            description: app.replayBufferActive
-                ? "Recording a rolling buffer of " + app.replayBufferGame + ". The ring is held in a temporary cache and only written to the clip folder when you save a replay."
-                : "Not recording. The buffer arms automatically once an eligible game is in the foreground."
-            Text {
-                text: app.replayBufferActive ? "● Recording" : "○ Idle"
-                color: app.replayBufferActive ? Theme.success : Theme.textMuted
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontBody
-            }
-        }
+        variant: "status"
+        status: app.replayBufferActive ? "Recording" : "Idle"
+        description: app.replayBufferActive
+            ? "Recording " + app.replayBufferGame + "; the temporary ring is written only when you save a replay."
+            : "Not recording. The buffer arms automatically when an eligible game is active."
+    }
+
+    SettingsSection {
+        eyebrow: "Buffer"
+        title: "Automatic recording"
+        description: "Recording changes restart an active buffer so new values apply immediately."
         SettingsRow {
             label: "Automatic buffer"
             description: "Record a rolling buffer whenever an eligible game is active."
@@ -25,6 +27,7 @@ SettingsPage {
         }
         SettingsRow {
             label: "Replay length"
+            showDivider: false
             SettingsCombo {
                 configKey: "replay.length_seconds"; defaultValue: 300
                 options: [
@@ -34,6 +37,12 @@ SettingsPage {
                 ]
             }
         }
+    }
+
+    SettingsSection {
+        eyebrow: "Encoding"
+        title: "Recording quality"
+        description: "Balance motion detail, resolution, storage use, and encoder load."
         SettingsRow {
             label: "Frame rate"
             SettingsCombo {
@@ -54,7 +63,7 @@ SettingsPage {
         }
         SettingsRow {
             label: "Video bitrate"
-            description: "Higher values improve motion detail but use more disk space and encoder bandwidth."
+            description: "Higher values improve motion detail but use more storage and encoder bandwidth."
             SettingsCombo {
                 configKey: "replay.bitrate_mbps"; defaultValue: 14
                 options: [
@@ -68,19 +77,22 @@ SettingsPage {
         SettingsRow {
             label: "System audio"
             description: "Include desktop audio in newly recorded replay segments."
+            showDivider: false
             SettingsToggle { configKey: "audio.enabled"; defaultValue: false }
         }
     }
 
     SettingsSection {
-        title: "Clip feedback"
-        description: "Saved replays are written to " + app.clipsRoot + ". That is separate from the rolling buffer's temporary cache above, which is discarded if it is never saved. Combined with the master switches on the Notifications & Sound page. Save failures always play a sound and notify, regardless of these switches."
+        eyebrow: "Feedback"
+        title: "After saving a clip"
+        description: "Saved replays go to " + app.clipsRoot + ". Failures always notify you."
         SettingsRow {
             label: "Clip saved sound"
             SettingsToggle { configKey: "replay.clip_sound"; defaultValue: true }
         }
         SettingsRow {
             label: "Clip saved notification"
+            showDivider: false
             SettingsToggle { configKey: "replay.clip_notify"; defaultValue: true }
         }
     }

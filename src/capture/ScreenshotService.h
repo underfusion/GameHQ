@@ -11,11 +11,9 @@ class CaptureLocations;
 // Grabs a screenshot of the foreground game and saves it as PNG under the
 // effective screenshot root: <root>/<Game>/Screenshots/<timestamp>.png.
 //
-// 0.4 path = GDI screen-DC BitBlt (works for borderless / windowed games and
-// the desktop; exclusive-fullscreen DX games may come back black — that is the
-// known GDI limitation the Windows Graphics Capture path replaces in 0.5,
-// docs/capture-engine.md). DB insert / thumbnail / sound / notification are
-// handled by the caller via the captured() signal.
+// SDR targets use the original GDI screen-DC BitBlt path. With experimental
+// HDR enabled, capture() asks FramePumpService for a tone-mapped FP16 WGC frame
+// and saveImage() feeds it through the same asynchronous encoding tail.
 class ScreenshotService : public QObject
 {
     Q_OBJECT
@@ -33,6 +31,7 @@ public slots:
     // pixels already.
     void saveImage(const QImage& img, const QString& gameName,
                    const QString& executablePath = QString());
+    void reportHdrCaptureFailure(const QString& reason) { emit failed(reason); }
     void prepareForUpdate();
     void cancelUpdatePreparation();
 
@@ -40,6 +39,7 @@ signals:
     void grabbed();                        // pixels are in hand — play shutter NOW
     void captured(const QString& filePath, const QString& gameName,
                   const QString& executablePath);
+    void hdrCaptureRequested(qulonglong hwnd);
     void skipped(const QString& reason);   // gate said "not in a game"
     void failed(const QString& reason);    // grab or save error
     void updateReady();

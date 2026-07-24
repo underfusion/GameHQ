@@ -98,7 +98,8 @@ private slots:
         QVERIFY2(SUCCEEDED(hr) && srcTex, "failed to create synthetic FP16 source texture");
 
         capture::hdr::GpuToneMapper mapper;
-        QVERIFY2(mapper.init(m_device, m_context, 2, 2), "GpuToneMapper::init failed");
+        QVERIFY2(mapper.init(m_device, m_context, 2, 2, 200.0f),
+                 "GpuToneMapper::init failed");
 
         ID3D11Texture2D* outTex = mapper.apply(srcTex);
         QVERIFY2(outTex, "GpuToneMapper::apply returned null");

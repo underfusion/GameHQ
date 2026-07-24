@@ -28,9 +28,8 @@ GameHQ is a Qt/QML Windows app with a native C++ service layer:
   fullscreen heuristic, and capture gate. The disk-backed title sources (Steam
   `.acf` scan, version-resource reads) are memoized per foreground process, keyed
   by pid and path; the window caption stays live per tick.
-- `ScreenshotService` handles one-shot GDI screenshots and async PNG writes.
-- `FramePumpService` handles always-on WGC replay capture on a dedicated MTA
-  worker thread, rolling H.264/AAC segments, and replay export.
+- `ScreenshotService` handles SDR GDI screenshots, HDR frame-pump requests, and async image writes.
+- `FramePumpService` handles WGC replay capture, HDR tone mapping and screenshot readback on a dedicated MTA worker, plus rolling segments and replay export.
 - `OverlayManager` owns lazy overlay QML loading, topmost window placement,
   foreground stealing, and focus restoration.
 - `InputEngine` routes controller input between global actions, overlay, and

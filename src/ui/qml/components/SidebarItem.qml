@@ -20,8 +20,10 @@ Rectangle {
     property bool sidebarHovered: false
     signal clicked()
 
-    width: parent ? parent.width : 200
-    height: 40
+    implicitWidth: 200
+    implicitHeight: 40
+    width: parent ? parent.width : implicitWidth
+    height: implicitHeight
     radius: Theme.radiusS
     color: active || sidebarHovered ? Theme.surfaceAlt
          : mouse.containsMouse || root.activeFocus ? Theme.hoverTint

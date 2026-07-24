@@ -1,5 +1,6 @@
 #include "config/ConfigKeys.h"
 #include "config/ConfigManager.h"
+#include "config/SettingsCategories.h"
 
 #include <QFile>
 #include <QJsonDocument>
@@ -26,6 +27,14 @@ private:
         if (!f.open(QIODevice::ReadOnly))
             return {};
         return QJsonDocument::fromJson(f.readAll()).object();
+    }
+
+    static void resetCategory(ConfigManager& cfg, const QString& category)
+    {
+        for (const QString& prefix : SettingsCategories::groups().value(category))
+            cfg.resetGroup(prefix);
+        for (const QString& key : SettingsCategories::keys().value(category))
+            cfg.resetValue(key);
     }
 
 private slots:
@@ -208,6 +217,88 @@ private slots:
         QCOMPARE(cfg.value(ConfigKeys::CaptureMode).toString(), QStringLiteral("only_in_games"));
         QVERIFY(cfg.isDefault(ConfigKeys::ReplayFps));
         QVERIFY(cfg.isDefault(ConfigKeys::CaptureMode));
+    }
+
+    void generalCategoryResetIncludesThemeButNotCapture()
+    {
+        ConfigManager cfg(path());
+        cfg.load();
+        cfg.setValue(ConfigKeys::StartupMinimized, true);
+        cfg.setValue(ConfigKeys::TrayMinimizeToTray, true);
+        cfg.setValue(ConfigKeys::ThemeActiveSkin, QStringLiteral("light"));
+        cfg.setValue(ConfigKeys::ThemeOverlayScrimStrength, 140);
+        cfg.setValue(ConfigKeys::CaptureMode, QStringLiteral("always"));
+
+        resetCategory(cfg, QStringLiteral("General"));
+
+        QVERIFY(cfg.isDefault(ConfigKeys::StartupMinimized));
+        QVERIFY(cfg.isDefault(ConfigKeys::TrayMinimizeToTray));
+        QVERIFY(cfg.isDefault(ConfigKeys::ThemeActiveSkin));
+        QVERIFY(cfg.isDefault(ConfigKeys::ThemeOverlayScrimStrength));
+        QCOMPARE(cfg.value(ConfigKeys::CaptureMode).toString(), QStringLiteral("always"));
+    }
+
+    void feedbackCategoryResetIncludesMirroredEventsOnly()
+    {
+        ConfigManager cfg(path());
+        cfg.load();
+        cfg.setValue(ConfigKeys::SoundsEnabled, false);
+        cfg.setValue(ConfigKeys::NotificationsEnabled, false);
+        cfg.setValue(ConfigKeys::CaptureScreenshotSound, false);
+        cfg.setValue(ConfigKeys::CaptureScreenshotNotify, false);
+        cfg.setValue(ConfigKeys::ReplayClipSound, false);
+        cfg.setValue(ConfigKeys::ReplayClipNotify, false);
+        cfg.setValue(ConfigKeys::CaptureMode, QStringLiteral("always"));
+        cfg.setValue(ConfigKeys::ReplayFps, 60);
+
+        resetCategory(cfg, QStringLiteral("Notifications & Sound"));
+
+        QVERIFY(cfg.isDefault(ConfigKeys::SoundsEnabled));
+        QVERIFY(cfg.isDefault(ConfigKeys::NotificationsEnabled));
+        QVERIFY(cfg.isDefault(ConfigKeys::CaptureScreenshotSound));
+        QVERIFY(cfg.isDefault(ConfigKeys::CaptureScreenshotNotify));
+        QVERIFY(cfg.isDefault(ConfigKeys::ReplayClipSound));
+        QVERIFY(cfg.isDefault(ConfigKeys::ReplayClipNotify));
+        QCOMPARE(cfg.value(ConfigKeys::CaptureMode).toString(), QStringLiteral("always"));
+        QCOMPARE(cfg.value(ConfigKeys::ReplayFps).toInt(), 60);
+    }
+
+    void captureCategoryResetPreservesInternalRootHistory()
+    {
+        ConfigManager cfg(path());
+        cfg.load();
+        cfg.setValue(ConfigKeys::CaptureMode, QStringLiteral("always"));
+        cfg.setValue(ConfigKeys::StorageScreenshotsRoot, QStringLiteral("D:/Screenshots"));
+        cfg.setValue(ConfigKeys::StorageClipsRoot, QStringLiteral("E:/Clips"));
+        cfg.setValue(ConfigKeys::InternalCaptureRootHistory,
+                     QStringList{QStringLiteral("D:/Old"), QStringLiteral("E:/Older")});
+
+        resetCategory(cfg, QStringLiteral("Capture"));
+
+        QVERIFY(cfg.isDefault(ConfigKeys::CaptureMode));
+        QVERIFY(cfg.isDefault(ConfigKeys::StorageScreenshotsRoot));
+        QVERIFY(cfg.isDefault(ConfigKeys::StorageClipsRoot));
+        QCOMPARE(cfg.value(ConfigKeys::InternalCaptureRootHistory).toStringList(),
+                 QStringList({QStringLiteral("D:/Old"), QStringLiteral("E:/Older")}));
+    }
+
+    void resetAllPreservesInternalSafetyMetadata()
+    {
+        ConfigManager cfg(path());
+        cfg.load();
+        cfg.setValue(ConfigKeys::ReplayFps, 60);
+        cfg.setValue(ConfigKeys::InternalCaptureRootHistory,
+                     QStringList{QStringLiteral("D:/Old")});
+        cfg.setValue(ConfigKeys::InternalUpdatesPendingPostUpdateVersion,
+                     QStringLiteral("9.9.9"));
+
+        QVERIFY(cfg.resetAll());
+
+        QVERIFY(cfg.isDefault(ConfigKeys::ReplayFps));
+        QCOMPARE(cfg.value(ConfigKeys::InternalCaptureRootHistory).toStringList(),
+                 QStringList({QStringLiteral("D:/Old")}));
+        QCOMPARE(cfg.value(ConfigKeys::InternalUpdatesPendingPostUpdateVersion).toString(),
+                 QStringLiteral("9.9.9"));
     }
 };
 

@@ -1,6 +1,7 @@
 #include "capture/ScreenshotService.h"
 
 #include "capture/CaptureUtil.h"
+#include "capture/HdrCapabilities.h"
 #include "config/ConfigKeys.h"
 #include "config/ConfigManager.h"
 #include "config/CaptureLocations.h"
@@ -51,6 +52,21 @@ void ScreenshotService::capture()
         emit skipped(QStringLiteral("foreground window is not a game (mode=%1, process=%2)")
                          .arg(mode, g.processName.isEmpty() ? QStringLiteral("?") : g.processName));
         return;
+    }
+
+    const bool hdrExperimentalEnabled = m_config
+        && m_config->value(ConfigKeys::InternalCaptureExperimentalHdr, false).toBool();
+    if (hdrExperimentalEnabled) {
+        const capture::HdrOutputInfo output =
+            capture::HdrCapabilities::forWindow(static_cast<HWND>(g.hwnd));
+        if (output.valid && output.hdrActive) {
+            qInfo().noquote() << QStringLiteral(
+                "Screenshot: HDR target detected (%1) — requesting tone-mapped WGC frame")
+                                     .arg(output.describe());
+            emit hdrCaptureRequested(
+                qulonglong(reinterpret_cast<quintptr>(g.hwnd)));
+            return;
+        }
     }
 
     QElapsedTimer t;

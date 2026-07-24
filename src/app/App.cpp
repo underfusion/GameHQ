@@ -141,6 +141,12 @@ bool App::init()
     // (replay.auto, always-on; Settings → Replay is the master switch). Share-hold
     // (or Ctrl+Shift+E) saves the last N seconds as one clip (below).
     m_framePump = std::make_unique<FramePumpService>(m_config.get(), m_locations.get());
+    connect(m_screenshots.get(), &ScreenshotService::hdrCaptureRequested,
+            m_framePump.get(), &FramePumpService::captureHdrScreenshot);
+    connect(m_framePump.get(), &FramePumpService::hdrScreenshotReady,
+            m_screenshots.get(), &ScreenshotService::saveImage);
+    connect(m_framePump.get(), &FramePumpService::hdrScreenshotFailed,
+            m_screenshots.get(), &ScreenshotService::reportHdrCaptureFailure);
     connect(m_framePump.get(), &FramePumpService::failed, this,
             [this](const QString& why) { qWarning() << "FramePump: failed —" << why; });
     // The ring freezes immediately, but do not say "saved" until the final MP4
@@ -179,6 +185,10 @@ bool App::init()
     // Settings changed a replay.* key (fps/resolution/length): re-arm a
     // running buffer so it records with the new parameters immediately.
     connect(m_controller.get(), &AppController::replaySettingsChanged,
+            m_framePump.get(), &FramePumpService::restartBuffer);
+    // HDR can be toggled while a game is running. Re-arm immediately so the
+    // rolling buffer never combines SDR and HDR capture formats.
+    connect(m_controller.get(), &AppController::hdrDisplayConfigurationChanged,
             m_framePump.get(), &FramePumpService::restartBuffer);
 
     m_tray = std::make_unique<TrayIcon>();
@@ -361,8 +371,8 @@ bool App::init()
     QTimer::singleShot(0, m_controller.get(), &AppController::rescan);
     QTimer::singleShot(0, m_controller.get(), &AppController::refreshHdrStatus);
 
-    // HDR is a per-monitor toggle the user can flip at any time; re-probe when
-    // the desktop topology changes so diagnostics never report a stale state.
+    // Topology changes get a full refresh; AppController also performs a
+    // lightweight one-second check for Windows' HDR toggle itself.
     connect(qApp, &QGuiApplication::screenAdded, m_controller.get(), &AppController::refreshHdrStatus);
     connect(qApp, &QGuiApplication::screenRemoved, m_controller.get(), &AppController::refreshHdrStatus);
     connect(qApp, &QGuiApplication::primaryScreenChanged, m_controller.get(), &AppController::refreshHdrStatus);

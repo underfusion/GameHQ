@@ -50,3 +50,41 @@ The comparison exits with code 2 if protected data changed or disappeared. The
 evidence bundle records artifact hashes, OS information, snapshots, comparison,
 and fixture logs. Runs are intentionally retained until the tester reviews and
 removes the exact disposable directory.
+
+## HDR hardware validation
+
+The HDR helper removes the first-launch and manual JSON-edit steps. It creates a
+disposable portable run, enables the experimental HDR replay path and system
+audio, shortens the replay ring to 30 seconds, and writes a focused checklist:
+
+```powershell
+$run = .\tools\manual-validation\Prepare-HdrValidation.ps1 `
+  -WorkspaceRoot 'I:\GameHQ-HDR-validation' `
+  -OpenDisplaySettings `
+  -Launch
+```
+
+Close every normal GameHQ instance before using `-Launch`; otherwise the normal
+single-instance forwarding behavior would activate the wrong profile.
+
+After saving and visually checking one replay from a real HDR game, close the
+fixture and generate the machine-readable report:
+
+```powershell
+.\tools\manual-validation\Test-HdrValidation.ps1 `
+  -RunRoot $run `
+  -VisualResult Pass `
+  -Notes 'Highlights, colours and shadow detail match the live scene.' `
+  -RequireComplete
+```
+
+The checklist also verifies that the Advanced-page HDR state changes within two
+seconds when Windows HDR is toggled. The report verifies the hidden flag, active
+Windows HDR log, armed FP16 path, absence of tone-map fallback/failure, MP4
+structure, WASAPI attachment and an audio track in the saved replay. Visual
+quality and A/V synchronization still require a person because scripts cannot
+judge whether the saved SDR image and sound match the live scene.
+
+Current limitation: native HDR JPEG XR screenshots and their SDR companion pair
+are not implemented. The experimental path produces tone-mapped SDR PNG/JPEG
+screenshots and SDR H.264 replay.

@@ -3,9 +3,13 @@ import GameHQ
 import "../components"
 
 SettingsPage {
+    pageTitle: "General"
+    pageDescription: "Appearance, startup, and window behavior."
+
     SettingsSection {
-        title: "Appearance"
-        description: "Choose the color scheme " + Brand.name + " uses. The change applies immediately."
+        eyebrow: "Personalization"
+        title: "Look and feel"
+        description: "Choose the visual style and in-game overlay strength."
         SettingsRow {
             id: themeRow
             label: "Theme"
@@ -41,8 +45,9 @@ SettingsPage {
     }
 
     SettingsSection {
-        title: "Startup"
-        description: "Choose how " + Brand.name + " starts and whether it follows your Windows sign-in."
+        eyebrow: "Startup"
+        title: "How " + Brand.name + " starts"
+        description: "Choose whether GameHQ follows your Windows sign-in and opens quietly."
         SettingsRow {
             label: "Start with Windows"
             description: "Register " + Brand.name + " for the current Windows user; no administrator access is required."
@@ -56,8 +61,9 @@ SettingsPage {
     }
 
     SettingsSection {
-        title: "Window behavior"
-        description: "Choose how " + Brand.name + " behaves when its main window is minimized or closed."
+        eyebrow: "Desktop"
+        title: "Window and tray behavior"
+        description: "Choose what happens when the main window is minimized or closed."
         SettingsRow {
             label: "Minimize to tray"
             description: "Minimizing the window drops it straight to the tray instead of the taskbar."
