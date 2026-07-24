@@ -9,8 +9,10 @@ touching the working GameHQ checkout or the user's real installation.
   drive roots, profile root, Windows, and Program Files.
 - Every run receives a unique directory and ownership marker. Scripts refuse to
   operate on paths without that marker.
-- The harness never deletes a run, terminates applications, edits registry
-  state, simulates disk exhaustion, or launches an updater automatically.
+- The harness never deletes a run, edits registry state, simulates disk
+  exhaustion, or launches an updater automatically. The interruption helper
+  can terminate only a specifically identified `GameHQUpdater.exe` inside a
+  marked disposable fixture and requires confirmation by default.
 - The portable fixture contains capture and data sentinels. Comparison treats
   every capture and the data sentinel as protected; ordinary config, database,
   cache, and log changes are reported but require scenario-specific review.
@@ -30,10 +32,23 @@ sentinels, and writes `snapshots\before.json`.
 
 ## Run a scenario
 
-Use only the generated `$run\portable` fixture. Human-only scenarios such as a
-live replay remux, forced process interruption, SmartScreen, and Defender remain
-manual. Never point an updater or installer experiment at `build`, `dist`, the
-repository, or a real user profile.
+Use only the generated `$run\portable` fixture. Never point an updater or
+installer experiment at `build`, `dist`, the repository, or a real user
+profile.
+
+For deterministic interruption, start the fixture updater yourself as
+`$updaterProcess`, then run:
+
+```powershell
+.\tools\manual-validation\Kill-UpdaterAtPhase.ps1 `
+  -RunRoot $run -ProcessId $updaterProcess.Id -Phase data_snapshotted
+
+.\tools\manual-validation\Verify-Recovery.ps1 -RunRoot $run
+```
+
+Repeat with fresh runs for `staged`, `data_snapshotted`, `swapped`, and
+`validating`. Recovery invokes the real helper, checks protected data, requires
+`rolled_back`, and requires maintenance-marker cleanup.
 
 ## Compare and collect evidence
 
@@ -88,3 +103,12 @@ judge whether the saved SDR image and sound match the live scene.
 Current limitation: native HDR JPEG XR screenshots and their SDR companion pair
 are not implemented. The experimental path produces tone-mapped SDR PNG/JPEG
 screenshots and SDR H.264 replay.
+
+## Windows Sandbox and trust checks
+
+Copy this directory plus reviewed release artifacts into a dedicated validation
+pack, replace the host path in `GameHQ-Validation.wsb`, and launch it from
+Explorer. The sandbox opens `WINDOWS-VALIDATION-CHECKLIST.md`. SmartScreen,
+Smart App Control, visible installer behavior, and publisher identity remain
+human observations; the checklist keeps those claims separate from local
+mechanical evidence.

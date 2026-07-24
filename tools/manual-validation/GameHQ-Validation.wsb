@@ -1,0 +1,14 @@
+<Configuration>
+  <!-- Replace the host path before launch; keep the mapped folder read-only. -->
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>C:\REPLACE_WITH_GAMEHQ_VALIDATION_PACK</HostFolder>
+      <SandboxFolder>C:\GameHQ-Validation</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+  <Networking>Default</Networking>
+  <LogonCommand>
+    <Command>powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\GameHQ-Validation\Open-Checklist.ps1</Command>
+  </LogonCommand>
+</Configuration>
