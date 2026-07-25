@@ -4,6 +4,13 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.43] - 2026-07-25
+
+### Changed
+
+- Developer documentation now reports the real size and scope of the automated
+  test suite instead of the figures from when it was first added.
+
 ## [0.6.42] - 2026-07-25
 
 ### Changed
