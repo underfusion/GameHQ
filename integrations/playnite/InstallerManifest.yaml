@@ -8,8 +8,8 @@ Packages:
     RequiredApiVersion: 6.16.0
     ReleaseDate: 2026-07-22
     PackageUrl: "https://github.com/underfusion/GameHQ/releases/download/v0.7.0/GameHQ_Integration_0_4_12.pext"
-    Changelog: |
-      Connects Playnite to GameHQ over the local v1 protocol, forwards game
-      lifecycle state, launches GameHQ when needed, and provides connection,
-      version, path and privacy diagnostics. Version 0.4.12 adds the pinned,
-      test-key-only Ed25519 release-manifest verifier and shared trust vectors.
+    Changelog:
+      - Connects Playnite to GameHQ over the local v1 protocol.
+      - Forwards game lifecycle state and launches GameHQ when needed.
+      - Adds connection, version, path and privacy diagnostics.
+      - Adds the pinned test-key-only Ed25519 verifier and shared trust vectors.
