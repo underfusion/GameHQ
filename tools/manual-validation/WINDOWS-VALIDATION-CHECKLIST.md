@@ -10,6 +10,15 @@ SmartScreen setting, Smart App Control state, result, and screenshot filename.
 - Upgrade an older Setup, reinstall, uninstall, and verify AppData/Captures remain.
 - Confirm portable and installed copies coexist without sharing data.
 - Confirm Setup refuses a running GameHQ or active updater transaction.
+- Confirm Uninstall refuses the same two cases, not only a running GameHQ.
+- Confirm a leftover `.update\maintenance.lock` with no updater running and an
+  older timestamp reports recovery guidance instead of blocking forever, and
+  that neither Setup nor Uninstall deletes that marker or `transaction.phase`.
+- Confirm a `maintenance.lock` whose `transaction.phase` reads `healthy` or
+  `rolled_back` blocks neither Setup nor Uninstall.
+- Confirm Setup and Uninstall both refuse while GameHQ runs in a second Windows
+  session of the same account (Fast User Switching), which the per-session mutex
+  alone cannot see.
 - Exercise offline update check, cached result, read-only path, locked file, and stale cleanup.
 - Run `Start-MpScan -ScanType CustomScan -ScanPath <artifact-or-folder>` when Defender is available.
 

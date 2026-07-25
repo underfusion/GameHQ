@@ -1,5 +1,5 @@
 {
-  "version": "0.6.36",
+  "version": "0.6.37",
   "sections": [
     {
       "title": "Security",
@@ -20,7 +20,8 @@
         "A storage folder GameHQ cannot create is now named instead of silently ignored.",
         "The local connection now closes cleanly instead of sending a damaged message.",
         "GameHQ now starts correctly from long install paths and passes your arguments through unchanged.",
-        "Rapid screenshots no longer overwrite each other, and an interrupted save never leaves a broken image."
+        "Rapid screenshots no longer overwrite each other, and an interrupted save never leaves a broken image.",
+        "Setup and Uninstall no longer get stuck after an interrupted update, and never run while one is in progress."
       ]
     },
     {

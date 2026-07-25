@@ -197,6 +197,17 @@ different stage count or a temp-located helper.
    `rolled_back` phase. A missing helper plus a marker older than five minutes
    enters stale recovery, so a crash can never lock the user out permanently.
 
+   `packaging/GameHQ.iss` mirrors that same contract in `MaintenanceState`, and
+   both `PrepareToInstall` and `InitializeUninstall` use it. Uninstall
+   previously checked only the application mutex, so it could delete an
+   installation out from under a running update; Setup treated the marker's
+   mere existence as "active", so a marker left by a crash blocked it forever.
+   Neither ever removes the marker or `transaction.phase` — that is the
+   evidence GameHQ's own recovery needs. Both also refuse when the installed
+   `app\GameHQ.exe` or `GameHQUpdater.exe` cannot be opened exclusively, which
+   catches a copy running in another Windows session that the per-session
+   `Local\` mutexes cannot see.
+
    Entering this barrier immediately blocks new screenshots and replay saves,
    stops replay auto-arming, and waits for any PNG write or clip remux already
    in flight. The wait is bounded to 30 seconds. A timeout cancels the update,

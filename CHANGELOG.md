@@ -4,6 +4,21 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.37] - 2026-07-25
+
+### Fixed
+
+- Uninstall checked only whether GameHQ was running, so it could remove an
+  installation while an update was still working on it. It now applies the same
+  update and recovery checks Setup does.
+- A `maintenance.lock` left behind by a crash blocked Setup permanently. Setup
+  and Uninstall now tell the difference between an update that is running, one
+  that already finished, and one that never completed — the last of which asks
+  you to start GameHQ once so it can recover. Neither ever deletes that
+  evidence.
+- Setup and Uninstall now also notice a GameHQ running in another Windows
+  session, which the previous per-session check could not see.
+
 ## [0.6.36] - 2026-07-25
 
 ### Fixed

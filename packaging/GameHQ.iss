@@ -75,6 +75,15 @@ Filename: "{app}\GameHQ.exe"; Description: "Launch GameHQ"; Flags: nowait postin
 const
   ExitAppRunning = 20;
   ExitUpdateActive = 21;
+  { Mirrors maintenance::State in src/core/UpdateMaintenance.h. }
+  MaintenanceInactive = 0;
+  MaintenanceActive = 1;
+  MaintenanceStale = 2;
+  { Same window as the staleAfter default in maintenance::inspect. }
+  MaintenanceStaleAfterSecs = 300;
+
+procedure GetSystemTimeAsFileTime(var FileTime: TFileTime);
+  external 'GetSystemTimeAsFileTime@kernel32.dll stdcall';
 
 procedure ExitProcess(ExitCode: Integer);
   external 'ExitProcess@kernel32.dll stdcall';
@@ -95,31 +104,149 @@ begin
     Result := 'Local\GameHQApplicationActive';
 end;
 
-function PrepareToInstall(var NeedsRestart: Boolean): String;
+{ The app and updater mutexes are per-session (Local\), so a copy of GameHQ
+  running in another Windows session - Fast User Switching, or a second session
+  of the same account - is invisible to them. The installed executable itself is
+  not: while it runs, its image file cannot be opened exclusively. }
+function FileIsInUse(const Path: String): Boolean;
+var
+  Stream: TFileStream;
 begin
-  Result := '';
-  if CheckForMutexes('Local\GameHQApplicationActive') then
-  begin
-    FailSilent(ExitAppRunning);
-    Result := 'GameHQ is running. Close it normally, then run Setup again.';
+  Result := False;
+  if not FileExists(Path) then
     Exit;
-  end;
-  if CheckForMutexes('Local\GameHQUpdaterActive') or
-     FileExists(ExpandConstant('{app}\.update\maintenance.lock')) then
-  begin
-    FailSilent(ExitUpdateActive);
-    Result := 'A GameHQ update or recovery transaction is active. Let it finish, then run Setup again.';
+  try
+    Stream := TFileStream.Create(Path, fmOpenRead or fmShareExclusive);
+    Stream.Free;
+  except
+    Result := True;
   end;
 end;
 
+function ApplicationIsRunning(const AppDir: String): Boolean;
+begin
+  Result := CheckForMutexes('Local\GameHQApplicationActive')
+            or FileIsInUse(AppDir + '\app\GameHQ.exe')
+            or FileIsInUse(AppDir + '\GameHQUpdater.exe');
+end;
+
+function ReadTransactionPhase(const AppDir: String): String;
+var
+  Lines: TArrayOfString;
+begin
+  Result := '';
+  if LoadStringsFromFile(AppDir + '\.update\transaction.phase', Lines) then
+    if GetArrayLength(Lines) > 0 then
+      Result := Trim(Lines[0]);
+end;
+
+function FileTimeToInt64(const Value: TFileTime): Int64;
+begin
+  Result := Int64(Value.dwHighDateTime) * 4294967296 + Int64(Value.dwLowDateTime);
+end;
+
+{ Mirrors maintenance::inspect in src/core/UpdateMaintenance.cpp. The marker
+  alone means nothing: the updater writes a terminal phase before clearing it,
+  and a marker left by a crash must not block Setup forever - which is exactly
+  what testing the file's existence used to do. }
+function MaintenanceState(const AppDir: String; var Phase: String): Integer;
+var
+  Marker: String;
+  FindRec: TFindRec;
+  NowTime: TFileTime;
+begin
+  Phase := '';
+  Result := MaintenanceInactive;
+  Marker := AppDir + '\.update\maintenance.lock';
+  if not FileExists(Marker) then
+    Exit;
+
+  Phase := ReadTransactionPhase(AppDir);
+  if (Phase = 'healthy') or (Phase = 'rolled_back') then
+    Exit;   { finished work waiting to be cleaned up }
+
+  Result := MaintenanceActive;
+  if CheckForMutexes('Local\GameHQUpdaterActive') then
+    Exit;
+
+  if FindFirst(Marker, FindRec) then
+  try
+    GetSystemTimeAsFileTime(NowTime);
+    if (FileTimeToInt64(NowTime) - FileTimeToInt64(FindRec.LastWriteTime))
+         > Int64(MaintenanceStaleAfterSecs) * 10000000 then
+      Result := MaintenanceStale;
+  finally
+    FindClose(FindRec);
+  end;
+end;
+
+{ Empty when nothing blocks. Never deletes the marker or the phase file: they
+  are the evidence GameHQ's own recovery needs. }
+function MaintenanceBlockReason(const AppDir: String): String;
+var
+  Phase: String;
+  State: Integer;
+  Detail: String;
+begin
+  Result := '';
+  State := MaintenanceState(AppDir, Phase);
+  if State = MaintenanceInactive then
+    Exit;
+
+  Detail := '';
+  if Phase <> '' then
+    Detail := ' (stage: ' + Phase + ')';
+
+  if State = MaintenanceActive then
+    Result := 'A GameHQ update is running' + Detail
+              + '. Let it finish, then try again.'
+  else
+    Result := 'A previous GameHQ update did not finish' + Detail
+              + '. Start GameHQ once so it can recover, then try again.'
+              + #13#10 + 'Nothing has been removed - your installation is still there.';
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  AppDir: String;
+begin
+  Result := '';
+  AppDir := ExpandConstant('{app}');
+  if ApplicationIsRunning(AppDir) then
+  begin
+    FailSilent(ExitAppRunning);
+    Result := 'GameHQ is running. Close it normally - including in any other '
+              + 'Windows session - then run Setup again.';
+    Exit;
+  end;
+  Result := MaintenanceBlockReason(AppDir);
+  if Result <> '' then
+    FailSilent(ExitUpdateActive);
+end;
+
+{ Uninstall used to check only the application mutex, so it would happily
+  delete an installation out from under a running update. }
 function InitializeUninstall: Boolean;
+var
+  AppDir, Reason: String;
 begin
   Result := True;
-  if CheckForMutexes('Local\GameHQApplicationActive') then
+  AppDir := ExpandConstant('{app}');
+  if ApplicationIsRunning(AppDir) then
   begin
     if UninstallSilent then
       ExitProcess(ExitAppRunning);
-    MsgBox('GameHQ is running. Close it normally before uninstalling.', mbError, MB_OK);
+    MsgBox('GameHQ is running. Close it normally - including in any other '
+           + 'Windows session - before uninstalling.', mbError, MB_OK);
+    Result := False;
+    Exit;
+  end;
+  Reason := MaintenanceBlockReason(AppDir);
+  if Reason <> '' then
+  begin
+    if UninstallSilent then
+      ExitProcess(ExitUpdateActive);
+    MsgBox(Reason, mbError, MB_OK);
     Result := False;
   end;
 end;
