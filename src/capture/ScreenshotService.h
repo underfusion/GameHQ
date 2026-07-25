@@ -45,6 +45,15 @@ signals:
     void updateReady();
 
 private:
+    // A 4K frame is ~33 MB of retained QImage, and the encode pool's queue is
+    // unbounded, so a held-down capture button used to grow memory without
+    // limit. Refuse new work past either limit and say so instead.
+    static constexpr int kMaxPendingEncodes = 8;
+    static constexpr qint64 kMaxPendingBytes = 256LL * 1024 * 1024;
+    // Anything older than this cannot belong to a running encode.
+    static constexpr qint64 kStalePendingMaxAgeSecs = 600;
+
+    bool encodeBacklogFull() const;
     QImage grabRect(void* hwnd, int x, int y, int w, int h) const;
     // Shared tail of capture()/saveImage(): read format/quality on this thread,
     // then encode + write on a pool thread and emit captured()/failed().
@@ -54,6 +63,7 @@ private:
     ConfigManager* m_config;
     CaptureLocations* m_locations;
     std::atomic_int m_pendingWrites{0};
+    std::atomic_llong m_pendingBytes{0};
     std::atomic_bool m_updatePreparing{false};
     // Encode workers capture `this`, so they must never outlive the service.
     // A service-owned pool (declared last → destroyed first) makes the

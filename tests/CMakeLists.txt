@@ -184,6 +184,10 @@ target_link_libraries(tst_bindingeditor PRIVATE Qt6::Sql Qt6::Gui Qt6::Widgets)
 
 # Stand-in for app\GameHQ.exe: it reports the arguments Windows actually handed
 # it, so the launcher's pass-through can be checked against a real process.
+gamehq_add_test(tst_capturepublisher
+    tst_capturepublisher.cpp
+    "${CMAKE_SOURCE_DIR}/src/capture/CapturePublisher.cpp")
+
 add_executable(launcher_argecho_fixture launcher_argecho_fixture.cpp)
 target_link_options(launcher_argecho_fixture PRIVATE -static -municode)
 target_link_libraries(launcher_argecho_fixture PRIVATE shell32)

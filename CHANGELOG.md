@@ -4,6 +4,21 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.36] - 2026-07-25
+
+### Fixed
+
+- Two screenshots finishing in the same second could be given the same file
+  name, so one overwrote the other. A capture now claims its name by creating
+  the file exclusively, which two encoder threads cannot both win.
+- Screenshots were encoded straight to their final name, so an interrupted or
+  failed write left a truncated image in the gallery. A capture is now written
+  to a temporary file beside it and appears under its real name only once it is
+  complete; leftovers from a crash are cleaned up at startup.
+- Holding the capture button no longer grows memory without limit. Once eight
+  screenshots or 256 MB of frames are waiting to be saved, further captures are
+  refused with a message instead of being queued.
+
 ## [0.6.35] - 2026-07-25
 
 ### Fixed

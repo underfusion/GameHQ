@@ -3,6 +3,7 @@ qt_add_executable(GameHQ
     app/App.cpp            app/App.h
     app/ReleaseNotes.cpp   app/ReleaseNotes.h
     app/StartupManager.cpp app/StartupManager.h
+    capture/CapturePublisher.cpp capture/CapturePublisher.h
     capture/CaptureUtil.h
       capture/HdrCapabilities.cpp capture/HdrCapabilities.h capture/hdr/HdrStateResolver.h
     capture/ScreenshotService.cpp capture/ScreenshotService.h
