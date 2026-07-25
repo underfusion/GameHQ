@@ -87,6 +87,16 @@ Tests that reach `GameIconCache::iconPathForExecutable` must use `QTEST_MAIN`
 (a `QApplication`). Its `QFileIconProvider` fallback is a QtWidgets class and
 segfaults under `QTEST_GUILESS_MAIN`.
 
+Every test carries a CTest `TIMEOUT`: 120 s by default, 300 s for the ones that
+drive child processes (`tst_integrationservice`, `tst_integrationclient`,
+`tst_portableprofileimporter`) and 600 s for the updater end-to-end pair
+(`tst_updatertransaction`, `tst_updateinstaller`). Without a bound, one hung
+test consumes the whole CI job budget and reports nothing useful.
+
+The Playnite plugin pins its minimum SDK in `integrations/playnite/global.json`,
+so `dotnet restore --locked-mode` and `dotnet test` fail loudly on an SDK older
+than the projects need instead of producing a subtly different build.
+
 Test exes land in `out/` and can be run directly (`./out/tst_gameidentity.exe`).
 Their console output is not always captured when run from a tool-driven shell;
 `-o file,txt` writes the full per-test report regardless:

@@ -23,7 +23,12 @@ function(gamehq_add_test name)
     # not found" box per test — ctest then hangs until every box is dismissed.
     # Handing each test the project-local Qt bin directory keeps `ctest` a
     # non-interactive command.
+    # Every test is bounded. Without this, one hung test consumes the whole CI
+    # job budget and reports nothing useful; the slowest test here finishes in
+    # about seven seconds, so two minutes is generous while still failing fast.
+    # Tests that legitimately need longer raise it explicitly below.
     set_tests_properties(${name} PROPERTIES
+        TIMEOUT 120
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 endfunction()
 
@@ -279,3 +284,10 @@ target_compile_definitions(tst_updatertransaction PRIVATE
     GAMEHQ_UPDATER_VERSION="${GAMEHQ_VERSION_FULL}")
 add_dependencies(tst_updatertransaction GameHQUpdater updater_health_fixture)
 target_link_libraries(tst_updatertransaction PRIVATE miniz bcrypt Qt6::Sql gamehq_test_release_signer)
+
+# The end-to-end updater tests drive real child processes through swap,
+# rollback and recovery, so they need more than the default bound - especially
+# on a shared CI runner.
+set_tests_properties(tst_updatertransaction tst_updateinstaller PROPERTIES TIMEOUT 600)
+set_tests_properties(tst_integrationservice tst_integrationclient
+                     tst_portableprofileimporter PROPERTIES TIMEOUT 300)

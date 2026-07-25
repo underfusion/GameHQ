@@ -183,12 +183,36 @@ $artifactEvidence = @($evidencePaths | ForEach-Object {
         sha256 = (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant()
     }
 })
+# Which tools actually produced these bytes. Without this the evidence records
+# what was built but not what built it, so a release cannot be reproduced and a
+# toolchain regression cannot be traced back to the build that introduced it.
+function Get-ToolVersion {
+    param([string]$Command, [string[]]$Arguments)
+    try {
+        $output = & $Command @Arguments 2>$null
+        if ($LASTEXITCODE -ne 0 -or -not $output) { return 'unavailable' }
+        return ([string[]]$output)[0].Trim()
+    } catch {
+        return 'unavailable'
+    }
+}
+$buildTools = [ordered]@{
+    cmake = Get-ToolVersion 'cmake' @('--version')
+    ninja = Get-ToolVersion 'ninja' @('--version')
+    python = Get-ToolVersion 'python' @('--version')
+    dotnetSdk = Get-ToolVersion 'dotnet' @('--version')
+    qt = Get-ToolVersion 'qmake' @('-query', 'QT_VERSION')
+    compiler = Get-ToolVersion 'g++' @('-dumpversion')
+    powerShell = $PSVersionTable.PSVersion.ToString()
+    os = [System.Environment]::OSVersion.VersionString
+}
 $evidence = [ordered]@{
     schemaVersion = 1
     version = $version
     trustMode = $TrustMode
     manifestMode = $ManifestMode
     innoSetup = [ordered]@{ version = $toolchain.Version; installerSha256 = $toolchain.Sha256 }
+    buildTools = $buildTools
     compliance = [ordered]@{ license = 'passed'; privacy = 'passed' }
     artifacts = $artifactEvidence
     authenticode = $signatures

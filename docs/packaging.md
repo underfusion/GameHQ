@@ -164,7 +164,11 @@ powershell -ExecutionPolicy Bypass -File packaging/make-dist.ps1
 
 The command builds Setup, Portable and Update together and writes
 `release-evidence.json` with final hashes, sizes, trust state, Authenticode
-observations and the pinned Inno version/checksum. `unsigned-beta` requires
+observations, the pinned Inno version/checksum and a `buildTools` block naming
+what produced the bytes — CMake, Ninja, Python, the .NET SDK, Qt, the compiler,
+PowerShell and the OS build. A tool that cannot be queried is recorded as
+`unavailable` rather than omitted, so the record is never silently incomplete.
+`unsigned-beta` requires
 honest Beta wording and consistently unsigned GameHQ-built binaries; `signed`
 rejects a missing/invalid signature or inconsistent publisher.
 `-ManifestMode test` exercises the reviewed Ed25519 generator and all three

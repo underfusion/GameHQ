@@ -4,6 +4,17 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.41] - 2026-07-25
+
+### Changed
+
+- Every automated test now has a time limit, so a hung test fails quickly
+  instead of consuming the whole build.
+- The Playnite plugin records the .NET version it needs, so a build on an older
+  toolchain fails clearly instead of producing a different result.
+- Release evidence now records which tools produced the build (CMake, Ninja,
+  Python, .NET, Qt, compiler, PowerShell and Windows build).
+
 ## [0.6.40] - 2026-07-25
 
 ### Fixed
