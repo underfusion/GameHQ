@@ -4,6 +4,22 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.31] - 2026-07-25
+
+### Fixed
+
+- Playnite state could vanish a few seconds after a reconnect. When Playnite
+  reconnected before its previous connection reported the disconnect, the stale
+  disconnect expired the source the live connection had just populated. Only
+  the last remaining Playnite connection now starts that clock.
+- A message handler that disconnects a client no longer leaves the reader
+  walking a removed entry when several messages arrived in the same read.
+- A reply that could not be queued in full left a truncated frame in the socket
+  buffer, which would corrupt every later message on that connection. Such a
+  connection is now closed instead.
+- Broadcasting maintenance no longer iterates the client list while a failed
+  send is removing an entry from it.
+
 ## [0.6.30] - 2026-07-25
 
 ### Security

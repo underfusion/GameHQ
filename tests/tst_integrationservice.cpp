@@ -4,6 +4,7 @@
 #include "integration/IntegrationService.h"
 
 #include <QCoreApplication>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QLocalSocket>
 #include <QtEndian>
@@ -16,6 +17,8 @@ private slots:
     void incompatibleHandshakeCloses();
     void lifecycleSyncAndDisconnectExpiry();
     void externalIdentityRequiresProcessOrSafeGamePath();
+    void overlappingPlayniteReconnectKeepsLiveState();
+    void handlerDisconnectDuringBufferedFramesIsSafe();
 };
 
 namespace
@@ -218,6 +221,98 @@ void IntegrationServiceTest::externalIdentityRequiresProcessOrSafeGamePath()
     const auto crossDrive = context.matchForeground(
         99, QStringLiteral("D:/Other/game.exe"), true, noDescendant);
     QCOMPARE(crossDrive.confidence, integration::MatchConfidence::None);
+}
+
+
+void IntegrationServiceTest::overlappingPlayniteReconnectKeepsLiveState()
+{
+    // Playnite reconnects before its old socket reports the disconnect. The
+    // stale disconnect must not expire the replacement's state.
+    IntegrationService service(QStringLiteral("9.8.7"), nullptr, 50);
+    QString error;
+    const QString name = testServerName();
+    QVERIFY2(service.start(error, name), qPrintable(error));
+
+    QLocalSocket oldClient;
+    oldClient.connectToServer(name);
+    QVERIFY(oldClient.waitForConnected(1000));
+    sendObject(oldClient, hello(1, 1, QStringLiteral("GameHQ.Playnite")));
+    QJsonObject reply;
+    QTRY_VERIFY_WITH_TIMEOUT(oldClient.bytesAvailable() >= 4, 1000);
+    QVERIFY(takeObject(oldClient, reply));
+
+    // The replacement connects and publishes its session while the old socket
+    // is still open.
+    QLocalSocket newClient;
+    newClient.connectToServer(name);
+    QVERIFY(newClient.waitForConnected(1000));
+    sendObject(newClient, hello(1, 1, QStringLiteral("GameHQ.Playnite")));
+    QTRY_VERIFY_WITH_TIMEOUT(newClient.bytesAvailable() >= 4, 1000);
+    QVERIFY(takeObject(newClient, reply));
+    sendObject(newClient, {
+        { QStringLiteral("type"), QStringLiteral("playnite.game.started") },
+        { QStringLiteral("sessionId"), QStringLiteral("session-new") },
+        { QStringLiteral("name"), QStringLiteral("Live Title") },
+        { QStringLiteral("startedProcessId"), 4321 }
+    });
+    QTRY_COMPARE_WITH_TIMEOUT(service.externalContext()->sessionCount(), 1, 1000);
+
+    // Only now does the superseded socket drop.
+    oldClient.abort();
+    QTest::qWait(200); // well past the 50 ms grace used by this fixture
+    QCOMPARE(service.externalContext()->sessionCount(), 1);
+
+    // When the last Playnite client leaves, the state does expire.
+    newClient.abort();
+    QTRY_COMPARE_WITH_TIMEOUT(service.externalContext()->sessionCount(), 0, 1000);
+}
+
+void IntegrationServiceTest::handlerDisconnectDuringBufferedFramesIsSafe()
+{
+    // Two frames arrive in one read and the first one makes the service drop
+    // the client. Dispatching the second must not touch the erased entry.
+    IntegrationService service(QStringLiteral("9.8.7"), nullptr, 50);
+    QString error;
+    const QString name = testServerName();
+    QVERIFY2(service.start(error, name), qPrintable(error));
+    QLocalSocket client;
+    client.connectToServer(name);
+    QVERIFY(client.waitForConnected(1000));
+    sendObject(client, hello(1, 1, QStringLiteral("GameHQ.Playnite")));
+    QJsonObject reply;
+    QTRY_VERIFY_WITH_TIMEOUT(client.bytesAvailable() >= 4, 1000);
+    QVERIFY(takeObject(client, reply));
+
+    // A malformed lifecycle message is a fatal protocol error: the handler
+    // disconnects the client while readClient still has a frame to deliver.
+    QString encodeError;
+    const QByteArray fatal = integration::encodeFrame({
+        { QStringLiteral("type"), QStringLiteral("playnite.game.started") },
+        { QStringLiteral("sessionId"), QJsonValue() }
+    }, encodeError);
+    QVERIFY(!fatal.isEmpty());
+    const QByteArray trailing = integration::encodeFrame({
+        { QStringLiteral("type"), QStringLiteral("status.request") },
+        { QStringLiteral("requestId"), QStringLiteral("after-disconnect") }
+    }, encodeError);
+    QVERIFY(!trailing.isEmpty());
+
+    const QByteArray both = fatal + trailing;
+    QCOMPARE(client.write(both), both.size());
+    client.flush();
+
+    // The service must survive and the session state must stay empty.
+    QTest::qWait(200);
+    QCOMPARE(service.externalContext()->sessionCount(), 0);
+
+    // The server is still healthy for a brand new client.
+    QLocalSocket fresh;
+    fresh.connectToServer(name);
+    QVERIFY(fresh.waitForConnected(1000));
+    sendObject(fresh, hello(1, 1, QStringLiteral("GameHQ.Test")));
+    QTRY_VERIFY_WITH_TIMEOUT(fresh.bytesAvailable() >= 4, 1000);
+    QVERIFY(takeObject(fresh, reply));
+    QCOMPARE(reply.value(QStringLiteral("type")).toString(), QStringLiteral("hello.ack"));
 }
 
 QTEST_GUILESS_MAIN(IntegrationServiceTest)

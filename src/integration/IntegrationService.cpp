@@ -57,7 +57,17 @@ void IntegrationService::onConnected(quint64 clientId)
 void IntegrationService::onDisconnected(quint64 clientId)
 {
     const Client client = m_clients.take(clientId);
-    if (client.handshaken && client.name == QStringLiteral("GameHQ.Playnite"))
+    if (!client.handshaken || client.name != QStringLiteral("GameHQ.Playnite"))
+        return;
+    // Playnite can reconnect before its previous socket reports the
+    // disconnect. The replacement's handshake already cancelled the expiry, so
+    // scheduling a new one here would wipe the live client's state a few
+    // seconds later. Only the last remaining Playnite client starts the clock.
+    const bool anotherRemains = std::any_of(
+        m_clients.cbegin(), m_clients.cend(), [&client](const Client &other) {
+            return other.handshaken && other.name == client.name;
+        });
+    if (!anotherRemains)
         m_context.scheduleSourceExpiry(client.name, m_disconnectGraceMs);
 }
 
@@ -240,8 +250,15 @@ void IntegrationService::broadcastMaintenance(int retryAfterSeconds)
         { QStringLiteral("reason"), QStringLiteral("update") },
         { QStringLiteral("retryAfterSeconds"), qBound(1, retryAfterSeconds, 3600) }
     };
+    // send() can reject a client whose queue overflowed, which removes it from
+    // m_clients through clientDisconnected. Snapshot the recipients first so
+    // the loop never walks a container the send is mutating.
+    QList<quint64> recipients;
+    recipients.reserve(m_clients.size());
     for (auto it = m_clients.cbegin(); it != m_clients.cend(); ++it) {
         if (it->handshaken)
-            m_server.send(it.key(), message);
+            recipients.push_back(it.key());
     }
+    for (quint64 clientId : std::as_const(recipients))
+        m_server.send(clientId, message);
 }

@@ -1,5 +1,5 @@
 {
-  "version": "0.6.30",
+  "version": "0.6.31",
   "sections": [
     {
       "title": "Security",
@@ -9,6 +9,13 @@
         "An update archive is accepted only if its name, size, and checksum match that signature.",
         "The updater re-checks the signature itself before it replaces a single file.",
         "A failed handoff now changes nothing and leaves GameHQ ready to try again."
+      ]
+    },
+    {
+      "title": "Fixed",
+      "items": [
+        "Playnite state no longer disappears shortly after the plugin reconnects.",
+        "The local connection now closes cleanly instead of sending a damaged message."
       ]
     },
     {

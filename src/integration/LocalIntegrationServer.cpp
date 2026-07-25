@@ -93,14 +93,26 @@ void LocalIntegrationServer::readClient(QLocalSocket *socket)
     auto it = m_clients.find(socket);
     if (it == m_clients.end())
         return;
+    const quint64 id = it->id;
     QList<integration::Message> messages;
     QString error;
     if (!it->decoder.append(socket->readAll(), messages, error)) {
         rejectClient(socket, error);
         return;
     }
-    for (const integration::Message &message : std::as_const(messages))
-        emit messageReceived(it->id, message);
+    // One read can carry several frames, and messageReceived is delivered
+    // synchronously. A handler is allowed to disconnect this client - a
+    // malformed lifecycle message does exactly that - which erases the entry
+    // and invalidates every iterator into m_clients. Re-find the client before
+    // each dispatch and stop as soon as it is gone, instead of holding `it`
+    // across the loop. The entry is only erased, never freed, while we are
+    // inside this slot, so looking it up by socket pointer stays safe.
+    for (const integration::Message &message : std::as_const(messages)) {
+        const auto current = m_clients.constFind(socket);
+        if (current == m_clients.cend() || current->id != id)
+            return;
+        emit messageReceived(id, message);
+    }
 }
 
 void LocalIntegrationServer::rejectClient(QLocalSocket *socket, const QString &reason)
@@ -141,8 +153,15 @@ bool LocalIntegrationServer::send(quint64 clientId, const QJsonObject &message)
         return false;
     }
     const qint64 written = target->write(frame);
-    if (written != frame.size())
+    if (written != frame.size()) {
+        // Anything less than the whole frame leaves a truncated prefix in the
+        // socket buffer, and the next message would be appended straight onto
+        // it - every later frame on this connection would be garbage. There is
+        // no way to repair the stream, so drop the connection instead of
+        // reporting a recoverable failure.
+        rejectClient(target, QStringLiteral("the reply could not be queued completely"));
         return false;
+    }
     target->flush();
     return true;
 }

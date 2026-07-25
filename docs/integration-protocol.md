@@ -121,7 +121,10 @@ that client — it is not merged — so a missed disconnect never leaves a
 phantom "game running" state behind. The app also expires external game
 context after a bounded grace period following a disconnect with no
 reconnect, after which normal (non-Playnite) detection continues to work
-unaffected.
+unaffected. Only the departure of the *last* handshaken Playnite client starts
+that grace period: a reconnect can complete before the superseded connection
+reports its disconnect, and expiring the source then would discard the state
+the live connection had just published.
 
 The message carries a `games` array. Each entry uses the lifecycle fields
 above and must include a unique `sessionId`; at most 64 active games are
