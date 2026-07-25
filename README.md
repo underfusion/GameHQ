@@ -6,9 +6,16 @@
 
 **Save the moments that already happened — screenshots, recent-gameplay video clips, and an in-game capture gallery for Windows.**
 
-[![Release](https://img.shields.io/github/v/release/underfusion/GameHQ?display_name=tag&style=flat-square)](https://github.com/underfusion/GameHQ/releases/latest)
+[![Release](https://img.shields.io/badge/release-v0.7.0%20Latest-8b6bff?style=flat-square)](https://github.com/underfusion/GameHQ/releases/latest)
 [![Windows](https://img.shields.io/badge/Windows-10%201903%2B-3578e5?style=flat-square)](#requirements)
 [![License](https://img.shields.io/github/license/underfusion/GameHQ?style=flat-square)](LICENSE)
+
+<br>
+
+<a href="https://github.com/underfusion/GameHQ/releases/latest/download/GameHQ-0.7.0-win64-setup.exe"><img src="https://img.shields.io/badge/Download-Setup%20(.exe)-8b6bff?style=for-the-badge&logo=windows11&logoColor=white" height="32" alt="Download GameHQ Setup"></a>
+<a href="https://github.com/underfusion/GameHQ/releases/latest/download/GameHQ-0.7.0-win64-portable.zip"><img src="https://img.shields.io/badge/Download-Portable%20(.zip)-3fa9ff?style=for-the-badge&logo=windows11&logoColor=white" height="32" alt="Download GameHQ Portable"></a>
+
+<a href="https://github.com/underfusion/GameHQ/releases/latest/download/GameHQ_Integration_0_4_12.pext"><img src="https://img.shields.io/badge/Playnite%20plugin-0.4.12-5865f2?style=flat-square" height="22" alt="Download GameHQ Integration for Playnite"></a>
 
 </div>
 
