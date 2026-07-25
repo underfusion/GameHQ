@@ -3,7 +3,7 @@ import QtQuick.Controls.Basic as QC
 import QtQuick.Layouts
 import GameHQ
 
-Item {
+FocusScope {
     id: root
 
     property bool postUpdateGreeting: false
@@ -179,6 +179,7 @@ Item {
         postUpdateGreeting = !!asPostUpdateGreeting
         showFullNotes = false
         visible = true
+        root.forceActiveFocus()
         aboutFlick.contentY = 0
         padIndex = 0
         Qt.callLater(focusPadIndex)
@@ -200,6 +201,10 @@ Item {
         PropertyChanges { target: root; opacity: 1 }
     }
 
+    HoverHandler {
+        blocking: true
+    }
+
     Keys.priority: Keys.BeforeItem
     Keys.onEscapePressed: function(event) {
         event.accepted = true
@@ -214,6 +219,9 @@ Item {
         color: Theme.scrim
         MouseArea {
             anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.AllButtons
+            preventStealing: true
             onClicked: root.close()
             onWheel: wheel => wheel.accepted = true
         }
@@ -223,7 +231,7 @@ Item {
         id: card
         anchors.centerIn: parent
         width: Math.min(680, root.width - Theme.s48)
-        height: Math.min(660, root.height - Theme.s48)
+        height: Math.min(720, root.height - Theme.s24)
         radius: Theme.radiusL
         color: Theme.surface
         border.width: Theme.borderWidth
@@ -232,6 +240,9 @@ Item {
 
         MouseArea {
             anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.AllButtons
+            preventStealing: true
             onWheel: wheel => wheel.accepted = true
         }
 
@@ -431,9 +442,18 @@ Item {
                             }
                         }
 
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Plus more improvements and fixes."
+                            textFormat: Text.PlainText
+                            color: Theme.textFaint
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.fontCaption
+                        }
+
                         TextLink {
                             id: releaseNotesLink
-                            label: "View release notes"
+                            label: "See full release notes"
                             suffix: "›"
                             onClicked: root.openReleaseNotes()
                         }

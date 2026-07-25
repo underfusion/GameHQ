@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import GameHQ
 
-Item {
+FocusScope {
     id: root
 
     signal closed()
@@ -13,6 +13,7 @@ Item {
 
     function open() {
         visible = true
+        root.forceActiveFocus()
         helpView.resetScroll()
         Qt.callLater(closeButton.forceActiveFocus)
     }
@@ -39,6 +40,10 @@ Item {
         PropertyChanges { target: root; opacity: 1 }
     }
 
+    HoverHandler {
+        blocking: true
+    }
+
     Keys.priority: Keys.BeforeItem
     Keys.onEscapePressed: function(event) {
         event.accepted = true
@@ -50,6 +55,9 @@ Item {
         color: Theme.scrim
         MouseArea {
             anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.AllButtons
+            preventStealing: true
             onClicked: root.close()
             onWheel: wheel => wheel.accepted = true
         }
@@ -68,6 +76,9 @@ Item {
 
         MouseArea {
             anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.AllButtons
+            preventStealing: true
             onWheel: wheel => wheel.accepted = true
         }
 
