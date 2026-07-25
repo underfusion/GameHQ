@@ -4,6 +4,13 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.42] - 2026-07-25
+
+### Changed
+
+- The build now re-runs the timing-sensitive tests three times each, so a race
+  that only fails occasionally is caught before a release rather than after it.
+
 ## [0.6.41] - 2026-07-25
 
 ### Changed

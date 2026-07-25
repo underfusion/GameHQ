@@ -93,6 +93,12 @@ drive child processes (`tst_integrationservice`, `tst_integrationclient`,
 (`tst_updatertransaction`, `tst_updateinstaller`). Without a bound, one hung
 test consumes the whole CI job budget and reports nothing useful.
 
+CI also re-runs the concurrency-sensitive suites three times each
+(`ctest --repeat until-fail:3 -R 'tst_(integrationservice|integrationclient|integrationprotocol|capturepublisher|capturedatabaserepair|processidentity|portableprofileimporter|updatertransaction)'`).
+A race in an IPC handshake, an interrupted update, importer recovery, capture
+naming or database repair passes most runs; one green run is not evidence it is
+gone. Run the same command locally before touching any of those paths.
+
 The Playnite plugin pins its minimum SDK in `integrations/playnite/global.json`,
 so `dotnet restore --locked-mode` and `dotnet test` fail loudly on an SDK older
 than the projects need instead of producing a subtly different build.

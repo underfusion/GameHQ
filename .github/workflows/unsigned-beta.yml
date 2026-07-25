@@ -60,6 +60,14 @@ jobs:
           $qt = "$PWD\tools\Qt\6.8.3\mingw_64"
           $env:PATH = "$qt\bin;$env:PATH"
           ctest --test-dir out --output-on-failure
+          # The concurrency-sensitive suites again, three times each. A race in
+          # IPC handshakes, updater interruption, importer recovery, capture
+          # naming, process identity or database repair passes most runs; one
+          # pass is not evidence that it is gone. Every test is time-limited in
+          # tests/CMakeLists.txt, so a hang fails here instead of eating the
+          # job budget.
+          ctest --test-dir out --repeat until-fail:3 --output-on-failure `
+            -R 'tst_(integrationservice|integrationclient|integrationprotocol|capturepublisher|capturedatabaserepair|processidentity|portableprofileimporter|updatertransaction)'
           dotnet restore integrations/playnite/tests/GameHQ.Playnite.Tests/GameHQ.Playnite.Tests.csproj --locked-mode
           dotnet test integrations/playnite/tests/GameHQ.Playnite.Tests/GameHQ.Playnite.Tests.csproj `
             --configuration Release --no-restore
