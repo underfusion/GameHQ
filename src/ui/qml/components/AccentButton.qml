@@ -20,6 +20,7 @@ Rectangle {
     property color quietTopColor: Theme.surface
     property color quietBottomColor: Theme.bg1
     property color quietIdleBorderColor: Theme.borderLight
+    property real contentHorizontalOffset: 0
     signal clicked()
 
     implicitWidth: content.width + Theme.s24 * 2
@@ -95,6 +96,7 @@ Rectangle {
     Row {
         id: content
         anchors.centerIn: parent
+        anchors.horizontalCenterOffset: root.contentHorizontalOffset
         spacing: root.icon === "" ? 0 : Theme.s8
 
         Text {

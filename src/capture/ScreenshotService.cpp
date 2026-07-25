@@ -178,19 +178,24 @@ void ScreenshotService::encodeAndSave(const QImage& img, const QString& gameName
 
         // Encode into the .part file. The scanner ignores that extension, so a
         // slow, failed or interrupted encode is never visible as a capture.
-        QImageWriter writer(reservation.pendingPath, jpeg ? "JPG" : "PNG");
-        if (jpeg)
-            writer.setQuality(jpegQuality);
-        else
-            writer.setCompression(1);   // fast zlib level — encode speed over file size
-        if (!writer.write(img)) {
-            const QString reason = writer.errorString();
-            CapturePublisher::discard(reservation);
-            emit failed(QStringLiteral("could not write ") + reservation.finalPath
-                        + QStringLiteral(": ") + reason);
-            return;
+        {
+            QImageWriter writer(reservation.pendingPath, jpeg ? "JPG" : "PNG");
+            if (jpeg)
+                writer.setQuality(jpegQuality);
+            else
+                writer.setCompression(1);   // fast zlib level — encode speed over file size
+            if (!writer.write(img)) {
+                const QString reason = writer.errorString();
+                CapturePublisher::discard(reservation);
+                emit failed(QStringLiteral("could not write ") + reservation.finalPath
+                            + QStringLiteral(": ") + reason);
+                return;
+            }
         }
 
+        // QImageWriter keeps its output file open until destruction. Windows
+        // cannot atomically rename that open file, so publish only after the
+        // writer has left the scope above.
         QString publishError;
         if (!CapturePublisher::publish(reservation, &publishError)) {
             // The .part stays behind on purpose: the pixels are still in it and

@@ -6,6 +6,19 @@ All notable public releases of GameHQ are documented here. The format follows
 
 ## [0.7.0] - 2026-07-25
 
+### Added
+
+- GameHQ can now check for updates, download and install them, restart
+  automatically, and roll back safely when an update fails.
+- HDR-aware capture uses GPU tone mapping so screenshots and SDR replay videos
+  no longer appear washed out or overexposed on HDR displays.
+- A standard per-user Windows Setup package is now available alongside the
+  Portable package.
+- The new Playnite integration discovers GameHQ, launches it with games,
+  forwards game state, and restores that state after reconnects.
+- Settings and About have been redesigned with clearer diagnostics, update
+  controls, offline release notes, and a What's New view.
+
 ### Changed
 
 - Setup now uses restrained GameHQ artwork and a shorter welcome message while
@@ -21,6 +34,12 @@ All notable public releases of GameHQ are documented here. The format follows
   of moving into a thumbnail area with nothing to select.
 - Controller shortcuts now follow the input backend and device producing real
   button activity, so stale virtual controllers cannot block input in games.
+- Screenshots and replay thumbnails are published atomically, and unreadable
+  cached thumbnails are regenerated from the working video.
+- Portable imports preserve existing data, failed database or configuration
+  recovery rolls back safely, and invalid storage paths are reported.
+- Long-path handling, IPC reconnects, update discovery, log rotation, and
+  Setup/update conflict prevention are more reliable.
 
 ## [0.6.45] - 2026-07-25
 

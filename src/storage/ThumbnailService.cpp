@@ -2,10 +2,13 @@
 #include "capture/ReplayExporter.h"
 
 #include <QCryptographicHash>
+#include <QFile>
 #include <QFileInfo>
 #include <QImage>
 #include <QImageReader>
+#include <QImageWriter>
 #include <QDir>
+#include <QSaveFile>
 #include <QThread>
 
 #ifdef Q_OS_WIN
@@ -15,6 +18,42 @@
 namespace ThumbnailService
 {
 
+bool isUsableThumbnail(const QString& thumbnailPath)
+{
+    const QFileInfo info(thumbnailPath);
+    if (!info.isFile() || info.size() <= 0)
+        return false;
+
+    QImageReader reader(thumbnailPath);
+    reader.setDecideFormatFromContent(true);
+    return reader.canRead();
+}
+
+bool saveThumbnail(const QImage& image, const QString& thumbnailPath,
+                   const QByteArray& format, int quality)
+{
+    if (image.isNull() || thumbnailPath.isEmpty())
+        return false;
+
+    QSaveFile output(thumbnailPath);
+    output.setDirectWriteFallback(false);
+    if (!output.open(QIODevice::WriteOnly))
+        return false;
+
+    bool written = false;
+    {
+        QImageWriter writer(&output, format);
+        if (quality >= 0)
+            writer.setQuality(quality);
+        written = writer.write(image);
+    }
+    if (!written) {
+        output.cancelWriting();
+        return false;
+    }
+    return output.commit();
+}
+
 QString ensureThumbnail(const QString& filePath, const QString& type,
                         const QString& thumbnailsDir)
 {
@@ -22,8 +61,10 @@ QString ensureThumbnail(const QString& filePath, const QString& type,
         QCryptographicHash::hash(filePath.toUtf8(), QCryptographicHash::Md5).toHex());
     const QString thumbPath = thumbnailsDir + QLatin1Char('/') + hash + QLatin1String(".jpg");
 
-    if (QFileInfo::exists(thumbPath))
+    if (isUsableThumbnail(thumbPath))
         return thumbPath;
+    if (QFileInfo::exists(thumbPath))
+        QFile::remove(thumbPath);
 
     QDir().mkpath(thumbnailsDir);
     if (type == QLatin1String("video")) {
@@ -32,8 +73,10 @@ QString ensureThumbnail(const QString& filePath, const QString& type,
         const QString legacyThumb = thumbnailsDir + QLatin1Char('/')
                                     + QFileInfo(filePath).completeBaseName()
                                     + QStringLiteral("_clip.png");
-        if (QFileInfo::exists(legacyThumb))
+        if (isUsableThumbnail(legacyThumb))
             return legacyThumb;
+        if (QFileInfo::exists(legacyThumb))
+            QFile::remove(legacyThumb);
 
         bool saved = false;
         QThread* worker = QThread::create([&] {
@@ -42,7 +85,7 @@ QString ensureThumbnail(const QString& filePath, const QString& type,
 #endif
             QImage frame;
             saved = ReplayExporter::grabThumbnail(filePath, frame)
-                    && !frame.isNull() && frame.save(thumbPath, "JPG", 85);
+                    && !frame.isNull() && saveThumbnail(frame, thumbPath, "JPG", 85);
 #ifdef Q_OS_WIN
             if (SUCCEEDED(initialized))
                 CoUninitialize();
@@ -66,7 +109,7 @@ QString ensureThumbnail(const QString& filePath, const QString& type,
     const QImage image = reader.read();
     if (image.isNull())
         return {};
-    if (!image.save(thumbPath, "JPG", 85))
+    if (!saveThumbnail(image, thumbPath, "JPG", 85))
         return {};
     return thumbPath;
 }

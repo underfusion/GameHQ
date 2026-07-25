@@ -2,39 +2,29 @@
   "version": "0.7.0",
   "sections": [
     {
-      "title": "Security",
+      "title": "Highlights",
       "items": [
-        "Updates now install only when a signed release manifest authorises them.",
-        "The updater waits for the exact GameHQ process that started the update, never a lookalike.",
-        "An update archive is accepted only if its name, size, and checksum match that signature.",
-        "The updater re-checks the signature itself before it replaces a single file.",
-        "A failed handoff now changes nothing and leaves GameHQ ready to try again."
+        "Automatic updater: GameHQ can check for updates, download them, install them, restart automatically, and safely roll back if an update fails. Production-signed manifests protect update authenticity.",
+        "HDR capture: GameHQ detects HDR displays and uses GPU tone mapping so screenshots and SDR replay videos no longer appear washed out or overexposed.",
+        "Windows installer: GameHQ now includes a standard per-user Setup package while keeping Portable available as an alternative.",
+        "Playnite integration: the new plugin can discover GameHQ, launch it with games, forward game start and stop events, and restore state after reconnects.",
+        "Improved Settings and About: redesigned settings pages, clearer diagnostics, update controls, offline release notes, and a new What's New view.",
+        "Capture and data safety: screenshots are saved atomically, rapid captures cannot overwrite each other, portable imports protect existing data, and failed database or configuration recovery now rolls back safely.",
+        "General reliability: improved long-path support, IPC reconnect handling, update discovery, storage diagnostics, log rotation, and Setup/update conflict prevention."
       ]
     },
     {
-      "title": "Fixed",
+      "title": "Verification",
       "items": [
-        "When there are no captures yet, controller focus stays in the sidebar so navigation is immediately visible.",
-        "Controller shortcuts now follow the input path that is actually producing button activity, including while games are running.",
-        "Playnite state no longer disappears shortly after the plugin reconnects.",
-        "An unreadable settings file is now kept safe instead of being overwritten.",
-        "A failed library repair is undone and retried instead of being marked done.",
-        "A storage folder GameHQ cannot create is now named instead of silently ignored.",
-        "The local connection now closes cleanly instead of sending a damaged message.",
-        "GameHQ now starts correctly from long install paths and passes your arguments through unchanged.",
-        "Rapid screenshots no longer overwrite each other, and an interrupted save never leaves a broken image.",
-        "Setup and Uninstall no longer get stuck after an interrupted update, and never run while one is in progress.",
-        "A capture folder on another drive or a network share is no longer lost when a portable GameHQ moves.",
-        "Importing a portable profile now refuses instead of overwriting sounds or data already in place.",
-        "The log file no longer grows without limit, and a log folder GameHQ cannot write to is reported.",
-        "Update checks now find a new release reliably after a restart and back off correctly when GitHub asks."
+        "33 native tests passed.",
+        "20 Playnite integration tests passed.",
+        "Production update signing, tamper rejection, packaging, privacy, dependency, and licensing checks passed."
       ]
     },
     {
-      "title": "Changed",
+      "title": "Beta notice",
       "items": [
-        "The published .sha256 file is now only for checking a download by hand.",
-        "A release without its signature file is no longer offered for one-click install."
+        "Open-source Beta. GameHQ is not yet code-signed, so Windows may show an Unknown publisher or SmartScreen warning."
       ]
     }
   ]

@@ -14,6 +14,7 @@
 #include "config/Paths.h"
 #include "core/GameIdentity.h"
 #include "games/GameDetector.h"
+#include "storage/ThumbnailService.h"
 
 #include <QDebug>
 #include <QDateTime>
@@ -792,7 +793,7 @@ QString FramePumpWorker::instantThumbnail(const QString& lastSegment, const QStr
         QDir().mkpath(Paths::thumbnailsDir());
         const QImage scaled = instantFrame.width() > 640
             ? instantFrame.scaledToWidth(640, Qt::SmoothTransformation) : instantFrame;
-        if (scaled.save(thumbPath, "png"))
+        if (ThumbnailService::saveThumbnail(scaled, thumbPath, "PNG"))
             instantThumb = thumbPath;
     }
     qInfo().noquote() << QStringLiteral("ReplaySave[%1]: instant thumbnail ok=%2 path=%3 elapsedMs=%4")
@@ -839,7 +840,7 @@ void FramePumpWorker::runExport(const QStringList& segs, const QString& outPath,
                 if (ReplayExporter::grabThumbnail(partialPath, frame) && !frame.isNull()) {
                     const QImage scaled = frame.width() > 640
                         ? frame.scaledToWidth(640, Qt::SmoothTransformation) : frame;
-                    if (scaled.save(thumbPath, "png"))
+                    if (ThumbnailService::saveThumbnail(scaled, thumbPath, "PNG"))
                         result->finalThumb = thumbPath;
                 }
                 // Publish only a completely finalized file. A crash before

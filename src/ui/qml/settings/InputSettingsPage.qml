@@ -228,7 +228,9 @@ SettingsPage {
 
                     AccentButton {
                         label: "Reset"
-                        quiet: true
+                        primary: true
+                        contentHorizontalOffset: bindingGrid.columns === 1
+                                                 ? -(34 + Theme.s4) / 2 : 0
                         enabled: modelData.bindable
                         Layout.fillWidth: bindingGrid.columns === 1
                         Layout.preferredWidth: bindingGrid.columns === 1 ? -1 : 76
