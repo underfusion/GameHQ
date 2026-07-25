@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="460" height="112" viewBox="0 0 460 112" role="img" aria-labelledby="title desc">
+  <title id="title">Download GameHQ for Windows</title>
+  <desc id="desc">Primary download button for the GameHQ Windows installer</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7757ef"/>
+      <stop offset="1" stop-color="#367fe3"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-20%" width="120%" height="150%">
+      <feDropShadow dx="0" dy="6" stdDeviation="7" flood-color="#111936" flood-opacity=".38"/>
+    </filter>
+  </defs>
+  <rect x="5" y="5" width="450" height="102" rx="22" fill="url(#background)" stroke="#c8c0ff" stroke-opacity=".48" stroke-width="2" filter="url(#shadow)"/>
+  <g fill="#fff">
+    <path d="M34 34h25v23H34zm29 0 30-4v27H63zM34 61h25v23H34zm29 0h30v27l-30-4z" opacity=".94"/>
+    <text x="116" y="53" font-family="Segoe UI,Arial,sans-serif" font-size="26" font-weight="700">Download for Windows</text>
+    <text x="116" y="79" font-family="Segoe UI,Arial,sans-serif" font-size="16" fill="#e7eaff">GameHQ Setup · recommended</text>
+  </g>
+</svg>

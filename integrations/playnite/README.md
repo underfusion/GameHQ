@@ -59,13 +59,14 @@ building this plugin never touches GameHQ.
 Published packages use the explicit
 `GameHQ_Playnite_Integration_<version>.pext` filename. The Playnite add-on
 database entry points to this repository's stable `InstallerManifest.yaml`
-URL. For each update, publish the new `.pext` and prepend its version,
-release date, API requirement, immutable package URL, and changelog to the
-manifest. Playnite then discovers the newer version automatically; another
-add-on database pull request is needed only if the database metadata or
-installer-manifest URL changes.
+URL. Each plugin release uses a `playnite-vX.Y.Z` tag and must be published
+with `make_latest=false`, so it cannot replace the Latest GameHQ application
+release. After the immutable package URL and hash are public, prepend the new
+version to `Packages` without deleting older entries. Playnite then discovers
+the newer version automatically; another add-on database pull request is
+needed only if the database metadata or installer-manifest URL changes.
 
-See `packaging/package.ps1`, `InstallerManifest.yaml`, and
+See `packaging/prepare-release.ps1`, `InstallerManifest.yaml`, and
 `AddonManifest.yaml`.
 
 ## License

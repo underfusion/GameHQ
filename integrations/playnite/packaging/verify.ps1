@@ -57,6 +57,22 @@ if ($sdkMatch.Success -and
 if ($installerManifest -match "Initial scaffold|Not yet functional") {
     $failures += "InstallerManifest.yaml still contains scaffold release copy"
 }
+if ($installerManifest -match '/releases/latest(?:/|")') {
+    $failures += "Plugin PackageUrl must never use /releases/latest"
+}
+$packageUrls = [regex]::Matches(
+    $installerManifest,
+    '(?m)^\s+PackageUrl:\s*["'']?(?<url>https://\S+?)["'']?\s*$'
+)
+if ($packageUrls.Count -eq 0) {
+    $failures += "InstallerManifest.yaml must contain at least one immutable PackageUrl"
+}
+foreach ($packageUrl in $packageUrls) {
+    if ($packageUrl.Groups['url'].Value -notmatch
+        '/GameHQ_Playnite_Integration_\d+_\d+_\d+\.pext$') {
+        $failures += "Plugin package names must identify GameHQ Playnite Integration"
+    }
+}
 $addonManifestPath = Join-Path $root "AddonManifest.yaml"
 $addonManifest = Get-Content $addonManifestPath -Raw
 if ($addonManifest -notmatch "AddonId:\s*GameHQ_Integration") {
@@ -81,6 +97,7 @@ $requiredPaths = @(
     "AddonManifest.yaml",
     "InstallerManifest.yaml",
     "RELEASE_CHECKLIST.md",
+    "packaging\prepare-release.ps1",
     "CHANGELOG.md",
     "README.md",
     "LICENSE",
