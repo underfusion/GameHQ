@@ -148,11 +148,24 @@ QString repairMovedPath(const QString& path)
     return resolved;
 }
 
-void ensureDirectories()
+DirectoryStatus ensureDirectories()
 {
-    for (const QString& dir : { dataDir(), logsDir(), thumbnailsDir(), gameIconsDir(),
-                                replayCacheDir(), soundPacksDir(), capturesRoot() })
-        QDir().mkpath(dir);
+    DirectoryStatus status;
+    // The data root carries config.json and gamehq.db. Without it there is
+    // nothing to start, so it is reported separately from the directories that
+    // only hold regenerable material.
+    for (const QString& dir : { dataDir(), capturesRoot() }) {
+        if (!QDir().mkpath(dir)) {
+            status.essentialReady = false;
+            status.failedEssential.append(dir);
+        }
+    }
+    for (const QString& dir : { logsDir(), thumbnailsDir(), gameIconsDir(),
+                                replayCacheDir(), soundPacksDir() }) {
+        if (!QDir().mkpath(dir))
+            status.failedOptional.append(dir);
+    }
+    return status;
 }
 
 } // namespace Paths

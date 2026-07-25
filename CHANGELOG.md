@@ -4,6 +4,15 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.33] - 2026-07-25
+
+### Fixed
+
+- GameHQ no longer continues past a storage location it could not create. A
+  missing data root or captures root now stops startup and names the failing
+  path; a missing cache, thumbnail or log directory is reported and startup
+  continues, because only diagnostics are affected.
+
 ## [0.6.32] - 2026-07-25
 
 ### Fixed

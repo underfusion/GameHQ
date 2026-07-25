@@ -54,8 +54,19 @@ void App::recordPostUpdateSuccess(const QString& version)
 
 bool App::init()
 {
-    Paths::ensureDirectories();
+    const Paths::DirectoryStatus directories = Paths::ensureDirectories();
     Logger::install(Paths::logsDir());
+    if (!directories.essentialReady) {
+        // Continuing would mean running with no place to keep the database,
+        // settings or recordings, and reporting success anyway.
+        qCritical() << "Storage: GameHQ cannot create its data locations:"
+                    << directories.failedEssential.join(QStringLiteral(", "));
+        return false;
+    }
+    if (!directories.failedOptional.isEmpty()) {
+        qWarning() << "Storage: continuing without some cache or log locations:"
+                   << directories.failedOptional.join(QStringLiteral(", "));
+    }
 
     m_integration = std::make_unique<IntegrationService>(QStringLiteral(GAMEHQ_VERSION));
     connect(m_integration.get(), &IntegrationService::activateRequested,

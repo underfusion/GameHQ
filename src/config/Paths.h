@@ -1,5 +1,6 @@
 #pragma once
 #include <QString>
+#include <QStringList>
 
 // Resolves all data locations. Portable mode = "portable.flag" file next to the exe
 // or in its parent directory (dist layout keeps the exe in app/ and the data at
@@ -26,5 +27,16 @@ namespace Paths
     QString repairMovedPath(const QString& path);
 
     // Creates every directory above if missing. Call once at startup.
-    void ensureDirectories();
+    // Outcome of ensureDirectories(). The data root holds the database and
+    // settings, so losing it is fatal; a missing cache or log directory only
+    // costs diagnostics and is reported without stopping startup.
+    struct DirectoryStatus
+    {
+        bool essentialReady = true;   // data root and its database-bearing dirs
+        QStringList failedEssential;
+        QStringList failedOptional;   // logs, caches, thumbnails, sounds
+        bool allReady() const { return essentialReady && failedOptional.isEmpty(); }
+    };
+
+    DirectoryStatus ensureDirectories();
 }
