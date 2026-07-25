@@ -18,12 +18,17 @@ This checklist prepares a `playnite-v*` release without authorizing publication.
 ## Publication
 
 - Create the tag `playnite-vX.Y.Z` in the GameHQ monorepo.
-- Publish the matching `GameHQ_Integration_X_Y_Z.pext` as the release asset.
-- Replace the blank `PackageUrl` in `InstallerManifest.yaml` with the immutable
+- Publish the matching `GameHQ_Playnite_Integration_X_Y_Z.pext` as the release
+  asset.
+- Prepend the new version to `InstallerManifest.yaml` with its immutable
   release-asset URL and verify it downloads the expected package hash.
 - Validate the final manifest and package with Playnite Toolbox.
 - Record the release URL, package SHA-256, Toolbox result, and tested Playnite
   version as release evidence.
+- Keep `AddonManifest.yaml` pointed at the stable raw `main` installer-manifest
+  URL. Once the first add-on database pull request is merged, later package
+  versions are discovered from `InstallerManifest.yaml` without another
+  database pull request.
 
 ## After publishing
 

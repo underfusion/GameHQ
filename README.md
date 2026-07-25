@@ -10,12 +10,28 @@
 [![Windows](https://img.shields.io/badge/Windows-10%201903%2B-3578e5?style=flat-square)](#requirements)
 [![License](https://img.shields.io/github/license/underfusion/GameHQ?style=flat-square)](LICENSE)
 
-<br>
+<h3>Download GameHQ 0.7.0</h3>
 
-<a href="https://github.com/underfusion/GameHQ/releases/latest/download/GameHQ-0.7.0-win64-setup.exe"><img src="https://img.shields.io/badge/Download-Setup%20(.exe)-8b6bff?style=for-the-badge&logo=windows11&logoColor=white" height="32" alt="Download GameHQ Setup"></a>
-<a href="https://github.com/underfusion/GameHQ/releases/latest/download/GameHQ-0.7.0-win64-portable.zip"><img src="https://img.shields.io/badge/Download-Portable%20(.zip)-3fa9ff?style=for-the-badge&logo=windows11&logoColor=white" height="32" alt="Download GameHQ Portable"></a>
-
-<a href="https://github.com/underfusion/GameHQ/releases/latest/download/GameHQ_Integration_0_4_12.pext"><img src="https://img.shields.io/badge/Playnite%20plugin-0.4.12-5865f2?style=flat-square" height="22" alt="Download GameHQ Integration for Playnite"></a>
+<table>
+<tr>
+<td align="center" width="240">
+<strong>Recommended</strong><br>
+<a href="https://github.com/underfusion/GameHQ/releases/latest/download/GameHQ-0.7.0-win64-setup.exe"><img src="https://img.shields.io/badge/Download-Setup%20(.exe)-8b6bff?style=for-the-badge&logo=windows11&logoColor=white" height="34" alt="Download GameHQ Setup"></a><br>
+<sub>Per-user Windows installer</sub>
+</td>
+<td align="center" width="240">
+<strong>Portable</strong><br>
+<a href="https://github.com/underfusion/GameHQ/releases/latest/download/GameHQ-0.7.0-win64-portable.zip"><img src="https://img.shields.io/badge/Download-Portable%20(.zip)-3fa9ff?style=for-the-badge&logo=windows11&logoColor=white" height="34" alt="Download GameHQ Portable"></a><br>
+<sub>Extract and run from any folder</sub>
+</td>
+</tr>
+<tr>
+<td align="center" colspan="2">
+<strong>Use GameHQ with Playnite</strong><br>
+<a href="https://github.com/underfusion/GameHQ/releases/latest/download/GameHQ_Playnite_Integration_0_4_12.pext"><img src="https://img.shields.io/badge/Download-Playnite%20plugin%200.4.12-5865f2?style=flat-square" height="24" alt="Download GameHQ Playnite Integration"></a>
+</td>
+</tr>
+</table>
 
 </div>
 
@@ -64,7 +80,7 @@ the `-portable.zip` package to keep data beside the app.
 
 ### Playnite integration
 
-[Download GameHQ Integration 0.4.12](https://github.com/underfusion/GameHQ/releases/download/v0.7.0/GameHQ_Integration_0_4_12.pext)
+[Download GameHQ Playnite Integration 0.4.12](https://github.com/underfusion/GameHQ/releases/download/v0.7.0/GameHQ_Playnite_Integration_0_4_12.pext)
 from the same release and open the `.pext` with Playnite. The plugin discovers
 GameHQ, launches it with games, forwards game lifecycle events, and restores
 state after reconnects.

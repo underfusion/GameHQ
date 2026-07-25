@@ -50,7 +50,7 @@ if (Test-Path $iconSource) {
 
 $outDir = Join-Path $root "dist"
 New-Item -ItemType Directory -Path $outDir -Force | Out-Null
-$pextPath = Join-Path $outDir "GameHQ_Integration_$($version -replace '\.', '_').pext"
+$pextPath = Join-Path $outDir "GameHQ_Playnite_Integration_$($version -replace '\.', '_').pext"
 if (Test-Path $pextPath) {
     Remove-Item $pextPath -Force
 }
