@@ -2,7 +2,7 @@
 
 <p><img src="docs/assets/gamehq-wordmark.svg" width="190" alt="GameHQ"></p>
 
-<hr>
+<p><img src="docs/assets/readme-separator.svg" width="1000" height="1" alt=""></p>
 
 **Save screenshots and recent gameplay with controller-first controls.**
 
