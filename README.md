@@ -50,10 +50,17 @@ in a controller-friendly gallery without leaving your game.
 
 ## Download
 
-Download only from the official
-[GameHQ Releases page](https://github.com/underfusion/GameHQ/releases). Choose
+Download GameHQ 0.7.0 from the official
+[latest release](https://github.com/underfusion/GameHQ/releases/latest). Choose
 `GameHQ-<version>-win64-setup.exe` for the recommended per-user installation, or
 the `-portable.zip` package to keep data beside the app.
+
+### Playnite integration
+
+[Download GameHQ Integration 0.4.12](https://github.com/underfusion/GameHQ/releases/download/v0.7.0/GameHQ_Integration_0_4_12.pext)
+from the same release and open the `.pext` with Playnite. The plugin discovers
+GameHQ, launches it with games, forwards game lifecycle events, and restores
+state after reconnects.
 
 **Open-source Beta · Not yet code-signed; Windows may show an Unknown publisher
 warning.** Verify the official source and published release hash before running
