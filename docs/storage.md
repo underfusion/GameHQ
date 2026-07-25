@@ -38,6 +38,12 @@ Each helper is a no-op once the current path exists, so later starts cost only a
 
 Game Bar Captures, Steam Screenshots, NVIDIA Gallery, OBS, custom — rows in `folders` table, captures tagged with `source`. **Imported folders are read-only unless the user explicitly enables management.**
 
+## Log retention (`Logger.cpp`)
+
+`gamehq.log` rotates once it reaches 8 MiB, keeping `gamehq.1.log` … `gamehq.3.log` and dropping the oldest — at most four files, ~32 MiB, no matter how long the install lives. Rotation is best effort: if a generation cannot be renamed because something still has it open, the current log is left in place and keeps growing, because losing the log is worse than exceeding the limit. Logs are local only and are never uploaded ([privacy-data-flow.md](privacy-data-flow.md)); delete them from **Settings → About → Open logs folder** at any time.
+
+If the log directory cannot be created or the file cannot be opened, GameHQ still starts and writes diagnostics to stderr instead of running silently, and the copied diagnostic summary says so on its "Logs folder" line.
+
 ## Cleanup rules (0.7)
 
 Max storage 10/25/50/100 GB/unlimited · auto-cleanup modes: off / oldest non-favorites / clips only / both · **favorites never auto-deleted** · confirm before deleting anything outside managed folders · warn on low disk.

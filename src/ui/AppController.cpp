@@ -7,6 +7,7 @@
 #include "config/SettingsCategories.h"
 #include "config/Paths.h"
 #include "core/ProcessIdentity.h"
+#include "diagnostics/Logger.h"
 #include "storage/CaptureDatabase.h"
 #include "storage/CaptureScanner.h"
 #include "ui/CaptureLibraryService.h"
@@ -188,15 +189,20 @@ void AppController::quitApplication()
 
 void AppController::copyDiagnosticSummary() const
 {
+    // Whether the log is actually being written is the first thing worth
+    // knowing when a report arrives without one attached.
     const QString summary = QStringLiteral(
         "GameHQ %1 (%2)\n"
         "Data folder: %3\n"
-        "Logs folder: %4\n"
-        "Screenshots folder: %5\n"
-        "Clips folder: %6\n"
-        "%7")
+        "Logs folder: %4 (%5)\n"
+        "Screenshots folder: %6\n"
+        "Clips folder: %7\n"
+        "%8")
         .arg(version(), portableMode() ? QStringLiteral("portable") : QStringLiteral("installed"),
-             dataRoot(), logsRoot(), screenshotsRoot(), clipsRoot(),
+             dataRoot(), logsRoot(),
+             Logger::writingToFile() ? QStringLiteral("writing")
+                                     : QStringLiteral("NOT writable — logging to stderr"),
+             screenshotsRoot(), clipsRoot(),
              m_hdr.summaryLines().join(QLatin1Char('\n')));
     QGuiApplication::clipboard()->setText(summary);
 }

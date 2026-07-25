@@ -4,6 +4,16 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.39] - 2026-07-25
+
+### Fixed
+
+- `gamehq.log` grew forever. It now rotates at 8 MB and keeps three previous
+  files, so logs can never take more than about 32 MB.
+- A log folder GameHQ could not write to made the whole session silent. It now
+  reports the problem and writes diagnostics to the console instead, and the
+  copied diagnostic summary says whether the log is being written.
+
 ## [0.6.38] - 2026-07-25
 
 ### Fixed
