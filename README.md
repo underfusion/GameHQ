@@ -2,6 +2,8 @@
 
 <p><img src="docs/assets/gamehq-wordmark.svg" width="190" alt="GameHQ"></p>
 
+<hr>
+
 **Save screenshots and recent gameplay with controller-first controls.**
 
 <!-- public-downloads:start -->
