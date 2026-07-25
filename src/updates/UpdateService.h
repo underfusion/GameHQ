@@ -83,6 +83,10 @@ public:
     // Without this the persisted timestamp was never read back, so the "at most
     // one automatic check a day" gate started over on every launch.
     void primeLastChecked(const QDateTime &when) { m_lastChecked = when; }
+    // A rate-limit cooldown must survive a restart, or quitting and reopening
+    // GameHQ becomes a way to hammer an exhausted budget.
+    void primeNextAllowedCheck(const QDateTime &when) { m_nextAllowedCheck = when; }
+    QDateTime nextAllowedCheck() const { return m_nextAllowedCheck; }
     QString cachedEtag() const { return m_etag; }
     // The ETag actually worth sending: an ETag with no cached release behind it
     // only buys a 304 that resolves to "up to date".
@@ -108,12 +112,15 @@ Q_SIGNALS:
     void versionSkipped(const QString &version);
     // Caller should persist this to internal.updates.etag.
     void etagUpdated(const QString &etag);
+    void nextAllowedCheckChanged(const QDateTime &when);
     void prepareForUpdateRequested();
     void quiescenceReached();
     void installApproved(const VerifiedUpdate &verified);
 
 private:
     void setState(State state);
+    void setNextAllowedCheck(const QDateTime &when);
+    QString cooldownMessage() const;
     bool releaseIsNewerThanInstalled(const ReleaseInfo &release) const;
     State fallbackAfterCheck() const;
     void applyRelease(const ReleaseInfo &release);
@@ -141,4 +148,5 @@ private:
     // Guards the one unconditional re-request after a 304 arrived with no
     // cached release, so a server that keeps answering 304 cannot loop.
     bool m_retriedWithoutCache = false;
+    QDateTime m_nextAllowedCheck;   // UTC; invalid = no cooldown
 };

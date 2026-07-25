@@ -69,6 +69,9 @@ inline constexpr QLatin1StringView InternalCaptureRootHistory{ "internal.capture
 // that lands with the safe updater helper (docs/updater.md stage 6/7).
 inline constexpr QLatin1StringView InternalUpdatesEtag{ "internal.updates.etag" };
 inline constexpr QLatin1StringView InternalUpdatesLastCheckUtc{ "internal.updates.last_check_utc" };
+// Rate-limit cooldown. Persisted so restarting GameHQ is not a way to keep
+// asking an exhausted budget.
+inline constexpr QLatin1StringView InternalUpdatesNextAllowedCheckUtc{ "internal.updates.next_allowed_check_utc" };
 inline constexpr QLatin1StringView InternalUpdatesLastSeenVersion{ "internal.updates.last_seen_version" };
 inline constexpr QLatin1StringView InternalUpdatesPendingPostUpdateVersion{ "internal.updates.pending_post_update_version" };
 // Version whose bundled What's New notes the user last closed. Unlike the

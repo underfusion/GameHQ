@@ -3,6 +3,7 @@
 #include "updates/UpdateDownloader.h"
 #include "updates/VersionNumber.h"
 #include "updates/UpdatePreflight.h"
+#include "updates/UpdateSchedule.h"
 
 #include <QDesktopServices>
 #include <QDir>
@@ -92,6 +93,22 @@ UpdateService::State UpdateService::fallbackAfterCheck() const
         : State::UpToDate;
 }
 
+void UpdateService::setNextAllowedCheck(const QDateTime &when)
+{
+    if (m_nextAllowedCheck == when)
+        return;
+    m_nextAllowedCheck = when;
+    Q_EMIT nextAllowedCheckChanged(m_nextAllowedCheck);
+}
+
+QString UpdateService::cooldownMessage() const
+{
+    return m_nextAllowedCheck.isValid()
+        ? QStringLiteral("GitHub temporarily limited update checks. GameHQ will try again after %1.")
+              .arg(QLocale().toString(m_nextAllowedCheck.toLocalTime(), QLocale::ShortFormat))
+        : QStringLiteral("GitHub temporarily limited update checks. GameHQ will try again later.");
+}
+
 void UpdateService::checkNow()
 {
     if (m_state == State::Checking)
@@ -100,6 +117,14 @@ void UpdateService::checkNow()
     // automatic check overlap would apply its result to the wrong request.
     if (m_revalidatingInstall)
         return;
+    // Inside a rate-limit cooldown a request is guaranteed to fail and spends
+    // quota that is already gone. Say when it can be tried instead.
+    if (UpdateSchedule::inCooldown(m_nextAllowedCheck, QDateTime::currentDateTimeUtc())) {
+        m_errorText = cooldownMessage();
+        Q_EMIT errorChanged();
+        setState(fallbackAfterCheck());
+        return;
+    }
     // Rapid re-clicks of "Check again" must not turn into request bursts
     // against GitHub's anonymous rate limit.
     if (m_lastCheckRequest.isValid() && m_lastCheckRequest.elapsed() < 5000)
@@ -161,6 +186,7 @@ void UpdateService::onSucceeded(const ReleaseInfo &release, const QString &etag)
         && releaseIsNewerThanInstalled(release);
     const bool incomplete = offerable && !release.hasCompleteUpdateAssets();
     m_retriedWithoutCache = false;
+    setNextAllowedCheck({});   // GitHub answered, so any cooldown is over
     if (!incomplete) {
         m_lastChecked = QDateTime::currentDateTimeUtc();
         Q_EMIT lastCheckedChanged();
@@ -217,6 +243,7 @@ void UpdateService::onUnchanged(const QString & /*etag*/)
         return;
     }
     m_retriedWithoutCache = false;
+    setNextAllowedCheck({});   // GitHub answered, so any cooldown is over
     m_lastChecked = QDateTime::currentDateTimeUtc();
     Q_EMIT lastCheckedChanged();
     setState(fallbackAfterCheck());
@@ -229,6 +256,7 @@ void UpdateService::onNotFound()
         cancelPreparation(QStringLiteral("The downloaded release was withdrawn before installation."));
         return;
     }
+    setNextAllowedCheck({});   // GitHub answered, so any cooldown is over
     m_lastChecked = QDateTime::currentDateTimeUtc();
     Q_EMIT lastCheckedChanged();
     m_errorText.clear();
@@ -247,10 +275,10 @@ void UpdateService::onRateLimited(qint64 resetEpochSeconds)
         return;
     }
     qWarning() << "UpdateService: GitHub rate-limited the update check, resets at" << resetAt;
-    m_errorText = resetAt.isValid()
-        ? QStringLiteral("GitHub temporarily limited update checks. GameHQ will try again after %1.")
-              .arg(QLocale().toString(resetAt.toLocalTime(), QLocale::ShortFormat))
-        : QStringLiteral("GitHub temporarily limited update checks. GameHQ will try again later.");
+    // Remember it. Reporting the limit and then forgetting it meant the hourly
+    // automatic wake walked straight back into it.
+    setNextAllowedCheck(UpdateSchedule::cooldownUntil(resetAt, QDateTime::currentDateTimeUtc()));
+    m_errorText = cooldownMessage();
     Q_EMIT errorChanged();
     // Never treat rate limiting as "no update" or as a hard failure: fall back
     // to whatever the last known-good result was.

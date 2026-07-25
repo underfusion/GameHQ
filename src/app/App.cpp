@@ -20,6 +20,7 @@
 #include "tray/TrayIcon.h"
 #include "ui/AppController.h"
 #include "ui/GalleryModel.h"
+#include "updates/UpdateSchedule.h"
 #include "updates/UpdateService.h"
 #include "updates/UpdateInstaller.h"
 #include "Brand.h"
@@ -251,6 +252,15 @@ bool App::init()
     m_updates->primeLastChecked(QDateTime::fromString(
         m_config->value(ConfigKeys::InternalUpdatesLastCheckUtc, QString()).toString(),
         Qt::ISODate).toUTC());
+    m_updates->primeNextAllowedCheck(QDateTime::fromString(
+        m_config->value(ConfigKeys::InternalUpdatesNextAllowedCheckUtc, QString()).toString(),
+        Qt::ISODate).toUTC());
+    connect(m_updates.get(), &UpdateService::nextAllowedCheckChanged, this,
+            [this](const QDateTime& when) {
+        m_config->setValue(ConfigKeys::InternalUpdatesNextAllowedCheckUtc,
+                            when.isValid() ? when.toUTC().toString(Qt::ISODate) : QString());
+        m_config->save();
+    });
     connect(m_updates.get(), &UpdateService::etagUpdated, this, [this](const QString& etag) {
         m_config->setValue(ConfigKeys::InternalUpdatesEtag, etag);
         m_config->save();
@@ -340,7 +350,11 @@ bool App::init()
             return;
         const QDateTime last = QDateTime::fromString(
             m_config->value(ConfigKeys::InternalUpdatesLastCheckUtc, QString()).toString(), Qt::ISODate);
-        if (last.isValid() && last.secsTo(QDateTime::currentDateTimeUtc()) < 24 * 3600)
+        // Two limits: GameHQ's own daily interval, and any cooldown GitHub
+        // imposed. Automatic checks stay silent during a cooldown - the user
+        // only sees a retry time if they ask for a check themselves.
+        if (!UpdateSchedule::automaticCheckAllowed(last, m_updates->nextAllowedCheck(),
+                                                   QDateTime::currentDateTimeUtc()))
             return;
         m_updates->checkNow();
     };

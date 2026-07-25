@@ -4,6 +4,16 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.44] - 2026-07-25
+
+### Fixed
+
+- When GitHub limited update checks, GameHQ told you when it would retry but
+  then asked again an hour later regardless, and restarting cleared the wait
+  entirely. The retry time is now remembered and respected, including across
+  restarts. A manual check during that wait tells you when it can try again
+  instead of failing.
+
 ## [0.6.43] - 2026-07-25
 
 ### Changed

@@ -69,6 +69,7 @@ qt_add_executable(GameHQ
     updates/UpdateInstaller.cpp updates/UpdateInstaller.h
     updates/GitHubReleaseSource.cpp updates/GitHubReleaseSource.h
     updates/ReleaseCatalog.cpp updates/ReleaseCatalog.h
+    updates/UpdateSchedule.cpp updates/UpdateSchedule.h
     updates/UpdateService.cpp updates/UpdateService.h
     # Win32 resource: embeds the multi-size app icon into GameHQ.exe.
     ${CMAKE_SOURCE_DIR}/assets/icons/gamehq.rc

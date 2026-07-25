@@ -116,6 +116,16 @@ identical after any update, successful or rolled back.
      honoured, with the reset time derived from whichever header is present. A
      bare 403/429 with neither header stays an ordinary error — treating it as
      a limit would silence update checks for everyone behind a shared address.
+   - **Cooldown.** A reported limit used to be forgotten immediately, so the
+     hourly wake asked again into a budget that was already spent.
+     `updates/UpdateSchedule.{h,cpp}` (tested by `tst_updateschedule`) turns the
+     reset time into a cooldown — 15 minutes when GitHub declines to say when,
+     or when the reset it gives has already passed. It is persisted to
+     `internal.updates.next_allowed_check_utc`, so restarting GameHQ is not a
+     way to keep asking, and it outranks the daily interval. Automatic checks
+     stay silent during a cooldown; a manual check reports the retry time
+     instead of firing a request that cannot succeed. Any non-limited answer
+     clears it.
    - **Overlap.** `checkNow()` is refused while a pre-install revalidation is
      outstanding, so its answer cannot be applied to the wrong request.
 2. **Download** — the signed manifest and its detached signature are fetched
