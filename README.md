@@ -1,6 +1,6 @@
 <div align="center">
 
-<h1><img src="assets/icons/gamehq.svg" width="46" alt="GameHQ icon" align="middle"> GameHQ</h1>
+<p><img src="docs/assets/gamehq-wordmark.svg" width="190" alt="GameHQ"></p>
 
 **Save screenshots and recent gameplay with controller-first controls.**
 

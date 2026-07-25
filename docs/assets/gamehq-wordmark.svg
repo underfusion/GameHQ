@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="236" height="58" viewBox="0 0 236 58" role="img" aria-labelledby="title">
+  <title id="title">GameHQ</title>
+  <defs>
+    <linearGradient id="wordmark-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1d2547"/>
+      <stop offset=".55" stop-color="#131a33"/>
+      <stop offset="1" stop-color="#0b0f20"/>
+    </linearGradient>
+    <linearGradient id="wordmark-accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8b6bff"/>
+      <stop offset="1" stop-color="#3fa9ff"/>
+    </linearGradient>
+    <linearGradient id="wordmark-frame" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#aebdf5" stop-opacity=".95"/>
+      <stop offset="1" stop-color="#7f92d9" stop-opacity=".85"/>
+    </linearGradient>
+    <radialGradient id="wordmark-glow" cx=".5" cy=".48" r=".55">
+      <stop offset="0" stop-color="#6d8dff" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#6d8dff" stop-opacity="0"/>
+    </radialGradient>
+    <style>
+      .wordmark-text { fill: #f0f3f8; }
+      @media (prefers-color-scheme: light) {
+        .wordmark-text { fill: #1f2328; }
+      }
+    </style>
+  </defs>
+
+  <g transform="translate(2 2) scale(.10546875)">
+    <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#wordmark-bg)"/>
+    <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#wordmark-glow)"/>
+    <rect x="22" y="22" width="468" height="468" rx="106" fill="none" stroke="#fff" stroke-opacity=".06" stroke-width="4"/>
+    <g stroke="url(#wordmark-frame)" stroke-width="26" stroke-linecap="round" fill="none">
+      <path d="M136 186v-32q0-18 18-18h32"/>
+      <path d="M376 186v-32q0-18-18-18h-32"/>
+      <path d="M136 326v32q0 18 18 18h32"/>
+      <path d="M376 326v32q0 18-18 18h-32"/>
+    </g>
+    <path d="M213 176 342 250q10 6 0 12L213 336q-11 6-11-7V183q0-13 11-7Z" fill="url(#wordmark-accent)" stroke="url(#wordmark-accent)" stroke-width="14" stroke-linejoin="round"/>
+  </g>
+
+  <text class="wordmark-text" x="66" y="43" font-family="Segoe UI,Inter,Arial,sans-serif" font-size="38" font-weight="700" letter-spacing="-.5">GameHQ</text>
+</svg>
