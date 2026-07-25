@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GameHQ — Controller-first game capture for Windows</title>
-<meta name="description" content="GameHQ is a portable Windows capture app for screenshots, configurable recent-gameplay clips, clip-frame grabs, and a controller-friendly in-game gallery, with themes and DualSense, XInput, WinMM, keyboard, and mouse support.">
+<meta name="description" content="GameHQ 0.7.0 is a controller-first Windows capture app with automatic updates, HDR-aware screenshots, recent-gameplay clips, an in-game gallery, a Windows installer, Portable mode, and Playnite integration.">
 <style>
   :root {
     --bg:#0b0f20; --bg2:#131a33; --card:#171f3d; --text:#e8eaf0; --muted:#8b93a7;
@@ -24,6 +24,7 @@
   .hero pre em { color:var(--accent2); font-style:normal; }
   .download { margin:-18px 0 40px; color:var(--muted); text-align:center; font-size:14px; }
   .download a { display:inline-block; padding:10px 18px; margin-right:8px; border-radius:10px; color:#fff; text-decoration:none; font-weight:600; background:linear-gradient(90deg,var(--accent1),var(--accent2)); }
+  .download a.secondary { background:transparent; border:1px solid rgba(139,107,255,.65); }
   h2 { font-size:22px; margin:40px 0 16px; }
   .about p { color:#c7cde0; font-size:15px; line-height:1.75; margin-bottom:14px; max-width:70ch; }
   .about b { color:var(--text); }
@@ -77,10 +78,15 @@
 </pre>
   </div>
 
-  <p class="download"><a href="https://github.com/underfusion/GameHQ/releases/latest">Download GameHQ 0.7.0</a> Windows 10 1903+ · x64 Setup and portable ZIP</p>
+  <p class="download">
+    <a href="https://github.com/underfusion/GameHQ/releases/latest">Download GameHQ 0.7.0</a>
+    <a class="secondary" href="https://github.com/underfusion/GameHQ/releases/download/v0.7.0/GameHQ_Integration_0_4_12.pext">Download Playnite plugin 0.4.12</a>
+    Windows 10 1903+ · x64 Setup and portable ZIP
+  </p>
 
   <h2>What is GameHQ?</h2>
   <div class="about">
+    <p><b>GameHQ 0.7.0 adds automatic updates, HDR-aware capture, a standard per-user Windows installer, and Playnite integration.</b> Production-signed update manifests protect authenticity while failed updates can roll back safely.</p>
     <p><b>GameHQ brings one coherent capture workflow to PC gaming.</b> Tap one button for a screenshot, hold it after something memorable happens to save recent gameplay, and open a gallery above the running game without alt-tabbing. Captures are identified, grouped, and filed automatically per game.</p>
     <p>At its heart is a <b>configurable rolling replay buffer</b>: while you play, GameHQ encodes recent gameplay with system audio into crash-safe segments on disk. Hold Share and those previous minutes become a normal H.264 MP4 with a thumbnail and game metadata. Tap Share for an instant PNG or JPEG, or focus a recorded clip and press Share or <b>S</b> to save the exact displayed video frame as a screenshot.</p>
     <p>The <b>in-game overlay</b> supports browsing, playback, favorites, reveal, and deletion from a controller. It refreshes immediately after new captures and automatically closes when Windows focus moves to Start, the task switcher, or another application. The desktop gallery adds thumbnail zoom, bulk selection, watched folders, and a unified view of Game Bar, Steam, NVIDIA, and OBS captures without modifying imported files.</p>
@@ -108,18 +114,23 @@
     <div class="card"><h3>Controller recovery</h3><p>Detects supported Sony pads hidden by HidHide and offers a safe allow-list fix without disabling remapping software.</p></div>
   </div>
 
+  <h2>Playnite integration</h2>
+  <div class="card">
+    <h3>Launch GameHQ with your games</h3>
+    <p>GameHQ Integration 0.4.12 discovers GameHQ, launches it when a game starts, forwards game lifecycle events, restores state after reconnects, and provides path and connection diagnostics. Download the <a href="https://github.com/underfusion/GameHQ/releases/download/v0.7.0/GameHQ_Integration_0_4_12.pext" style="color:var(--accent2)">Playnite .pext package</a> from the latest GameHQ release.</p>
+  </div>
+
   <h2>Current release</h2>
   <div class="status">
     <span class="pill now">0.7.0 — Beta</span>
-    <span class="pill">Recent-gameplay clips</span>
-    <span class="pill">In-game gallery</span>
-    <span class="pill">13 themes</span>
-    <span class="pill">Clip-frame screenshots</span>
-    <span class="pill">HidHide recovery</span>
+    <span class="pill">Automatic updates</span>
+    <span class="pill">HDR capture</span>
+    <span class="pill">Windows Setup + Portable</span>
+    <span class="pill">Playnite plugin 0.4.12</span>
   </div>
 
   <footer>
-    GameHQ 0.7.0 Beta · <a href="https://github.com/underfusion/GameHQ">GitHub</a> · <a href="https://github.com/underfusion/GameHQ/releases/latest">Download</a> · MIT licensed · Windows 10 1903+ · No telemetry or game-process injection.
+    GameHQ 0.7.0 Beta · <a href="https://github.com/underfusion/GameHQ">GitHub</a> · <a href="https://github.com/underfusion/GameHQ/releases/latest">Download</a> · <a href="https://github.com/underfusion/GameHQ/releases/download/v0.7.0/GameHQ_Integration_0_4_12.pext">Playnite plugin</a> · MIT licensed · Windows 10 1903+ · No telemetry or game-process injection.
   </footer>
 
 </div>
