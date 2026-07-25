@@ -37,7 +37,4 @@
   <path d="M213 176 L342 250 q10 6 0 12 L213 336 q-11 6 -11 -7 V183 q0 -13 11 -7 Z"
         fill="url(#accent)" stroke="url(#accent)" stroke-width="14" stroke-linejoin="round"/>
 
-  <!-- Record dot (replay buffer) -->
-  <circle cx="366" cy="146" r="17" fill="#ff5d73"/>
-  <circle cx="366" cy="146" r="17" fill="none" stroke="#ffffff" stroke-opacity="0.25" stroke-width="4"/>
 </svg>
