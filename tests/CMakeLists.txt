@@ -153,6 +153,18 @@ gamehq_add_test(tst_captureiconrefresh
     "${CMAKE_SOURCE_DIR}/src/core/GameIdentity.cpp")
 target_link_libraries(tst_captureiconrefresh PRIVATE Qt6::Sql Qt6::Gui Qt6::Widgets)
 
+gamehq_add_test(tst_capturedatabaserepair
+    tst_capturedatabaserepair.cpp
+    "${CMAKE_SOURCE_DIR}/src/storage/CaptureDatabase.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/CaptureQueries.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameRowRepair.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameMetadataBackfill.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameIconCache.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/Paths.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/LegacyMigration.cpp"
+    "${CMAKE_SOURCE_DIR}/src/core/GameIdentity.cpp")
+target_link_libraries(tst_capturedatabaserepair PRIVATE Qt6::Sql Qt6::Gui Qt6::Widgets)
+
 gamehq_add_test(tst_bindingeditor
     tst_bindingeditor.cpp
     "${CMAKE_SOURCE_DIR}/src/input/ActionCatalog.cpp"

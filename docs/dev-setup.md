@@ -103,6 +103,14 @@ Each test compiles the few sources it needs directly, since `GameHQ` is an
 executable with no library to link against. If a unit needs half the app to
 build, it is not pure logic and does not belong here.
 
+The one deliberate exception is storage: correctness there is about what
+survives a failure, which cannot be checked without a real database. Those
+tests use a throwaway SQLite file under `QTemporaryDir`. `tst_capturedatabaserepair`
+injects a failure into each durable step of the startup repair pass with a
+SQLite trigger that raises `ABORT`, then asserts the whole pass rolled back —
+including the "repairs done" marker, so the pass is retried instead of skipped
+forever.
+
 ## MSVC note
 
 The production project currently uses the MinGW raw-ABI path for Windows

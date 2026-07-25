@@ -4,6 +4,16 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.34] - 2026-07-25
+
+### Added
+
+- Failure-injection tests for the startup library repair. Each durable step of
+  the pass — the duplicate-game merge, the "repairs done" marker and the icon
+  format marker — is now made to fail on purpose, and the test asserts the
+  database comes back exactly as it was and that the next start finishes the
+  repair it rolled back.
+
 ## [0.6.33] - 2026-07-25
 
 ### Fixed
