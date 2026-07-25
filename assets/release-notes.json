@@ -1,5 +1,5 @@
 {
-  "version": "0.6.34",
+  "version": "0.6.35",
   "sections": [
     {
       "title": "Security",
@@ -18,7 +18,8 @@
         "An unreadable settings file is now kept safe instead of being overwritten.",
         "A failed library repair is undone and retried instead of being marked done.",
         "A storage folder GameHQ cannot create is now named instead of silently ignored.",
-        "The local connection now closes cleanly instead of sending a damaged message."
+        "The local connection now closes cleanly instead of sending a damaged message.",
+        "GameHQ now starts correctly from long install paths and passes your arguments through unchanged."
       ]
     },
     {

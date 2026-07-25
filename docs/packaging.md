@@ -134,6 +134,16 @@ launcher keeps those files one level down while leaving one obvious executable
 at the root. `Paths.cpp` accepts `portable.flag` beside the real exe or one level
 above it, so both package folders store user data at their clean root.
 
+The launcher forwards its command line to `app\GameHQ.exe` verbatim: it replaces
+only the program name and never re-quotes the arguments, so quotes, embedded
+spaces and trailing backslashes reach the app exactly as typed
+(`src/launcher/LauncherCommandLine.cpp`, covered by `tst_launchercommandline`
+against a real child process). Nothing in that path assumes `MAX_PATH`; a
+command line Windows could not carry, or an install path too deep for
+`CreateProcessW`, is reported and refused rather than truncated. Switches such
+as `--post-update` are matched as whole arguments, so a capture path containing
+that text is not mistaken for the switch.
+
 ## Configure, build, and package
 
 Configure once into the developer-only `out/` tree (full toolchain command is in

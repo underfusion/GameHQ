@@ -214,6 +214,7 @@ set_target_properties(GameHQ PROPERTIES
 # the real executable and every runtime dependency live below app/.
 add_executable(GameHQLauncher WIN32
     launcher/LauncherMain.cpp
+    launcher/LauncherCommandLine.cpp launcher/LauncherCommandLine.h
     launcher/UpdaterPromotion.cpp launcher/UpdaterPromotion.h
     core/UpdateMaintenance.cpp core/UpdateMaintenance.h
     ${CMAKE_SOURCE_DIR}/assets/icons/gamehq.rc

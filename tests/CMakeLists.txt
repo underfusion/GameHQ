@@ -182,6 +182,20 @@ gamehq_add_test(tst_bindingeditor
     "${CMAKE_SOURCE_DIR}/src/core/GameIdentity.cpp")
 target_link_libraries(tst_bindingeditor PRIVATE Qt6::Sql Qt6::Gui Qt6::Widgets)
 
+# Stand-in for app\GameHQ.exe: it reports the arguments Windows actually handed
+# it, so the launcher's pass-through can be checked against a real process.
+add_executable(launcher_argecho_fixture launcher_argecho_fixture.cpp)
+target_link_options(launcher_argecho_fixture PRIVATE -static -municode)
+target_link_libraries(launcher_argecho_fixture PRIVATE shell32)
+set_target_properties(launcher_argecho_fixture PROPERTIES WIN32_EXECUTABLE FALSE)
+
+gamehq_add_test(tst_launchercommandline
+    tst_launchercommandline.cpp
+    "${CMAKE_SOURCE_DIR}/src/launcher/LauncherCommandLine.cpp")
+target_compile_definitions(tst_launchercommandline PRIVATE
+    LAUNCHER_ARGECHO_FIXTURE="$<TARGET_FILE:launcher_argecho_fixture>")
+add_dependencies(tst_launchercommandline launcher_argecho_fixture)
+
 gamehq_add_test(tst_updatedownloader
     tst_updatedownloader.cpp
     "${CMAKE_SOURCE_DIR}/src/updates/UpdateDownloader.cpp")

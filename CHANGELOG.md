@@ -4,6 +4,21 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.35] - 2026-07-25
+
+### Fixed
+
+- The package launcher built its paths and the command line it passed to
+  `app\GameHQ.exe` in fixed buffers, so a long install path was silently
+  truncated and a long argument list could overrun the buffer entirely. All of
+  it is now dynamic; a command line Windows cannot carry, or an install path
+  too deep for Windows to start, is reported instead.
+- Arguments are forwarded exactly as typed. Quotes, embedded spaces and
+  trailing backslashes previously survived by luck rather than by rule.
+- `--post-update` is recognised only as a whole argument. Opening a file whose
+  name merely contained that text made the launcher treat the start as part of
+  an update and skip the "update in progress" guard.
+
 ## [0.6.34] - 2026-07-25
 
 ### Added
