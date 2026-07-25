@@ -43,6 +43,9 @@ Clean-source validation resolves Ninja from an explicit parameter, `NINJA_EXE`,
 `PATH`, or the optional local developer fallback. CI bootstraps and passes the
 checksum-pinned Ninja version explicitly; source archives never contain it.
 
+`packaging/public-app-version.txt` pins README and website buttons to the newest
+published app release, so candidate commits never expose unavailable downloads.
+
 ## Distribution identity contract
 
 [`packaging/distribution-identity.psd1`](../packaging/distribution-identity.psd1)
