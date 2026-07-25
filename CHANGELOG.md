@@ -4,6 +4,13 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.45] - 2026-07-25
+
+### Fixed
+
+- The unsigned Beta workflow now installs the valid Qt 6.8.3 module set and
+  stops on the first failed native command instead of continuing without Qt.
+
 ## [0.6.44] - 2026-07-25
 
 ### Fixed

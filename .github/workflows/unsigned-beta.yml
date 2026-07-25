@@ -31,9 +31,10 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           python -m pip install --disable-pip-version-check aqtinstall==3.3.0
           python -m aqt install-qt windows desktop 6.8.3 win64_mingw `
-            -O "$PWD\tools\Qt" -m qtmultimedia qtsvg
+            -O "$PWD\tools\Qt" -m qtmultimedia
           python -m aqt install-tool windows desktop tools_mingw1310 `
             -O "$PWD\tools\Qt"
 
@@ -41,6 +42,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           $qt = "$PWD\tools\Qt\6.8.3\mingw_64"
           $mingw = "$PWD\tools\Qt\Tools\mingw1310_64\bin"
           $env:PATH = "$mingw;$qt\bin;$env:PATH"
@@ -57,6 +59,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           $qt = "$PWD\tools\Qt\6.8.3\mingw_64"
           $env:PATH = "$qt\bin;$env:PATH"
           ctest --test-dir out --output-on-failure
