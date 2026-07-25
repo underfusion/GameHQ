@@ -248,6 +248,9 @@ bool App::init()
     // from QML always bypasses this cache.
     m_updates->primeCachedEtag(m_config->value(ConfigKeys::InternalUpdatesEtag, QString()).toString());
     m_updates->primeSkippedVersion(m_config->value(ConfigKeys::UpdatesSkippedVersion, QString()).toString());
+    m_updates->primeLastChecked(QDateTime::fromString(
+        m_config->value(ConfigKeys::InternalUpdatesLastCheckUtc, QString()).toString(),
+        Qt::ISODate).toUTC());
     connect(m_updates.get(), &UpdateService::etagUpdated, this, [this](const QString& etag) {
         m_config->setValue(ConfigKeys::InternalUpdatesEtag, etag);
         m_config->save();

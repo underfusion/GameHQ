@@ -96,6 +96,10 @@ void UpdateService::checkNow()
 {
     if (m_state == State::Checking)
         return;
+    // A pre-install revalidation owns the source until it answers; letting an
+    // automatic check overlap would apply its result to the wrong request.
+    if (m_revalidatingInstall)
+        return;
     // Rapid re-clicks of "Check again" must not turn into request bursts
     // against GitHub's anonymous rate limit.
     if (m_lastCheckRequest.isValid() && m_lastCheckRequest.elapsed() < 5000)
@@ -104,7 +108,16 @@ void UpdateService::checkNow()
     m_errorText.clear();
     Q_EMIT errorChanged();
     setState(State::Checking);
-    m_source->checkLatest(m_etag);
+    m_source->checkLatest(conditionalEtag());
+}
+
+// An ETag is only useful next to the release it described. After a restart the
+// ETag was primed from config but the release was not, so the first check sent
+// If-None-Match, got 304, and resolved to UpToDate - an available update simply
+// disappeared until GitHub's ETag happened to change.
+QString UpdateService::conditionalEtag() const
+{
+    return m_release.has_value() ? m_etag : QString();
 }
 
 void UpdateService::applyRelease(const ReleaseInfo &release)
@@ -147,6 +160,7 @@ void UpdateService::onSucceeded(const ReleaseInfo &release, const QString &etag)
     const bool offerable = !release.draft && !release.prerelease
         && releaseIsNewerThanInstalled(release);
     const bool incomplete = offerable && !release.hasCompleteUpdateAssets();
+    m_retriedWithoutCache = false;
     if (!incomplete) {
         m_lastChecked = QDateTime::currentDateTimeUtc();
         Q_EMIT lastCheckedChanged();
@@ -192,6 +206,17 @@ void UpdateService::onUnchanged(const QString & /*etag*/)
         cancelPreparation(QStringLiteral("The release could not be freshly revalidated before installation."));
         return;
     }
+    // "Nothing changed" is only an answer when there is a cached result it can
+    // refer to. Without one, ask again unconditionally rather than reporting
+    // up to date on the strength of a release we do not have.
+    if (!m_release.has_value() && !m_retriedWithoutCache) {
+        m_retriedWithoutCache = true;
+        m_etag.clear();
+        Q_EMIT etagUpdated(m_etag);
+        m_source->checkLatest(QString());
+        return;
+    }
+    m_retriedWithoutCache = false;
     m_lastChecked = QDateTime::currentDateTimeUtc();
     Q_EMIT lastCheckedChanged();
     setState(fallbackAfterCheck());

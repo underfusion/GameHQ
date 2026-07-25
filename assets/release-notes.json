@@ -1,5 +1,5 @@
 {
-  "version": "0.6.39",
+  "version": "0.6.40",
   "sections": [
     {
       "title": "Security",
@@ -24,7 +24,8 @@
         "Setup and Uninstall no longer get stuck after an interrupted update, and never run while one is in progress.",
         "A capture folder on another drive or a network share is no longer lost when a portable GameHQ moves.",
         "Importing a portable profile now refuses instead of overwriting sounds or data already in place.",
-        "The log file no longer grows without limit, and a log folder GameHQ cannot write to is reported."
+        "The log file no longer grows without limit, and a log folder GameHQ cannot write to is reported.",
+        "Update checks now find a new release reliably after a restart and back off correctly when GitHub asks."
       ]
     },
     {

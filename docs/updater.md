@@ -95,6 +95,29 @@ identical after any update, successful or rolled back.
    Discovery only locates candidate URLs; it never establishes trust. A release
    that does not publish both `gamehq-release.json` and `gamehq-release.sig`
    is skipped, because nothing could authorise it.
+
+   The page-reading half lives in `updates/ReleaseCatalog.{h,cpp}` so it can be
+   tested without a network (`tst_releasecatalog`):
+
+   - **Paging.** The repo publishes `playnite-v*` plugin releases alongside app
+     tags, so `/releases/latest` cannot be trusted and a small page can contain
+     no app release at all. Requests use `per_page=100` and fetch at most three
+     pages, stopping as soon as an installable app release is found or a short
+     page proves there are no more. The conditional `If-None-Match` header is
+     only ever sent for page 1, since the ETag describes that page.
+   - **Cache.** An ETag is only sent when there is a cached release it refers
+     to. Priming just the ETag across a restart made the first check answer 304
+     and resolve to "up to date", hiding a genuinely available update; a 304
+     that arrives with no cached release now triggers exactly one unconditional
+     re-request. `internal.updates.last_check_utc` is also read back at startup
+     (`App::init()`), so the 24-hour gate no longer restarts on every launch.
+   - **Rate limits.** GitHub's primary limit sends `x-ratelimit-remaining: 0`
+     and its secondary limit sends `Retry-After` with no counter; both are
+     honoured, with the reset time derived from whichever header is present. A
+     bare 403/429 with neither header stays an ordinary error — treating it as
+     a limit would silence update checks for everyone behind a shared address.
+   - **Overlap.** `checkNow()` is refused while a pre-install revalidation is
+     outstanding, so its answer cannot be applied to the wrong request.
 2. **Download** — the signed manifest and its detached signature are fetched
    *first* and verified with Ed25519 over their exact downloaded bytes
    (`src/security/ReleaseManifest.cpp`). The manifest's own `keyId` never

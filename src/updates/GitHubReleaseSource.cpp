@@ -1,11 +1,9 @@
 #include "updates/GitHubReleaseSource.h"
-#include "updates/VersionNumber.h"
+#include "updates/ReleaseCatalog.h"
 
 #include <QDateTime>
 #include <QJsonArray>
 #include <QJsonDocument>
-#include <QJsonObject>
-#include <QJsonValue>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -15,36 +13,7 @@ namespace
 {
 constexpr int kTransferTimeoutMs = 15000;
 constexpr int kMaxAttempts = 2; // one retry on a transient network error
-
-// Fixed asset names emitted by tools/release-manifest. They are version-free
-// on purpose: the version lives inside the signed bytes.
-constexpr QLatin1StringView kManifestAssetName("gamehq-release.json");
-constexpr QLatin1StringView kSignatureAssetName("gamehq-release.sig");
-
-QString updateZipName(const QString &normalizedVersion)
-{
-    return QStringLiteral("GameHQ-%1-win64-update.zip").arg(normalizedVersion);
 }
-
-QString updateZipChecksumName(const QString &normalizedVersion)
-{
-    return updateZipName(normalizedVersion) + QStringLiteral(".sha256");
-}
-
-// GitHub reports "confirmed" rate limiting via these headers; a bare 403/429
-// without them is an ordinary source error, not a rate limit, and must not
-// be treated as one (a persistent false positive would make GameHQ stop
-// checking for updates for users behind shared NAT).
-bool isConfirmedRateLimit(const QNetworkReply *reply, qint64 &resetEpochSecondsOut)
-{
-    const QByteArray remaining = reply->rawHeader("x-ratelimit-remaining");
-    const QByteArray reset = reply->rawHeader("x-ratelimit-reset");
-    if (remaining.isEmpty() || remaining.toLongLong() != 0)
-        return false;
-    resetEpochSecondsOut = reset.isEmpty() ? 0 : reset.toLongLong();
-    return true;
-}
-} // namespace
 
 GitHubReleaseSource::GitHubReleaseSource(QString owner, QString repo, QObject *parent)
     : QObject(parent)
@@ -56,36 +25,45 @@ GitHubReleaseSource::GitHubReleaseSource(QString owner, QString repo, QObject *p
 
 void GitHubReleaseSource::checkLatest(const QString &ifNoneMatchEtag)
 {
-    sendRequest(ifNoneMatchEtag, kMaxAttempts);
+    m_best.reset();
+    m_firstPageEtag.clear();
+    sendRequest(ifNoneMatchEtag, kMaxAttempts, 1);
 }
 
-void GitHubReleaseSource::sendRequest(const QString &ifNoneMatchEtag, int attemptsLeft)
+void GitHubReleaseSource::sendRequest(const QString &ifNoneMatchEtag, int attemptsLeft, int page)
 {
-    const QString url = QStringLiteral("https://api.github.com/repos/%1/%2/releases?per_page=20")
-                             .arg(m_owner, m_repo);
+    const QString url = QStringLiteral("https://api.github.com/repos/%1/%2/releases?per_page=%3&page=%4")
+                            .arg(m_owner, m_repo)
+                            .arg(ReleaseCatalog::kPageSize)
+                            .arg(page);
     QNetworkRequest request{QUrl(url)};
     request.setHeader(QNetworkRequest::UserAgentHeader,
                        QStringLiteral("GameHQ-UpdateChecker (+https://github.com/%1/%2)").arg(m_owner, m_repo));
     request.setRawHeader("Accept", "application/vnd.github+json");
     request.setRawHeader("X-GitHub-Api-Version", "2022-11-28");
-    if (!ifNoneMatchEtag.isEmpty())
+    // The ETag belongs to page 1: a conditional request for a later page would
+    // compare against the wrong resource.
+    if (!ifNoneMatchEtag.isEmpty() && page == 1)
         request.setRawHeader("If-None-Match", ifNoneMatchEtag.toUtf8());
     request.setTransferTimeout(kTransferTimeoutMs);
 
     QNetworkReply *reply = m_network->get(request);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, ifNoneMatchEtag, attemptsLeft]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, ifNoneMatchEtag, attemptsLeft, page]() {
         reply->deleteLater();
-        handleReply(reply, ifNoneMatchEtag, attemptsLeft);
+        handleReply(reply, ifNoneMatchEtag, attemptsLeft, page);
     });
 }
 
-void GitHubReleaseSource::handleReply(QNetworkReply *reply, const QString &ifNoneMatchEtag, int attemptsLeft)
+void GitHubReleaseSource::handleReply(QNetworkReply *reply, const QString &ifNoneMatchEtag,
+                                       int attemptsLeft, int page)
 {
     const int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
 
-    qint64 resetEpoch = 0;
-    if ((httpStatus == 403 || httpStatus == 429) && isConfirmedRateLimit(reply, resetEpoch)) {
-        Q_EMIT rateLimited(resetEpoch);
+    const ReleaseCatalog::RateLimit limit = ReleaseCatalog::rateLimitFrom(
+        httpStatus, reply->rawHeader("x-ratelimit-remaining"), reply->rawHeader("x-ratelimit-reset"),
+        reply->rawHeader("retry-after"), QDateTime::currentSecsSinceEpoch());
+    if (limit.limited) {
+        Q_EMIT rateLimited(limit.resetEpochSeconds);
         return;
     }
 
@@ -95,7 +73,11 @@ void GitHubReleaseSource::handleReply(QNetworkReply *reply, const QString &ifNon
     }
 
     if (httpStatus == 404) {
-        Q_EMIT notFound();
+        // A later page past the end is not a missing repository.
+        if (page > 1)
+            finish();
+        else
+            Q_EMIT notFound();
         return;
     }
 
@@ -104,9 +86,15 @@ void GitHubReleaseSource::handleReply(QNetworkReply *reply, const QString &ifNon
         // retry once before giving up.
         const bool transient = httpStatus == 0;
         if (transient && attemptsLeft > 1) {
-            QTimer::singleShot(1000, this, [this, ifNoneMatchEtag, attemptsLeft]() {
-                sendRequest(ifNoneMatchEtag, attemptsLeft - 1);
+            QTimer::singleShot(1000, this, [this, ifNoneMatchEtag, attemptsLeft, page]() {
+                sendRequest(ifNoneMatchEtag, attemptsLeft - 1, page);
             });
+            return;
+        }
+        // Pages already read still hold a usable answer; only a failure on the
+        // first page leaves nothing to report.
+        if (page > 1 && m_best.has_value()) {
+            finish();
             return;
         }
         Q_EMIT failed(reply->errorString());
@@ -114,7 +102,7 @@ void GitHubReleaseSource::handleReply(QNetworkReply *reply, const QString &ifNon
     }
 
     const QByteArray body = reply->readAll();
-    if (body.size() > 4 * 1024 * 1024) {
+    if (body.size() > 8 * 1024 * 1024) {
         Q_EMIT failed(QStringLiteral("release response is unreasonably large"));
         return;
     }
@@ -124,97 +112,30 @@ void GitHubReleaseSource::handleReply(QNetworkReply *reply, const QString &ifNon
         return;
     }
 
-    // The repo also publishes playnite-v* plugin releases (see t32). Scan
-    // every release instead of trusting /releases/latest, and keep only
-    // entries that are non-draft, non-prerelease, whose tag is an exact
-    // "vX.Y.Z" app version (VersionNumber::parse rejects "playnite-v0.1.0"
-    // and any other non-matching tag outright), and that carry the exact
-    // update assets this app knows how to install. Among those, pick the
-    // highest version.
-    //
-    // Nothing here establishes trust: this only locates candidate URLs. A
-    // release without both manifest assets is skipped because there would be
-    // nothing to verify it with.
-    std::optional<VersionNumber> bestVersion;
-    QJsonObject bestObj;
-    QString bestZipName;
-    QString bestZipUrl;
-    qint64 bestZipSize = 0;
-    QString bestChecksumUrl;
-    QString bestManifestUrl;
-    QString bestSignatureUrl;
+    if (page == 1)
+        m_firstPageEtag = QString::fromUtf8(reply->rawHeader("ETag"));
 
     const QJsonArray releases = doc.array();
-    for (const QJsonValue &releaseValue : releases) {
-        const QJsonObject obj = releaseValue.toObject();
-        if (obj.value(QStringLiteral("draft")).toBool() || obj.value(QStringLiteral("prerelease")).toBool())
-            continue;
+    const auto candidate = ReleaseCatalog::selectBest(releases);
+    // Pages arrive newest first, so the first page that yields a candidate
+    // already holds the highest version; keep looking only while nothing has
+    // been found. A repo that publishes a plugin release between every app
+    // release used to push the app off a single 20-entry page entirely.
+    if (candidate.has_value() && !m_best.has_value())
+        m_best = candidate;
 
-        const QString tagName = obj.value(QStringLiteral("tag_name")).toString();
-        const auto version = VersionNumber::parse(tagName);
-        if (!version.has_value())
-            continue;
-        const QString normalizedVersion = version->toString();
-
-        const QString expectedZip = updateZipName(normalizedVersion);
-        const QString expectedChecksum = updateZipChecksumName(normalizedVersion);
-        QString zipUrl;
-        qint64 zipSize = 0;
-        QString checksumUrl;
-        QString manifestUrl;
-        QString signatureUrl;
-        const QJsonArray assets = obj.value(QStringLiteral("assets")).toArray();
-        for (const QJsonValue &assetValue : assets) {
-            const QJsonObject asset = assetValue.toObject();
-            const QString name = asset.value(QStringLiteral("name")).toString();
-            if (name == expectedZip) {
-                zipUrl = asset.value(QStringLiteral("browser_download_url")).toString();
-                zipSize = static_cast<qint64>(asset.value(QStringLiteral("size")).toDouble());
-            } else if (name == expectedChecksum) {
-                checksumUrl = asset.value(QStringLiteral("browser_download_url")).toString();
-            } else if (name == kManifestAssetName) {
-                manifestUrl = asset.value(QStringLiteral("browser_download_url")).toString();
-            } else if (name == kSignatureAssetName) {
-                signatureUrl = asset.value(QStringLiteral("browser_download_url")).toString();
-            }
-        }
-        if (zipUrl.isEmpty() || manifestUrl.isEmpty() || signatureUrl.isEmpty())
-            continue; // not an installable app release (or assets still uploading)
-
-        if (bestVersion.has_value() && *version <= *bestVersion)
-            continue;
-
-        bestVersion = version;
-        bestObj = obj;
-        bestZipName = expectedZip;
-        bestZipUrl = zipUrl;
-        bestZipSize = zipSize;
-        bestChecksumUrl = checksumUrl;
-        bestManifestUrl = manifestUrl;
-        bestSignatureUrl = signatureUrl;
+    if (!m_best.has_value() && ReleaseCatalog::mayHaveMorePages(releases.size(), page)) {
+        sendRequest(ifNoneMatchEtag, kMaxAttempts, page + 1);
+        return;
     }
+    finish();
+}
 
-    if (!bestVersion.has_value()) {
+void GitHubReleaseSource::finish()
+{
+    if (!m_best.has_value()) {
         Q_EMIT notFound();
         return;
     }
-    const QString normalizedVersion = bestVersion->toString();
-
-    ReleaseInfo info;
-    info.version = normalizedVersion;
-    info.name = bestObj.value(QStringLiteral("name")).toString();
-    info.notes = bestObj.value(QStringLiteral("body")).toString();
-    info.publishedAt = QDateTime::fromString(bestObj.value(QStringLiteral("published_at")).toString(), Qt::ISODate);
-    info.webUrl = bestObj.value(QStringLiteral("html_url")).toString();
-    info.prerelease = false;
-    info.draft = false;
-    info.zipName = bestZipName;
-    info.zipUrl = bestZipUrl;
-    info.zipSize = bestZipSize;
-    info.checksumUrl = bestChecksumUrl;
-    info.manifestUrl = bestManifestUrl;
-    info.signatureUrl = bestSignatureUrl;
-
-    const QString etag = QString::fromUtf8(reply->rawHeader("ETag"));
-    Q_EMIT succeeded(info, etag);
+    Q_EMIT succeeded(*m_best, m_firstPageEtag);
 }

@@ -4,6 +4,21 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.40] - 2026-07-25
+
+### Fixed
+
+- After a restart, the first update check could report "up to date" even when a
+  newer release existed, because GameHQ remembered the server's cache tag but
+  not the release it described.
+- The update check only looked at the 20 most recent releases. Plugin releases
+  published between app releases could push the app release out of view, so no
+  update was ever found. It now reads more releases, in pages, with a limit.
+- GitHub's second kind of rate limit was treated as an ordinary error, so
+  GameHQ retried straight back into it instead of waiting.
+- The "check at most once a day" timer restarted on every launch, so GameHQ
+  checked more often than intended.
+
 ## [0.6.39] - 2026-07-25
 
 ### Fixed

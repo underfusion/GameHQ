@@ -80,7 +80,13 @@ public:
     // ...) is owned by the caller; these let it prime/read this instance.
     void primeCachedEtag(const QString &etag) { m_etag = etag; }
     void primeSkippedVersion(const QString &version) { m_skippedVersion = version; }
+    // Without this the persisted timestamp was never read back, so the "at most
+    // one automatic check a day" gate started over on every launch.
+    void primeLastChecked(const QDateTime &when) { m_lastChecked = when; }
     QString cachedEtag() const { return m_etag; }
+    // The ETag actually worth sending: an ETag with no cached release behind it
+    // only buys a 304 that resolves to "up to date".
+    QString conditionalEtag() const;
 
     Q_INVOKABLE void checkNow();
     Q_INVOKABLE void downloadUpdate();
@@ -132,4 +138,7 @@ private:
     QElapsedTimer m_lastCheckRequest;
     bool m_revalidatingInstall = false;
     bool m_failedDuringCheck = false;
+    // Guards the one unconditional re-request after a 304 arrived with no
+    // cached release, so a server that keeps answering 304 cannot loop.
+    bool m_retriedWithoutCache = false;
 };

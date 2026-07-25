@@ -5,6 +5,8 @@
 #include <QObject>
 #include <QString>
 
+#include <optional>
+
 class QNetworkAccessManager;
 class QNetworkReply;
 
@@ -33,10 +35,16 @@ Q_SIGNALS:
     void failed(const QString &errorText);
 
 private:
-    void sendRequest(const QString &ifNoneMatchEtag, int attemptsLeft);
-    void handleReply(QNetworkReply *reply, const QString &ifNoneMatchEtag, int attemptsLeft);
+    void sendRequest(const QString &ifNoneMatchEtag, int attemptsLeft, int page);
+    void handleReply(QNetworkReply *reply, const QString &ifNoneMatchEtag, int attemptsLeft,
+                     int page);
+    void finish();
 
     QNetworkAccessManager *m_network;
     QString m_owner;
     QString m_repo;
+    // Best candidate found so far in this checkLatest() call, and the ETag of
+    // the first page - the only page a conditional request may be made against.
+    std::optional<ReleaseInfo> m_best;
+    QString m_firstPageEtag;
 };
