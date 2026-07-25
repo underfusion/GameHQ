@@ -72,7 +72,21 @@ bool App::init()
             << "data:" << Paths::dataDir();
 
     m_config = std::make_unique<ConfigManager>(Paths::dataDir() + QStringLiteral("/config.json"));
-    m_config->load();
+    // An unreadable config used to be ignored, and the first save() then
+    // destroyed the only copy of the user's settings. Preserve it first, and
+    // refuse to start if even that fails.
+    switch (m_config->loadOrQuarantine()) {
+    case ConfigManager::LoadResult::Loaded:
+    case ConfigManager::LoadResult::Missing:
+        break;
+    case ConfigManager::LoadResult::Quarantined:
+        m_configQuarantinedPath = m_config->quarantinedPath();
+        break;
+    case ConfigManager::LoadResult::Unrecoverable:
+        qCritical() << "Config: refusing to start on defaults because the existing settings file "
+                       "could not be read or preserved";
+        return false;
+    }
     m_locations = std::make_unique<CaptureLocations>(m_config.get());
     m_startup = std::make_unique<StartupManager>();
     const bool startupEnabled = m_config->value(ConfigKeys::StartupEnabled, false).toBool();
@@ -202,6 +216,16 @@ bool App::init()
 
     m_overlay = std::make_unique<OverlayManager>(&m_engine);
     m_notify = std::make_unique<NotificationCenter>(&m_engine);
+    if (!m_configQuarantinedPath.isEmpty()) {
+        // One non-blocking notice, not a startup loop: the settings are already
+        // back at their defaults and the old file is still on disk.
+        m_notify->post(tr("Settings could not be read"),
+                       tr("GameHQ started with default settings. Your previous settings file was "
+                          "kept so nothing was lost."),
+                       m_configQuarantinedPath, QStringLiteral("warning"),
+                       QDateTime::currentDateTime().toString(QStringLiteral("d MMM yyyy, HH:mm")),
+                       false);
+    }
     m_updates = std::make_unique<UpdateService>(QStringLiteral("underfusion"), QStringLiteral("GameHQ"),
                                                  QStringLiteral(GAMEHQ_VERSION),
                                                  Paths::packageRoot() + QStringLiteral("/.update/downloads"),

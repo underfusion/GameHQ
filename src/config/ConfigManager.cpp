@@ -1,6 +1,7 @@
 #include "config/ConfigManager.h"
 #include "config/ConfigKeys.h"
 
+#include <QDateTime>
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonValue>
@@ -80,6 +81,38 @@ bool ConfigManager::load()
         m_overrides.insert(it.key(), it.value());
     }
     return true;
+}
+
+ConfigManager::LoadResult ConfigManager::loadOrQuarantine()
+{
+    m_quarantinedPath.clear();
+    if (!QFile::exists(m_filePath)) {
+        m_overrides = {};
+        return LoadResult::Missing;
+    }
+    if (load())
+        return LoadResult::Loaded;
+
+    // The file exists but could not be understood. Starting on defaults is the
+    // right recovery, but the next save() would overwrite the only copy of the
+    // user's settings, so preserve it first and only then continue. Failing to
+    // preserve it is not recoverable: silently destroying settings is worse
+    // than refusing to start.
+    const QString stamp = QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMdd-HHmmss"));
+    QString target = m_filePath + QStringLiteral(".corrupt-") + stamp + QStringLiteral(".json");
+    for (int attempt = 2; QFile::exists(target) && attempt < 100; ++attempt) {
+        target = m_filePath + QStringLiteral(".corrupt-") + stamp + QStringLiteral("-")
+            + QString::number(attempt) + QStringLiteral(".json");
+    }
+    if (!QFile::rename(m_filePath, target)) {
+        qWarning() << "Config: could not preserve the unreadable config as" << target;
+        return LoadResult::Unrecoverable;
+    }
+    m_quarantinedPath = target;
+    m_overrides = {};
+    qWarning() << "Config: preserved the unreadable settings file as" << target
+               << "and started with defaults";
+    return LoadResult::Quarantined;
 }
 
 bool ConfigManager::save() const

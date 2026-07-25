@@ -48,6 +48,13 @@ int CaptureDatabase::schemaVersion() const
 bool CaptureDatabase::migrate()
 {
     const int version = schemaVersion();
+    // An older build must not touch a database a newer one created: its writes
+    // would be interpreted against a schema it cannot see.
+    if (version > kCurrentSchemaVersion) {
+        qWarning() << "DB: refusing to open schema version" << version
+                   << "- this GameHQ understands at most" << kCurrentSchemaVersion;
+        return false;
+    }
     if (version < 1 && !applyV1())
         return false;
     if (version < 2 && !applyV2())
@@ -60,9 +67,18 @@ bool CaptureDatabase::migrate()
     // Run the whole startup repair pass (brand paths, duplicate collapse, path
     // renormalization, game-row and metadata repair) inside one transaction so
     // a mid-run crash cannot leave the library half-repaired.
-    const bool repairTx = m_db.transaction();
-    if (!repairTx)
+    // Without a transaction there is no way to undo a partial repair, so this
+    // is fatal rather than a warning: the caller keeps the untouched database.
+    if (!m_db.transaction()) {
         qWarning() << "DB: could not open repair transaction:" << m_db.lastError().text();
+        return false;
+    }
+    // Every failure below must leave the database exactly as it was found.
+    const auto abortRepair = [this](const QString& reason) {
+        qWarning() << "DB: startup repair aborted -" << reason;
+        m_db.rollback();
+        return false;
+    };
 
     // One-time brand-path compatibility for databases created by earlier brands.
     // The filesystem migration renames the managed roots; keep absolute paths
@@ -80,12 +96,8 @@ bool CaptureDatabase::migrate()
     };
     for (const QString& statement : brandPathUpdates) {
         QSqlQuery q(m_db);
-        if (!q.exec(statement)) {
-            qWarning() << "DB: brand-path migration failed:" << q.lastError().text();
-            if (repairTx)
-                m_db.rollback();
-            return false;
-        }
+        if (!q.exec(statement))
+            return abortRepair(QStringLiteral("brand-path migration: ") + q.lastError().text());
     }
 
     // Collapse rows that became the same physical capture after a portable
@@ -94,6 +106,8 @@ bool CaptureDatabase::migrate()
     QHash<QString, QVector<CapturePathRow>> captureGroups;
     QSqlQuery captureSelect(QStringLiteral(
         "SELECT id, file_path, thumbnail_path, is_favorite FROM captures WHERE deleted_at IS NULL"), m_db);
+    if (captureSelect.lastError().isValid())
+        return abortRepair(QStringLiteral("could not list captures: ") + captureSelect.lastError().text());
     while (captureSelect.next()) {
         CapturePathRow row{captureSelect.value(0).toInt(), captureSelect.value(1).toString(),
                            captureSelect.value(2).toString(), captureSelect.value(3).toBool()};
@@ -128,7 +142,9 @@ bool CaptureDatabase::migrate()
             tombstone.prepare(QStringLiteral("UPDATE captures SET deleted_at = :now WHERE id = :id"));
             tombstone.bindValue(QStringLiteral(":now"), QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
             tombstone.bindValue(QStringLiteral(":id"), rows[i].id);
-            tombstone.exec();
+            if (!tombstone.exec())
+                return abortRepair(QStringLiteral("could not tombstone a duplicate capture: ")
+                                   + tombstone.lastError().text());
         }
         QSqlQuery update(m_db);
         update.prepare(QStringLiteral(
@@ -137,7 +153,9 @@ bool CaptureDatabase::migrate()
         update.bindValue(QStringLiteral(":thumb"), thumbnail.isEmpty() ? QVariant() : QVariant(thumbnail));
         update.bindValue(QStringLiteral(":favorite"), favorite ? 1 : 0);
         update.bindValue(QStringLiteral(":id"), rows[winnerIndex].id);
-        update.exec();
+        if (!update.exec())
+            return abortRepair(QStringLiteral("could not collapse duplicate captures: ")
+                               + update.lastError().text());
     }
 
     // Normalize remaining package-owned paths after a move/rename.
@@ -151,7 +169,7 @@ bool CaptureDatabase::migrate()
                                 .arg(QString::fromLatin1(spec.id), QString::fromLatin1(spec.column),
                                      QString::fromLatin1(spec.table));
         if (!select.exec(sql))
-            continue;
+            return abortRepair(QStringLiteral("could not read stored paths: ") + select.lastError().text());
         while (select.next()) {
             const QString oldValue = select.value(1).toString();
             const QString newValue = Paths::toStoredPath(Paths::repairMovedPath(oldValue));
@@ -163,7 +181,9 @@ bool CaptureDatabase::migrate()
                                     QString::fromLatin1(spec.id)));
             update.bindValue(QStringLiteral(":path"), newValue);
             update.bindValue(QStringLiteral(":id"), select.value(0));
-            update.exec();
+            if (!update.exec())
+                return abortRepair(QStringLiteral("could not normalize a stored path: ")
+                                   + update.lastError().text());
         }
     }
     // The remaining repairs are heavy one-time passes: a full O(n²) duplicate
@@ -173,14 +193,21 @@ bool CaptureDatabase::migrate()
     // sticks if the repairs themselves commit.
     if (!repairsV1Done()) {
         qInfo() << "DB: running one-time game-row/metadata repairs (repairs_v1)";
-        GameRowRepair::normalizeDuplicateNames(m_db);
-        GameMetadataBackfill::run(m_db);
-        markRepairsV1Done();
+        // The sentinel is only written once every repair above it succeeded, so
+        // a failed pass is retried on the next start instead of being skipped
+        // forever.
+        if (!GameRowRepair::normalizeDuplicateNames(m_db))
+            return abortRepair(QStringLiteral("duplicate game-row repair failed"));
+        if (!GameMetadataBackfill::run(m_db))
+            return abortRepair(QStringLiteral("game metadata backfill failed"));
+        if (!markRepairsV1Done())
+            return abortRepair(QStringLiteral("could not record the repair sentinel"));
     } else {
         qInfo() << "DB: one-time game-row/metadata repairs already done, skipping (repairs_v1)";
     }
-    refreshIconsForExtractorFormat();
-    if (repairTx && !m_db.commit()) {
+    if (!refreshIconsForExtractorFormat())
+        return abortRepair(QStringLiteral("icon refresh failed"));
+    if (!m_db.commit()) {
         qWarning() << "DB: repair transaction commit failed:" << m_db.lastError().text();
         m_db.rollback();
         return false;
@@ -549,15 +576,18 @@ bool CaptureDatabase::repairsV1Done() const
     return q.exec() && q.next() && q.value(0).toString() == QLatin1String("1");
 }
 
-void CaptureDatabase::markRepairsV1Done()
+bool CaptureDatabase::markRepairsV1Done()
 {
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
         "INSERT INTO settings (key, value) VALUES (:k, '1') "
         "ON CONFLICT(key) DO UPDATE SET value = '1'"));
     q.bindValue(QStringLiteral(":k"), QStringLiteral("internal.repairs_v1_done"));
-    if (!q.exec())
+    if (!q.exec()) {
         qWarning() << "DB: could not record repairs_v1 sentinel:" << q.lastError().text();
+        return false;
+    }
+    return true;
 }
 
 // An icon is extracted once and then pinned in games.icon_path, and the only
@@ -569,7 +599,7 @@ void CaptureDatabase::markRepairsV1Done()
 // Re-extract for every game with a known executable whenever the extractor's
 // format version moves. That version is bumped precisely when the output can
 // change, so this costs one pass per upgrade and nothing on every other start.
-void CaptureDatabase::refreshIconsForExtractorFormat()
+bool CaptureDatabase::refreshIconsForExtractorFormat()
 {
     const QString format = GameIconCache::formatVersion();
 
@@ -577,14 +607,14 @@ void CaptureDatabase::refreshIconsForExtractorFormat()
     stored.prepare(QStringLiteral("SELECT value FROM settings WHERE key = :k"));
     stored.bindValue(QStringLiteral(":k"), QStringLiteral("internal.icon_format"));
     if (stored.exec() && stored.next() && stored.value(0).toString() == format)
-        return;
+        return true;
 
     QSqlQuery select(m_db);
     if (!select.exec(QStringLiteral(
             "SELECT id, executable_path FROM games "
             "WHERE executable_path IS NOT NULL AND executable_path <> ''"))) {
         qWarning() << "DB: icon refresh could not list games:" << select.lastError().text();
-        return;
+        return false;
     }
 
     struct Candidate { int id; QString executablePath; };
@@ -613,11 +643,16 @@ void CaptureDatabase::refreshIconsForExtractorFormat()
         "ON CONFLICT(key) DO UPDATE SET value = :v"));
     mark.bindValue(QStringLiteral(":k"), QStringLiteral("internal.icon_format"));
     mark.bindValue(QStringLiteral(":v"), format);
-    if (!mark.exec())
+    if (!mark.exec()) {
+        // Without the sentinel this pass would repeat on every start, so treat
+        // it as a repair failure rather than silently churning.
         qWarning() << "DB: could not record icon format sentinel:" << mark.lastError().text();
+        return false;
+    }
 
     qInfo() << "DB: re-extracted icons for" << refreshed << "of" << candidates.size()
             << "games (extractor format" << format << ")";
+    return true;
 }
 
 int CaptureDatabase::findOrCreateGame(const QString& displayName, const QString& executablePath)

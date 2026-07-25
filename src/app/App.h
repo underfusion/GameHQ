@@ -69,6 +69,9 @@ private:
     bool m_updateScreenshotsReady = false;
     bool m_updateReplayReady = false;
     bool m_postUpdateValidation = false;
+    // Set when startup had to preserve an unreadable settings file, so the user
+    // can be told once where it went.
+    QString m_configQuarantinedPath;
     bool m_inputStarted = false;
     bool m_pendingActivation = false;
     bool m_pendingOpenGallery = false;

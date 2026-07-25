@@ -16,10 +16,10 @@
 
 namespace
 {
-void updateGameExecutable(QSqlDatabase& db, int gameId, const QString& executablePath)
+bool updateGameExecutable(QSqlDatabase& db, int gameId, const QString& executablePath)
 {
     if (gameId < 0 || executablePath.isEmpty() || !QFileInfo::exists(executablePath))
-        return;
+        return true;
 
     const QString iconPath = GameIconCache::iconPathForExecutable(executablePath);
     QSqlQuery q(db);
@@ -30,8 +30,11 @@ void updateGameExecutable(QSqlDatabase& db, int gameId, const QString& executabl
     q.bindValue(QStringLiteral(":icon"), iconPath.isEmpty() ? QVariant() : QVariant(iconPath));
     q.bindValue(QStringLiteral(":seen"), QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
     q.bindValue(QStringLiteral(":id"), gameId);
-    if (!q.exec())
+    if (!q.exec()) {
         qWarning() << "DB: could not backfill game executable/icon:" << q.lastError().text();
+        return false;
+    }
+    return true;
 }
 
 const QRegularExpression& detectorLineRegex()
@@ -106,11 +109,12 @@ QHash<int, QString> GameMetadataBackfill::selectBestPaths(
     return result;
 }
 
-void GameMetadataBackfill::run(QSqlDatabase& db, const QString& logFilePath)
+bool GameMetadataBackfill::run(QSqlDatabase& db, const QString& logFilePath)
 {
     QFile log(logFilePath.isEmpty() ? Paths::logsDir() + QStringLiteral("/gamehq.log") : logFilePath);
+    // No log to mine is a normal state, not a repair failure.
     if (!log.open(QIODevice::ReadOnly | QIODevice::Text))
-        return;
+        return true;
 
     QVector<Target> missing;
     struct MissingGame { int id; QString name; };
@@ -120,8 +124,10 @@ void GameMetadataBackfill::run(QSqlDatabase& db, const QString& logFilePath)
         "SELECT id, display_name FROM games "
         "WHERE (executable_path IS NULL OR executable_path = '') "
         "   OR (icon_path IS NULL OR icon_path = '')"));
-    if (!games.exec())
-        return;
+    if (!games.exec()) {
+        qWarning() << "DB: could not list games for metadata backfill:" << games.lastError().text();
+        return false;
+    }
     while (games.next()) {
         const int id = games.value(0).toInt();
         const QString name = games.value(1).toString();
@@ -129,7 +135,7 @@ void GameMetadataBackfill::run(QSqlDatabase& db, const QString& logFilePath)
         missingNames.append({ id, name });
     }
     if (missing.isEmpty())
-        return;
+        return true;
 
     QStringList lines;
     QTextStream in(&log);
@@ -144,7 +150,8 @@ void GameMetadataBackfill::run(QSqlDatabase& db, const QString& logFilePath)
         const auto it = best.constFind(game.id);
         if (it == best.constEnd())
             continue;
-        updateGameExecutable(db, game.id, it.value());
+        if (!updateGameExecutable(db, game.id, it.value()))
+            return false;
         qInfo() << "DB: backfilled game icon from historical detection for"
                 << game.name << "->" << it.value();
         ++updates;
@@ -152,4 +159,5 @@ void GameMetadataBackfill::run(QSqlDatabase& db, const QString& logFilePath)
 
     if (updates > 0)
         qInfo() << "DB: backfilled" << updates << "game icon(s) from gamehq.log";
+    return true;
 }

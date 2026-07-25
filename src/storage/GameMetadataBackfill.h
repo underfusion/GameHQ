@@ -11,7 +11,9 @@ class GameMetadataBackfill
 {
 public:
     // logFilePath overrides the real gamehq.log location; only tests should pass one.
-    static void run(QSqlDatabase& db, const QString& logFilePath = QString());
+    // Returns false only when the database refused a write. A missing or
+    // unreadable log is not a failure: there is simply nothing to backfill.
+    static bool run(QSqlDatabase& db, const QString& logFilePath = QString());
 
     // One game row this backfill can still match against: db id plus its
     // GameIdentity::key(display_name). Exposed for testing.

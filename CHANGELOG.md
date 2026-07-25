@@ -4,6 +4,23 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.32] - 2026-07-25
+
+### Fixed
+
+- An unreadable `config.json` was silently ignored and the next save then
+  overwrote it, destroying the only copy of the user's settings. The file is
+  now preserved as `config.json.corrupt-<timestamp>.json` before GameHQ falls
+  back to defaults, with one non-blocking notice pointing at it. If it cannot
+  be preserved, GameHQ refuses to start rather than discard it.
+- Startup database repair could continue outside a transaction, and several of
+  its writes ignored their result. A failure part-way through could leave the
+  library half-repaired with the "repairs done" marker set, so it was never
+  retried. Repair now requires a transaction, checks every statement and
+  helper, rolls back on any failure, and records the marker last.
+- A database written by a newer GameHQ is now refused instead of being modified
+  against a schema this build cannot see.
+
 ## [0.6.31] - 2026-07-25
 
 ### Fixed

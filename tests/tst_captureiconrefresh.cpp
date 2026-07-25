@@ -89,6 +89,38 @@ private:
     }
 
 private slots:
+    void refusesADatabaseFromANewerGameHq()
+    {
+        // An older build must not write into a database a newer one created:
+        // its writes would be interpreted against a schema it cannot see.
+        QTemporaryDir tempDir;
+        QVERIFY(tempDir.isValid());
+        const QString dbPath = tempDir.filePath(QStringLiteral("future.db"));
+
+        {
+            CaptureDatabase db(dbPath);
+            QVERIFY(db.open());
+        }
+        {
+            RawConnection raw(dbPath);
+            QVERIFY(raw.db.open());
+            QSqlQuery bump(raw.db);
+            QVERIFY(bump.exec(QStringLiteral("PRAGMA user_version = %1")
+                                  .arg(CaptureDatabase::kCurrentSchemaVersion + 1)));
+            raw.db.close();
+        }
+
+        CaptureDatabase newer(dbPath);
+        QVERIFY(!newer.open());
+
+        // The stamp is untouched, so a genuinely newer GameHQ still opens it.
+        RawConnection check(dbPath);
+        QVERIFY(check.db.open());
+        QSqlQuery version(QStringLiteral("PRAGMA user_version"), check.db);
+        QVERIFY(version.next());
+        QCOMPARE(version.value(0).toInt(), CaptureDatabase::kCurrentSchemaVersion + 1);
+    }
+
     void formatBumpReExtractsThenStaysIdempotent()
     {
         QTemporaryDir tempDir;

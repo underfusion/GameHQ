@@ -44,6 +44,51 @@ private slots:
         QFile::remove(path());
     }
 
+    void corruptConfigIsPreservedBeforeDefaults()
+    {
+        // Silently starting on defaults let the next save() destroy the only
+        // copy of the user's settings.
+        QFile file(path());
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QVERIFY(file.write("{ \"capture.mode\": \"whitel") > 0);
+        file.close();
+
+        ConfigManager cfg(path());
+        QCOMPARE(cfg.loadOrQuarantine(), ConfigManager::LoadResult::Quarantined);
+        const QString preserved = cfg.quarantinedPath();
+        QVERIFY(!preserved.isEmpty());
+        QVERIFY(QFile::exists(preserved));
+        QVERIFY(!QFile::exists(path()));
+        QCOMPARE(cfg.value(ConfigKeys::CaptureMode).toString(), QStringLiteral("only_in_games"));
+
+        // The preserved copy still holds exactly what the user had.
+        QFile kept(preserved);
+        QVERIFY(kept.open(QIODevice::ReadOnly));
+        QCOMPARE(kept.readAll(), QByteArray("{ \"capture.mode\": \"whitel"));
+        kept.close();
+
+        // Saving now writes a fresh file and leaves the preserved one alone.
+        QVERIFY(cfg.save());
+        QVERIFY(QFile::exists(path()));
+        QVERIFY(QFile::exists(preserved));
+        QFile::remove(preserved);
+    }
+
+    void missingAndValidConfigAreDistinguished()
+    {
+        ConfigManager missing(path());
+        QCOMPARE(missing.loadOrQuarantine(), ConfigManager::LoadResult::Missing);
+        QVERIFY(missing.quarantinedPath().isEmpty());
+
+        missing.setValue(ConfigKeys::ReplayFps, 60);
+        QVERIFY(missing.save());
+
+        ConfigManager reopened(path());
+        QCOMPARE(reopened.loadOrQuarantine(), ConfigManager::LoadResult::Loaded);
+        QVERIFY(reopened.quarantinedPath().isEmpty());
+        QCOMPARE(reopened.value(ConfigKeys::ReplayFps).toInt(), 60);
+    }
+
     void missingFileLoadsDefaults()
     {
         ConfigManager cfg(path());

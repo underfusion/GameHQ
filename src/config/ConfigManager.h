@@ -12,8 +12,19 @@ class ConfigManager : public QObject
 public:
     explicit ConfigManager(QString filePath, QObject* parent = nullptr);
 
+    // Outcome of load(). A missing file is normal; anything else means the
+    // caller must not let a later save() overwrite the only copy of the user's
+    // settings without preserving it first.
+    enum class LoadResult { Loaded, Missing, Quarantined, Unrecoverable };
+
+    // Reads the file, quarantining an unreadable or malformed one to
+    // config.corrupt-<timestamp>.json before falling back to defaults.
+    LoadResult loadOrQuarantine();
     bool load();   // missing file is fine → defaults
     bool save() const;
+
+    // Path the last quarantine wrote, for the one-time user-facing warning.
+    QString quarantinedPath() const { return m_quarantinedPath; }
 
     QVariant value(const QString& key, const QVariant& fallback = {}) const;
     void setValue(const QString& key, const QVariant& value);
@@ -28,6 +39,7 @@ signals:
     void groupReset(const QString& prefix);
 
 private:
+    QString m_quarantinedPath;
     static QJsonObject defaults();
 
     QString m_filePath;
