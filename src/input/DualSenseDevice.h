@@ -68,6 +68,7 @@ private:
         quint32 buttons = 0;        // last parsed button+stick bitmask
         quint32 stick = 0;          // stick-derived direction bits (hysteresis)
         qint64 lastReportMs = 0;    // m_clock timestamp of the last report
+        qint64 lastChangeMs = 0;    // last real button/stick edge, not idle traffic
         bool reported = false;      // produced at least one valid report
     };
 

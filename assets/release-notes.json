@@ -14,6 +14,8 @@
     {
       "title": "Fixed",
       "items": [
+        "When there are no captures yet, controller focus stays in the sidebar so navigation is immediately visible.",
+        "Controller shortcuts now follow the input path that is actually producing button activity, including while games are running.",
         "Playnite state no longer disappears shortly after the plugin reconnects.",
         "An unreadable settings file is now kept safe instead of being overwritten.",
         "A failed library repair is undone and retried instead of being marked done.",

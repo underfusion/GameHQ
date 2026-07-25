@@ -36,6 +36,9 @@ gamehq_add_test(tst_gameidentity
     tst_gameidentity.cpp
     "${CMAKE_SOURCE_DIR}/src/core/GameIdentity.cpp")
 
+gamehq_add_test(tst_controllerarbitration
+    tst_controllerarbitration.cpp)
+
 gamehq_add_test(tst_configmanager
     tst_configmanager.cpp
     "${CMAKE_SOURCE_DIR}/src/config/ConfigManager.cpp")

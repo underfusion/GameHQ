@@ -1,5 +1,7 @@
 #pragma once
 #include "input/ActionCatalog.h"
+#include <QElapsedTimer>
+#include <QHash>
 #include <QObject>
 #include <QString>
 #include <functional>
@@ -24,12 +26,11 @@ class QTimer;
 // fire regardless of overlay state; when the overlay is visible the face
 // buttons / d-pad drive its navigation instead of leaking out as actions.
 //
-// Exactly ONE backend is "active" at a time (priority Sony > XInput >
-// WinMM among the connected ones) and only its events are routed — the same
-// physical pad is often visible through several APIs at once (DSX/ViGEm),
-// and routing more than one would double every press. Switching or losing
-// the active backend cancels any in-flight gesture (nav repeat, Share
-// tap/hold) so nothing sticks across the transition. The Raw Input backend's
+// Exactly ONE backend is active at a time. Sony > XInput > WinMM provides the
+// initial/fallback choice, then real button activity may move the active role
+// while a short duplicate window suppresses mirrored API reports. Switching
+// or losing the backend cancels any in-flight gesture (nav repeat, Share
+// tap/hold), so nothing sticks across a transition. The Raw Input backend's
 // device-topology hint triggers XInput/WinMM rescans, so pads appearing in
 // those APIs are picked up event-driven instead of by hot polling.
 // Exposed to QML as "input" for the Settings input-test screen.
@@ -124,6 +125,8 @@ private:
                            const QString& displayName);
     void attachGamepad(std::unique_ptr<Gamepad> pad, const QString& displayName);
     void updateActiveBackend();
+    void activateBackend(Gamepad* pad, const QString& reason);
+    bool backendConnected(const Gamepad* pad) const;
     QString backendDisplayName(const Gamepad* pad) const;
     void setLastInput(const QString& text);
     void setControllerStatus(const QString& text);
@@ -197,6 +200,9 @@ private:
     XInputDevice* m_xinputPad = nullptr;
     WinMMDevice* m_winmmPad = nullptr;
     Gamepad* m_activeBackend = nullptr;   // the one backend whose events route
+    QElapsedTimer m_controllerClock;
+    QHash<Gamepad*, qint64> m_backendLastControlMs;
+    QHash<Gamepad*, QString> m_backendLastControlId;
     bool m_sonyConnected = false;
     bool m_xinputConnected = false;
     bool m_winmmConnected = false;

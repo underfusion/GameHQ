@@ -96,8 +96,7 @@ ApplicationWindow {
         app.setConfig("internal.ui.whats_new_seen_version", app.version)
         if (pendingPostUpdateVersion !== "")
             window.acknowledgePostUpdateGreeting()
-        window.sidebarFocused = false
-        grid.forceActiveFocus()
+        Qt.callLater(window.focusGalleryOrSidebar)
     }
 
     function openHelp() {
@@ -113,8 +112,7 @@ ApplicationWindow {
 
     function finishHelp() {
         window.helpOpen = false
-        window.sidebarFocused = false
-        grid.forceActiveFocus()
+        window.focusGalleryOrSidebar()
     }
 
     function openAboutSettings() {
@@ -255,6 +253,7 @@ ApplicationWindow {
         var savedZoom = app.config("ui.zoom_level", 0)
         if (savedZoom >= 160 && savedZoom <= 480)
             window.zoomLevel = savedZoom
+        Qt.callLater(window.focusGalleryOrSidebar)
         Qt.callLater(window.maybeShowPostUpdateGreeting)
     }
     onZoomLevelChanged: window.persistGeometry()
@@ -309,7 +308,7 @@ ApplicationWindow {
     function bulkExit() {
         window.bulkMode = false
         window.bulkClear()
-        grid.forceActiveFocus()
+        window.focusGalleryOrSidebar()
     }
 
     // Settings from a button rather than the sidebar row: same end state the
@@ -379,6 +378,22 @@ ApplicationWindow {
         }
     }
 
+    function focusGalleryOrSidebar() {
+        // An empty gallery has nothing meaningful to focus on. Keep the real
+        // key target on the grid (it owns the desktop key handlers), but put
+        // the visible controller cursor in the sidebar so the first D-pad
+        // movement gives immediate feedback.
+        if (aboutDialog.visible || helpDialog.visible || lightbox.visible)
+            return
+        if (!window.settingsOpen && !window.helpOpen && grid.count === 0) {
+            window.sidebarFocused = true
+            window.refreshSidebarHoverIndex()
+        } else {
+            window.sidebarFocused = false
+        }
+        grid.forceActiveFocus()
+    }
+
     function activateSidebarRow(i) {
         const catCount = window.sidebarCategories.length
         const gameCount = app.games.length
@@ -400,11 +415,9 @@ ApplicationWindow {
             return
         }
         sounds.play("nav_tick")
-        // Always drop back to the grid — for Settings/Help this means the
-        // sidebar cursor is gone while the panel is up, and the user is back
-        // in the grid when they close it.
-        window.sidebarFocused = false
-        grid.forceActiveFocus()
+        // Gallery pages return to the grid only when it has captures; an empty
+        // result keeps the visible controller cursor in the sidebar.
+        Qt.callLater(window.focusGalleryOrSidebar)
     }
 
     function sidebarStepVertical(direction) {
@@ -447,6 +460,10 @@ ApplicationWindow {
             window.refreshSidebarHoverIndex()
         } else {
             // R1: enter the thumbnail grid (right panel). No-op if already there.
+            if (grid.count === 0) {
+                window.focusGalleryOrSidebar()
+                return
+            }
             if (!window.sidebarFocused)
                 return
             window.sidebarFocused = false
@@ -487,6 +504,10 @@ ApplicationWindow {
         if (window.sidebarFocused) {
             // L1/R1 are the only way in/out of the sidebar (see padTabStep);
             // D-pad LEFT/RIGHT inside the sidebar is a no-op.
+            return
+        }
+        if (grid.count === 0) {
+            window.focusGalleryOrSidebar()
             return
         }
         // Refresh the nav-lock so hover-follow can't override this move.
@@ -542,7 +563,8 @@ ApplicationWindow {
         } else if (window.sidebarFocused) {
             window.sidebarStepVertical(direction)
         } else if (grid.count === 0) {
-            return
+            window.focusGalleryOrSidebar()
+            window.sidebarStepVertical(direction)
         } else {
             // Refresh the nav-lock so hover-follow can't override this move.
             grid._navLockUntil = Date.now() + 250
@@ -651,11 +673,12 @@ ApplicationWindow {
             if (!window.sidebarFocused && settingsView.padBack())
                 return
             window.settingsOpen = false
-            window.sidebarFocused = false
-            grid.forceActiveFocus()
+            window.focusGalleryOrSidebar()
         } else if (window.bulkMode) {
             window.bulkExit()
         } else if (window.sidebarFocused) {
+            if (grid.count === 0)
+                return
             window.sidebarFocused = false
             grid.forceActiveFocus()
         } else if (window.menuOpen) {
@@ -817,7 +840,7 @@ ApplicationWindow {
             Layout.fillHeight: true
             onCloseRequested: {
                 window.settingsOpen = false
-                grid.forceActiveFocus()
+                window.focusGalleryOrSidebar()
             }
         }
 
@@ -861,6 +884,12 @@ ApplicationWindow {
                 onBulkToggleRequested: (index, extendRange) => window.bulkToggle(index, extendRange)
                 onBulkDeleteRequested: window.bulkAskDelete()
                 onBulkSelectAllRequested: window.bulkSelectAll()
+                onCountChanged: {
+                    if (count === 0 && !window.settingsOpen && !window.helpOpen
+                            && !aboutDialog.visible && !helpDialog.visible
+                            && !lightbox.visible)
+                        Qt.callLater(window.focusGalleryOrSidebar)
+                }
             }
 
             DesktopGalleryFooter {
@@ -901,7 +930,7 @@ ApplicationWindow {
         id: lightbox
         parentWindow: window
         galleryModel: app.gallery
-        onClosed: grid.forceActiveFocus()
+        onClosed: window.focusGalleryOrSidebar()
     }
 
     // ───────────────────────── Delete confirmation ─────────────────────────

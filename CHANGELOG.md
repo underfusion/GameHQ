@@ -15,6 +15,13 @@ All notable public releases of GameHQ are documented here. The format follows
 - Release manifests now use the production Ed25519 trust key, while private
   signing material remains outside the repository and ordinary CI.
 
+### Fixed
+
+- When the gallery is empty, controller focus now stays in the sidebar instead
+  of moving into a thumbnail area with nothing to select.
+- Controller shortcuts now follow the input backend and device producing real
+  button activity, so stale virtual controllers cannot block input in games.
+
 ## [0.6.45] - 2026-07-25
 
 ### Fixed
