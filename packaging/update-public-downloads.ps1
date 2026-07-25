@@ -52,7 +52,7 @@ $readmeBlock = @(
     "  &nbsp;",
     "  <a href=""$portableUrl""><img src=""docs/assets/download-portable.svg"" width=""230"" alt=""Download GameHQ Portable ZIP""></a>",
     "</p>",
-    '<p align="center"><sub>Windows 10+ &middot; MIT licensed &middot; No telemetry</sub></p>',
+    '<p align="center"><sub>Windows 10+ &middot; GPL-3.0 licensed &middot; No telemetry</sub></p>',
     "<p align=""center""><sub>Using Playnite? <a href=""$pluginPrimaryUrl"">Get the GameHQ Integration &rarr;</a></sub></p>",
     "<!-- public-downloads:end -->"
 ) -join $newline
@@ -64,7 +64,7 @@ $siteBlock = @(
     "      <a class=""download-button"" href=""$setupUrl""><span>Download for Windows</span><small>GameHQ $appVersion Setup</small></a>",
     "      <a class=""download-button secondary"" href=""$portableUrl""><span>Portable ZIP</span><small>GameHQ $appVersion &middot; no installation</small></a>",
     "    </div>",
-    '    <p class="download-meta">Windows 10+ &middot; MIT licensed &middot; No telemetry</p>',
+    '    <p class="download-meta">Windows 10+ &middot; GPL-3.0 licensed &middot; No telemetry</p>',
     "    <p class=""playnite-link"">Using Playnite? <a href=""$pluginPrimaryUrl"">Get the GameHQ Integration &rarr;</a></p>",
     "  </section>",
     "  <!-- public-downloads:end -->"

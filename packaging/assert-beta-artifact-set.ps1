@@ -26,6 +26,8 @@ $expectedPayload = @(
     ($identity.ArtifactPatterns.Portable -f $version),
     ($identity.ArtifactPatterns.Update -f $version),
     (($identity.ArtifactPatterns.Update -f $version) + '.sha256'),
+    ($identity.ArtifactPatterns.Source -f $version),
+    ($identity.ArtifactPatterns.SourceChecksum -f $version),
     'gamehq-release.json',
     'gamehq-release.sig'
 )
@@ -47,8 +49,9 @@ if ($ManifestMode -eq 'production' -and
     throw 'Production evidence is missing the release key ID or public-key fingerprint.'
 }
 if ($evidence.compliance.license -ne 'passed' -or
-    $evidence.compliance.privacy -ne 'passed') {
-    throw 'Release evidence is missing passed license or privacy compliance.'
+    $evidence.compliance.privacy -ne 'passed' -or
+    $evidence.compliance.correspondingSource -ne 'passed') {
+    throw 'Release evidence is missing passed license, privacy, or corresponding-source compliance.'
 }
 $recordedNames = @($evidence.artifacts | ForEach-Object fileName | Sort-Object)
 if (($expectedPayload | Sort-Object) -join "`n" -ne ($recordedNames -join "`n")) {

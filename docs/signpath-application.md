@@ -7,9 +7,9 @@ submitting terms on the maintainer's behalf.
 
 - Name: GameHQ
 - Repository and homepage: https://github.com/underfusion/GameHQ
-- License: MIT for the GameHQ core, Playnite integration, and public protocol
+- License: GPL-3.0-only for GameHQ core; MIT for the Playnite integration and public protocol
 - Maintainer: https://github.com/underfusion
-- Public releases: `v0.5.55` and `v0.6.3`
+- Public releases: `v0.5.55`, `v0.6.3`, and unsigned Beta `v0.7.0`; GPL transition planned for `v0.7.1`
 - Product: local-first Windows screenshot and rolling replay capture application
 - Security reports: https://github.com/underfusion/GameHQ/security/advisories/new
 - Privacy policy: https://github.com/underfusion/GameHQ/blob/main/docs/security-and-privacy.md
@@ -17,7 +17,7 @@ submitting terms on the maintainer's behalf.
 
 ## Eligibility evidence
 
-- The repository, build scripts, MIT license, documentation, changelog, and
+- The repository, build scripts, applicable GPL/MIT licenses, documentation, changelog, and
   public release artifacts are visible in one maintained project.
 - GameHQ has no commercial dual-licensing scheme or proprietary first-party
   bundled component. Third-party runtimes retain their documented upstream
@@ -83,8 +83,8 @@ that must not be guessed.
 | Privacy Policy URL | No | `https://github.com/underfusion/GameHQ/blob/main/docs/security-and-privacy.md` |
 | Wikipedia URL | No | Leave blank. |
 | Tagline | Yes | `A controller-first Windows app for screenshots, replay clips, and an in-game capture gallery.` |
-| Description | Yes | `GameHQ is a local-first MIT-licensed Windows application for capturing screenshots and recent-gameplay clips, then browsing them in a controller-friendly gallery. The GameHQ core, Playnite integration, and public protocol are open source under MIT. GameHQ requires no account or telemetry.` |
-| Reputation | Yes | `GameHQ is a newly public, actively maintained MIT-licensed project with two published releases: v0.5.55 and v0.6.3. It has no commercial dual-licensing scheme or proprietary first-party bundled component; redistributed third-party runtimes retain their upstream licenses. The repository provides complete source, changelog, security, privacy and code-signing policies, reproducible build scripts, automated tests, and release hashes. Repository: https://github.com/underfusion/GameHQ - Releases: https://github.com/underfusion/GameHQ/releases` |
+| Description | Yes | `GameHQ is a local-first GPL-3.0-only Windows application for capturing screenshots and recent-gameplay clips, then browsing them in a controller-friendly gallery. Its separately packaged Playnite integration and public protocol remain under MIT. GameHQ requires no account or telemetry.` |
+| Reputation | Yes | `GameHQ is a newly public, actively maintained open-source project. GameHQ core is GPL-3.0-only from v0.7.1, while earlier releases and the Playnite integration retain their published MIT terms. It has no proprietary first-party bundled component; redistributed third-party runtimes retain their upstream licenses. The repository provides complete corresponding source, changelog, security, privacy and code-signing policies, reproducible build scripts, automated tests, and release hashes. Repository: https://github.com/underfusion/GameHQ - Releases: https://github.com/underfusion/GameHQ/releases` |
 | Maintainer Type | No | `Individual maintainer(s)` |
 | Build System | No | `GitHub Actions` |
 | First Name | Yes | `MAINTAINER: given name for the SignPath account` |

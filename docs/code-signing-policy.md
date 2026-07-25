@@ -50,8 +50,8 @@ checks; the complete behavior is described in
 ## Signing order
 
 1. Build from the reviewed tag with pinned toolchains.
-2. Generate and validate an exact source archive and checksum when that optional
-   convenience artifact is included in the release.
+2. Generate and validate the mandatory corresponding-source archive and
+   checksum for the exact tagged revision.
 3. Sign GameHQ-built inner EXE/DLL files with the approved publisher and RFC
    3161 timestamp, then verify them.
 4. Package portable, update, and full offline Setup artifacts.

@@ -29,10 +29,10 @@ toolchains, or editor-specific files.
 GameHQ uses an inbound-equals-outbound policy with no contributor license
 agreement or copyright assignment:
 
-- contributions to first-party GameHQ code and documentation are submitted
-  under the applicable MIT license;
-- the repository root, `integrations/playnite/`, and the public integration
-  protocol contain the reviewed MIT license text;
+- contributions to first-party GameHQ core code and documentation are
+  submitted under GPL-3.0-only;
+- contributions under `integrations/playnite/` and to the public integration
+  protocol are submitted under their reviewed local MIT licenses;
 - third-party material remains under its documented upstream license and must
   not be copied into the project unless that license is compatible with the
   destination and all attribution and source obligations are met.

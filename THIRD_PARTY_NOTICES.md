@@ -1,7 +1,9 @@
 # Third-Party Notices
 
-GameHQ first-party code is licensed under the MIT License. The Windows package
-also redistributes runtime components under their own licenses.
+GameHQ first-party core code is licensed under GNU GPL version 3 only. The
+separately packaged Playnite integration and public integration protocol remain
+under MIT. The Windows package also redistributes runtime components under
+their own licenses.
 
 ## Qt 6.8.3
 

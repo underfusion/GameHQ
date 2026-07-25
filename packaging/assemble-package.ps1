@@ -118,6 +118,13 @@ Copy-Item -LiteralPath $updaterExe -Destination (Join-Path $target 'GameHQUpdate
 Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $target 'LICENSE.txt')
 Copy-Item -LiteralPath (Join-Path $root 'THIRD_PARTY_NOTICES.md') -Destination (Join-Path $target 'THIRD_PARTY_NOTICES.md')
 Copy-Item -LiteralPath (Join-Path $root 'licenses') -Destination (Join-Path $target 'licenses') -Recurse
+if ($target -eq $payloadTarget) {
+    $sourceOffer = Join-Path $root 'dist\.source-offer\SOURCE_OFFER.txt'
+    if (-not (Test-Path -LiteralPath $sourceOffer -PathType Leaf)) {
+        throw 'Neutral release payload requires a revision-bound SOURCE_OFFER.txt.'
+    }
+    Copy-Item -LiteralPath $sourceOffer -Destination (Join-Path $target 'licenses\SOURCE_OFFER.txt')
+}
 
 # Qt 6.8+ ships SPDX metadata for its runtime modules. Include the modules used
 # by GameHQ so recipients can inspect exact component and license attribution.
@@ -141,6 +148,10 @@ $programBytes += (Get-Item -LiteralPath (Join-Path $target 'GameHQ.exe')).Length
 $programBytes += (Get-Item -LiteralPath (Join-Path $target 'GameHQUpdater.exe')).Length
 $programBytes += (Get-Item -LiteralPath (Join-Path $target 'README.txt')).Length
 $programBytes += (Get-Item -LiteralPath (Join-Path $target 'LICENSE.txt')).Length
+$sourceOfferPath = Join-Path $target 'licenses\SOURCE_OFFER.txt'
+if (Test-Path -LiteralPath $sourceOfferPath -PathType Leaf) {
+    $programBytes += (Get-Item -LiteralPath $sourceOfferPath).Length
+}
 $programBytes += (Get-Item -LiteralPath (Join-Path $target 'THIRD_PARTY_NOTICES.md')).Length
 $size = [math]::Round($programBytes / 1MB, 1)
 Write-Host "[package] done: $size MB"

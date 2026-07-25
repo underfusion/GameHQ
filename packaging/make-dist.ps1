@@ -9,13 +9,19 @@ param(
     [ValidateSet('unsigned-beta', 'signed')]
     [string]$TrustMode = $env:RELEASE_TRUST_MODE,
     [ValidateSet('none', 'test', 'production')]
-    [string]$ManifestMode = 'none'
+    [string]$ManifestMode = 'none',
+    [string]$GitTag = ''
 )
 
 $ErrorActionPreference = 'Stop'
 $root = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $version = (Get-Content (Join-Path $root 'VERSION') -Raw).Trim()
+$minimumUpdaterVersion = (Get-Content (Join-Path $PSScriptRoot 'minimum-updater-version.txt') -Raw).Trim()
 $identity = Import-PowerShellDataFile (Join-Path $PSScriptRoot 'distribution-identity.psd1')
+if ($minimumUpdaterVersion -notmatch '^\d+\.\d+\.\d+$' `
+    -or [version]$minimumUpdaterVersion -gt [version]$version) {
+    throw 'minimum-updater-version.txt must contain a valid version no newer than VERSION.'
+}
 if ([string]::IsNullOrWhiteSpace($TrustMode)) {
     throw 'Set RELEASE_TRUST_MODE=unsigned-beta (or pass -TrustMode) explicitly.'
 }
@@ -24,16 +30,20 @@ $portableRoot = Join-Path $dist 'GameHQ'
 $payloadRoot = Join-Path $dist '.program-payload'
 $releaseRoot = Join-Path $dist 'releases'
 $updateRoot = Join-Path $dist '.update-package-staging'
+$sourceOfferRoot = Join-Path $dist '.source-offer'
+
+foreach ($path in @($portableRoot, $releaseRoot, $updateRoot, $sourceOfferRoot)) {
+    if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
+    New-Item -ItemType Directory -Path $path -Force | Out-Null
+}
+
+& (Join-Path $PSScriptRoot 'prepare-source.ps1') `
+    -ReleaseDirectory $releaseRoot -Revision 'HEAD' -GitTag $GitTag
 
 & (Join-Path $PSScriptRoot 'assemble-package.ps1') `
     -BuildDirectory $BuildDirectory `
     -Destination 'dist\.program-payload' `
     -Mode Neutral
-
-foreach ($path in @($portableRoot, $releaseRoot, $updateRoot)) {
-    if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
-    New-Item -ItemType Directory -Path $path -Force | Out-Null
-}
 
 # Portable is the neutral payload plus exactly one mode marker. Setup consumes
 # the payload unchanged, and update staging derives its strict allowlist below.
@@ -44,7 +54,8 @@ $portableZip = Join-Path $releaseRoot ($identity.ArtifactPatterns.Portable -f $v
 $updateZip = Join-Path $releaseRoot ($identity.ArtifactPatterns.Update -f $version)
 Compress-Archive -Path (Join-Path $portableRoot '*') -DestinationPath $portableZip -CompressionLevel Optimal
 
-foreach ($name in @('GameHQ.exe', 'README.txt', 'LICENSE.txt', 'THIRD_PARTY_NOTICES.md', 'app', 'licenses')) {
+foreach ($name in @('GameHQ.exe', 'README.txt', 'LICENSE.txt',
+        'THIRD_PARTY_NOTICES.md', 'app', 'licenses')) {
     Copy-Item -LiteralPath (Join-Path $payloadRoot $name) -Destination $updateRoot -Recurse
 }
 Copy-Item -LiteralPath (Join-Path $payloadRoot 'GameHQUpdater.exe') `
@@ -54,7 +65,7 @@ $manifest = [ordered]@{
     productId = $identity.ProductId
     appVersion = $version
     layoutVersion = 1
-    minimumUpdaterVersion = $version
+    minimumUpdaterVersion = $minimumUpdaterVersion
 } | ConvertTo-Json -Compress
 [System.IO.File]::WriteAllText((Join-Path $updateRoot 'update-package.json'), $manifest,
     [System.Text.UTF8Encoding]::new($false))
@@ -78,6 +89,7 @@ if ($ManifestMode -in @('test', 'production')) {
         if ($ManifestMode -eq 'test') { 'generate-test' } else { 'generate-production' }
         '--release-dir', $releaseRoot,
         '--version', $version,
+        '--minimum-updater-version', $minimumUpdaterVersion,
         '--sequence', $sequence,
         '--published-at-utc', $publishedAt
     )
@@ -92,7 +104,12 @@ if ($ManifestMode -in @('test', 'production')) {
     if ($LASTEXITCODE -ne 0) { throw "$ManifestMode manifest generation failed ($LASTEXITCODE)" }
 }
 
-$validationArguments = @{ ReleaseDirectory = $releaseRoot; TrustMode = $TrustMode; ManifestMode = $ManifestMode }
+$validationArguments = @{
+    ReleaseDirectory = $releaseRoot
+    TrustMode = $TrustMode
+    ManifestMode = $ManifestMode
+    GitTag = $GitTag
+}
 if ($SkipTests) { $validationArguments.SkipTests = $true }
 & (Join-Path $PSScriptRoot 'validate-release.ps1') @validationArguments
 if ($LASTEXITCODE -ne 0) { throw "Release validation failed ($LASTEXITCODE)" }

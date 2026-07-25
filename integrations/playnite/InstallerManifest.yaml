@@ -6,7 +6,7 @@ Packages:
   - Version: 0.4.12
     RequiredApiVersion: 6.16.0
     ReleaseDate: 2026-07-22
-    PackageUrl: "https://github.com/underfusion/GameHQ/releases/download/v0.7.0/GameHQ_Playnite_Integration_0_4_12.pext"
+    PackageUrl: "https://github.com/underfusion/GameHQ/releases/download/playnite-v0.4.12/GameHQ_Playnite_Integration_0_4_12.pext"
     Changelog:
       - Connects Playnite to GameHQ over a private local connection.
       - Starts GameHQ automatically when needed.

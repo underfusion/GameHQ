@@ -1,33 +1,50 @@
 # GameHQ licensing
 
-## Active license
+## Active boundary
 
-GameHQ first-party source code and assets are available under the
-**MIT License**. The repository-root `LICENSE` covers the native application,
-launcher, updater, installer and release scripts, tests, first-party tools,
-UI resources, assets, and general documentation.
+Beginning with version 0.7.1, the GameHQ core is licensed under **GNU GPL
+version 3 only** (`GPL-3.0-only`). This covers the native application,
+launcher, updater, installer and release scripts, tests, first-party tools, UI
+resources, assets, and general documentation unless a more specific license is
+stated.
 
-The Playnite integration under `integrations/playnite/` and the public protocol
-specification at `docs/integration-protocol.md` include local copies of the same
-MIT grant so their separately packaged scope stays explicit. Dependencies and
-redistributed runtimes retain the upstream terms identified in
-`THIRD_PARTY_NOTICES.md`, `docs/dependency-licenses.md`, and `licenses/`.
+The Playnite integration under `integrations/playnite/` remains under its local
+MIT license. The public protocol specification at
+`docs/integration-protocol.md` also remains MIT under
+`docs/integration-protocol.LICENSE`. Dependencies and redistributed runtimes
+retain the licenses identified in `THIRD_PARTY_NOTICES.md`,
+`docs/dependency-licenses.md`, and `licenses/`.
 
-No GPL transition is planned or published. A future licensing or business-model
-decision would require a separate prospective review; it would not withdraw
-rights already granted for earlier MIT versions.
+`SPDX-License-Identifier: GPL-3.0-only` describes first-party core files unless
+a file or its nearest directory has an explicit different license marker.
+Explicit third-party notices and the two MIT exceptions take precedence over
+that repository default.
 
-## Branding and official builds
+## Historical releases
 
-The MIT License governs software rights. `TRADEMARKS.md` separately explains
-how the GameHQ name, logo, official distribution channels, updater, and signing
-identity distinguish official builds without restricting MIT rights.
+GameHQ revisions and releases before 0.7.1 remain available under the MIT terms
+granted at their publication. Those permissions are not withdrawn. The exact
+previous root license is preserved at `licenses/MIT-legacy.txt`.
 
-## Optional future support
+The transition does not rewrite Git history or old tags. It adds no restriction
+on commercial use, modification, forks, or paid redistribution beyond the
+standard GNU GPL version 3 conditions.
 
-GameHQ is free and open source. Optional donation links may be added later if
-users ask for a way to support development. Donations will not purchase
-features, support priority, roadmap control, or delivery guarantees.
+## Release obligations
 
-No donation link, paid tier, commercial dual license, service-level agreement,
-or proprietary first-party component is currently part of the project.
+Every GameHQ binary release from 0.7.1 onward must publish a corresponding
+`GameHQ-<version>-source.zip` and SHA-256 checksum built from the exact tagged
+revision. Setup, Portable, and updater packages include
+`licenses/SOURCE_OFFER.txt` binding the binary version, revision, tag, source
+filename, hash, and public source URL.
+
+The release gate rejects a modified GPL text, changed MIT exception text,
+missing source artifacts, stale first-party MIT claims, or binary packages that
+do not carry the matching source notice.
+
+## Branding and support
+
+Software permissions come from the applicable licenses. `TRADEMARKS.md`
+separately explains how the GameHQ name and visual identity distinguish
+official builds. Optional future funding or paid support would not change the
+license already granted for a published version.

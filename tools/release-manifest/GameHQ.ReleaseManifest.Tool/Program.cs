@@ -62,6 +62,11 @@ internal static class Program
         var version = Required(options, "version");
         if (!Regex.IsMatch(version, "^[0-9]+\\.[0-9]+\\.[0-9]+$"))
             throw new InvalidDataException("version must be X.Y.Z");
+        var minimumUpdaterVersion = Required(options, "minimum-updater-version");
+        if (!Regex.IsMatch(minimumUpdaterVersion, "^[0-9]+\\.[0-9]+\\.[0-9]+$") ||
+            new Version(minimumUpdaterVersion) > new Version(version))
+            throw new InvalidDataException(
+                "minimum updater version must be X.Y.Z and no newer than the release");
         var sequence = ulong.Parse(Required(options, "sequence"), CultureInfo.InvariantCulture);
         if (sequence == 0) throw new InvalidDataException("release sequence must be positive");
         var published = DateTimeOffset.ParseExact(Required(options, "published-at-utc"),
@@ -87,7 +92,7 @@ internal static class Program
                 writer.WriteString("version", version);
                 writer.WriteNumber("releaseSequence", sequence);
                 writer.WriteString("publishedAtUtc", published.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture));
-                writer.WriteString("minimumUpdaterVersion", version);
+                writer.WriteString("minimumUpdaterVersion", minimumUpdaterVersion);
                 writer.WriteStartArray("artifacts");
                 foreach (var artifact in artifacts)
                 {
@@ -158,8 +163,11 @@ internal static class Program
             root.GetProperty("releaseSequence").GetUInt64() == 0)
             throw new InvalidDataException("manifest identity or sequence is invalid");
         var version = root.GetProperty("version").GetString() ?? "";
+        var minimumUpdaterVersion = Required(options, "minimum-updater-version");
         if (!Regex.IsMatch(version, "^[0-9]+\\.[0-9]+\\.[0-9]+$") ||
-            root.GetProperty("minimumUpdaterVersion").GetString() != version)
+            !Regex.IsMatch(minimumUpdaterVersion, "^[0-9]+\\.[0-9]+\\.[0-9]+$") ||
+            new Version(minimumUpdaterVersion) > new Version(version) ||
+            root.GetProperty("minimumUpdaterVersion").GetString() != minimumUpdaterVersion)
             throw new InvalidDataException("manifest version fields are invalid");
         _ = DateTimeOffset.ParseExact(root.GetProperty("publishedAtUtc").GetString()!,
             "yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture,

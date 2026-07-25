@@ -571,7 +571,8 @@ std::vector<std::string> plannedOperations(const Transaction &tx)
 {
     const std::vector<std::string> ownedPaths = {
         "GameHQ.exe", "app/", "README.txt", "LICENSE.txt",
-        "THIRD_PARTY_NOTICES.md", "licenses/", "GameHQUpdater.pending.exe"
+        "THIRD_PARTY_NOTICES.md", "licenses/",
+        "GameHQUpdater.pending.exe"
     };
     std::vector<std::string> operations;
     operations.push_back("WAIT FOR CALLER EXIT pid=" + std::to_string(tx.callerPid));

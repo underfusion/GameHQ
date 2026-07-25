@@ -8,12 +8,12 @@
 
 <!-- public-downloads:start -->
 <p align="center">
-  <a href="https://github.com/underfusion/GameHQ/releases/download/v0.7.0/GameHQ-0.7.0-win64-setup.exe"><img src="docs/assets/download-windows.svg" width="230" alt="Download GameHQ for Windows"></a>
+  <a href="https://github.com/underfusion/GameHQ/releases/download/v0.7.1/GameHQ-0.7.1-win64-setup.exe"><img src="docs/assets/download-windows.svg" width="230" alt="Download GameHQ for Windows"></a>
   &nbsp;
-  <a href="https://github.com/underfusion/GameHQ/releases/download/v0.7.0/GameHQ-0.7.0-win64-portable.zip"><img src="docs/assets/download-portable.svg" width="230" alt="Download GameHQ Portable ZIP"></a>
+  <a href="https://github.com/underfusion/GameHQ/releases/download/v0.7.1/GameHQ-0.7.1-win64-portable.zip"><img src="docs/assets/download-portable.svg" width="230" alt="Download GameHQ Portable ZIP"></a>
 </p>
-<p align="center"><sub>Windows 10+ &middot; MIT licensed &middot; No telemetry</sub></p>
-<p align="center"><sub>Using Playnite? <a href="https://github.com/underfusion/GameHQ/releases/download/v0.7.0/GameHQ_Playnite_Integration_0_4_12.pext">Get the GameHQ Integration &rarr;</a></sub></p>
+<p align="center"><sub>Windows 10+ &middot; GPL-3.0 licensed &middot; No telemetry</sub></p>
+<p align="center"><sub>Using Playnite? <a href="https://github.com/underfusion/GameHQ/releases/download/playnite-v0.4.12/GameHQ_Playnite_Integration_0_4_12.pext">Get the GameHQ Integration &rarr;</a></sub></p>
 <!-- public-downloads:end -->
 
 </div>
@@ -56,14 +56,14 @@ in a controller-friendly gallery without leaving your game.
 
 ## Download
 
-Download GameHQ 0.7.0 from the official
+Download GameHQ 0.7.1 from the official
 [latest release](https://github.com/underfusion/GameHQ/releases/latest). Choose
 `GameHQ-<version>-win64-setup.exe` for the recommended per-user installation, or
 the `-portable.zip` package to keep data beside the app.
 
 ### Playnite integration
 
-[Manually install GameHQ Playnite Integration 0.4.12](https://github.com/underfusion/GameHQ/releases/download/v0.7.0/GameHQ_Playnite_Integration_0_4_12.pext)
+[Manually install GameHQ Playnite Integration 0.4.12](https://github.com/underfusion/GameHQ/releases/download/playnite-v0.4.12/GameHQ_Playnite_Integration_0_4_12.pext)
 by opening the `.pext` with Playnite. The plugin discovers
 GameHQ, launches it with games, forwards game lifecycle events, and restores
 state after reconnects. Once the integration is accepted into Playnite's
@@ -148,7 +148,9 @@ Vulnerabilities can be reported privately through the repository's enabled
 
 ## License
 
-GameHQ source code is available under the [MIT License](LICENSE). See
+GameHQ core source code is available under the [GNU GPL version 3](LICENSE).
+The separately packaged Playnite integration and public integration protocol
+remain under MIT. See
 [Licensing](docs/licensing.md) for the project boundary and
 [Third-Party Notices](THIRD_PARTY_NOTICES.md) for redistributed Qt, FFmpeg,
 compiler-runtime, and other components under their respective licenses.
