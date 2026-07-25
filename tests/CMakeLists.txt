@@ -184,6 +184,22 @@ target_link_libraries(tst_bindingeditor PRIVATE Qt6::Sql Qt6::Gui Qt6::Widgets)
 
 # Stand-in for app\GameHQ.exe: it reports the arguments Windows actually handed
 # it, so the launcher's pass-through can be checked against a real process.
+add_executable(process_identity_fixture process_identity_fixture.cpp)
+target_link_options(process_identity_fixture PRIVATE -static -municode)
+set_target_properties(process_identity_fixture PROPERTIES WIN32_EXECUTABLE FALSE)
+
+gamehq_add_test(tst_processidentity
+    tst_processidentity.cpp
+    "${CMAKE_SOURCE_DIR}/src/core/ProcessIdentity.cpp")
+target_compile_definitions(tst_processidentity PRIVATE
+    PROCESS_IDENTITY_FIXTURE="$<TARGET_FILE:process_identity_fixture>")
+add_dependencies(tst_processidentity process_identity_fixture)
+
+gamehq_add_test(tst_storedpaths
+    tst_storedpaths.cpp
+    "${CMAKE_SOURCE_DIR}/src/config/Paths.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/LegacyMigration.cpp")
+
 gamehq_add_test(tst_capturepublisher
     tst_capturepublisher.cpp
     "${CMAKE_SOURCE_DIR}/src/capture/CapturePublisher.cpp")

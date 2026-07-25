@@ -6,6 +6,7 @@
 #include "config/ConfigManager.h"
 #include "config/SettingsCategories.h"
 #include "config/Paths.h"
+#include "core/ProcessIdentity.h"
 #include "storage/CaptureDatabase.h"
 #include "storage/CaptureScanner.h"
 #include "ui/CaptureLibraryService.h"
@@ -164,9 +165,15 @@ QString AppController::beginPortableImport(const QUrl& folderUrl)
         || !QFileInfo(source + QStringLiteral("/gamehq-data")).isDir())
         return QStringLiteral("The selected folder is not a GameHQ portable package.");
 
+    // Identify this process by more than its id: the importer refuses to start
+    // until it can prove *this* instance has exited, and a bare id can name a
+    // different program once Windows recycles it.
+    const QString identity = ProcessIdentity::currentToken();
+    if (identity.isEmpty())
+        return QStringLiteral("GameHQ could not identify its own process for the import.");
     const QStringList arguments {
         QStringLiteral("--import-portable"), source,
-        QStringLiteral("--wait-for-pid"), QString::number(QCoreApplication::applicationPid())
+        QStringLiteral("--wait-for-pid"), identity
     };
     if (!QProcess::startDetached(QCoreApplication::applicationFilePath(), arguments))
         return QStringLiteral("GameHQ could not start the portable import process.");

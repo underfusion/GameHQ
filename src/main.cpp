@@ -17,6 +17,7 @@
 #include "input/HidCloakMonitor.h"
 #include "integration/IntegrationClient.h"
 #include "core/ApplicationMutex.h"
+#include "core/ProcessIdentity.h"
 #include "core/UpdateMaintenance.h"
 #include "security/ReleaseTrust.h"
 
@@ -77,22 +78,24 @@ bool waitForParentProcess(const QStringList& arguments, QString& error)
         error = QStringLiteral("The portable import parent-process argument is incomplete.");
         return false;
     }
-    bool ok = false;
-    const DWORD pid = arguments.at(at + 1).toULong(&ok);
-    if (!ok || pid == 0) {
+    // The token carries the parent's creation time, so a recycled process id
+    // cannot make this wait on a stranger, and a parent we are not allowed to
+    // inspect is reported instead of assumed gone.
+    switch (ProcessIdentity::waitForExit(arguments.at(at + 1), 60000)) {
+    case ProcessIdentity::WaitOutcome::Exited:
+        return true;
+    case ProcessIdentity::WaitOutcome::StillRunning:
+        error = QStringLiteral("The running GameHQ instance did not close in time.");
+        return false;
+    case ProcessIdentity::WaitOutcome::Unverifiable:
+        error = QStringLiteral("GameHQ could not confirm that the previous instance has closed.");
+        return false;
+    case ProcessIdentity::WaitOutcome::Malformed:
         error = QStringLiteral("The portable import parent-process identifier is invalid.");
         return false;
     }
-    HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, pid);
-    if (!process)
-        return true;
-    const DWORD waitResult = WaitForSingleObject(process, 60000);
-    CloseHandle(process);
-    if (waitResult != WAIT_OBJECT_0) {
-        error = QStringLiteral("The running GameHQ instance did not close in time.");
-        return false;
-    }
-    return true;
+    error = QStringLiteral("The portable import parent-process identifier is invalid.");
+    return false;
 }
 }
 
@@ -148,12 +151,22 @@ int main(int argc, char* argv[])
         else if (Paths::isPortable())
             importError = QStringLiteral("Run portable import from an installed copy of GameHQ.");
         else if (waitForParentProcess(arguments, importError)) {
-            PortableProfileImporter::Result result;
-            PortableProfileImporter::Options options {
-                arguments.at(importAt + 1), Paths::dataDir(),
-                PortableProfileImporter::FailurePoint::None
-            };
-            PortableProfileImporter::importProfile(options, result, importError);
+            // The import replaces the whole data folder, so nothing else may
+            // hold it. The parent has provably exited by now, so take the same
+            // lock a normal start takes and keep it for the whole import - this
+            // used to run before any instance gate at all.
+            QLockFile importLock(QDir::tempPath() + QStringLiteral("/gamehq.lock"));
+            if (!importLock.tryLock(1000)) {
+                importError = QStringLiteral(
+                    "Another GameHQ instance is running, so the portable import cannot start.");
+            } else {
+                PortableProfileImporter::Result result;
+                PortableProfileImporter::Options options {
+                    arguments.at(importAt + 1), Paths::dataDir(),
+                    PortableProfileImporter::FailurePoint::None
+                };
+                PortableProfileImporter::importProfile(options, result, importError);
+            }
         }
         if (!importError.isEmpty()) {
             if (arguments.contains(QStringLiteral("--import-portable-only"))) {

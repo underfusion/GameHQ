@@ -26,6 +26,12 @@ namespace Paths
     QString fromStoredPath(const QString& path);
     QString repairMovedPath(const QString& path);
 
+    // Same mapping against an explicit portable root ("" = not portable). The
+    // real root is a process-wide constant discovered from the executable's
+    // location, so these overloads exist to make the mapping itself testable.
+    QString toStoredPath(const QString& path, const QString& portableRoot);
+    QString fromStoredPath(const QString& path, const QString& portableRoot);
+
     // Creates every directory above if missing. Call once at startup.
     // Outcome of ensureDirectories(). The data root holds the database and
     // settings, so losing it is fatal; a missing cache or log directory only

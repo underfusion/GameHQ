@@ -252,6 +252,74 @@ private slots:
         }
     }
 
+    // The destination was called empty from a fixed list of tables and files.
+    // Anything it did not name - a sound the user added, a table a newer schema
+    // introduced - read as empty and was then overwritten by the import.
+    void refusesADestinationHoldingUserDataOutsideTheKnownList()
+    {
+        {
+            // sound-packs was allowed as a directory without ever being opened,
+            // and the import writes into that very folder.
+            Fixture fixture;
+            QVERIFY(writeFile(fixture.destination + QStringLiteral("/sound-packs/mine/alert.wav"),
+                              "user-sound"));
+            PortableProfileImporter::Result result;
+            QString error;
+            QVERIFY(!PortableProfileImporter::importProfile(fixture.options(), result, error));
+            QVERIFY2(error.contains(QStringLiteral("sound-packs")), qPrintable(error));
+            QCOMPARE(readFile(fixture.destination + QStringLiteral("/sound-packs/mine/alert.wav")),
+                     QByteArray("user-sound"));
+        }
+        {
+            // A table the fixed list never mentioned. It must fail closed.
+            Fixture fixture;
+            QVERIFY(QDir().mkpath(fixture.destination));
+            QVERIFY(createDatabase(fixture.destination + QStringLiteral("/gamehq.db")));
+            QVERIFY(execDatabase(fixture.destination + QStringLiteral("/gamehq.db"), {
+                QStringLiteral("CREATE TABLE playlists (id INTEGER PRIMARY KEY, name TEXT)"),
+                QStringLiteral("INSERT INTO playlists VALUES (1, 'Best of 2026')") }));
+            PortableProfileImporter::Result result;
+            QString error;
+            QVERIFY(!PortableProfileImporter::importProfile(fixture.options(), result, error));
+            QCOMPARE(scalar(fixture.destination + QStringLiteral("/gamehq.db"),
+                            QStringLiteral("SELECT name FROM playlists")).toString(),
+                     QStringLiteral("Best of 2026"));
+        }
+        {
+            // A settings key that is not one of the internal startup sentinels.
+            Fixture fixture;
+            QVERIFY(QDir().mkpath(fixture.destination));
+            QVERIFY(createDatabase(fixture.destination + QStringLiteral("/gamehq.db")));
+            QVERIFY(execDatabase(fixture.destination + QStringLiteral("/gamehq.db"),
+                                 { QStringLiteral("INSERT INTO settings VALUES ('user.note', 'keep me')") }));
+            PortableProfileImporter::Result result;
+            QString error;
+            QVERIFY(!PortableProfileImporter::importProfile(fixture.options(), result, error));
+            QCOMPARE(scalar(fixture.destination + QStringLiteral("/gamehq.db"),
+                            QStringLiteral("SELECT value FROM settings WHERE key='user.note'")).toString(),
+                     QStringLiteral("keep me"));
+        }
+    }
+
+    // The flip side: a destination that only looks used because GameHQ was
+    // started once must still import, or the feature is unusable.
+    void acceptsADestinationAFirstLaunchLeftBehind()
+    {
+        Fixture fixture;
+        QVERIFY(QDir().mkpath(fixture.destination + QStringLiteral("/sound-packs")));
+        QVERIFY(writeFile(fixture.destination + QStringLiteral("/logs/gamehq.log"), "log line"));
+        QVERIFY(writeFile(fixture.destination + QStringLiteral("/thumbnails/a.jpg"), "thumb"));
+        QVERIFY(createDatabase(fixture.destination + QStringLiteral("/gamehq.db")));
+        QVERIFY(execDatabase(fixture.destination + QStringLiteral("/gamehq.db"), {
+            QStringLiteral("CREATE TABLE bindings (id INTEGER PRIMARY KEY, action TEXT)"),
+            QStringLiteral("INSERT INTO bindings VALUES (1, 'screenshot')"),
+            QStringLiteral("INSERT INTO settings VALUES ('internal.repairs_v1_done', '1')") }));
+        PortableProfileImporter::Result result;
+        QString error;
+        QVERIFY2(PortableProfileImporter::importProfile(fixture.options(), result, error),
+                 qPrintable(error));
+    }
+
     void rejectsPortableGameExecutableAndDatabaseSetting()
     {
         for (const QString& statement : {

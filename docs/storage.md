@@ -20,6 +20,10 @@ Changing a root affects new writes only. GameHQ never auto-moves or deletes exis
 
 `gamehq-data/`: `config.json`, `gamehq.db`, `thumbnails/`, `game-icons/` (cached foreground executable icons, including icons recovered from historical detector logs), `logs/`, `replay-cache/`, `sound-packs/`.
 
+### Stored paths
+
+In portable mode, a path genuinely below the package root is persisted as `portable:/<relative>` so the folder can be moved; everything else is persisted absolutely. "Below the root" is decided by `QDir::relativeFilePath` **plus** a check that the answer is actually relative: on another drive, or for a UNC share, Qt hands the absolute path straight back, and that result does not start with `../`. It used to be stored as `portable:/D:/Shots/...` and later resolved as `<package>/D:/Shots/...`, which lost the capture. `Paths::fromStoredPath` also recognises that shape and resolves such a row to what it really says, so libraries written by an affected build recover on their own. `toStoredPath`/`fromStoredPath` have overloads taking an explicit root, which is what `tst_storedpaths` exercises.
+
 ## Legacy name adoption (`LegacyMigration.cpp`)
 
 The app was previously called SavePlay, then PlayHQ ([branding.md](branding.md)). Old installs are adopted on first start, and all of it lives in `LegacyMigration`:

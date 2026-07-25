@@ -331,10 +331,16 @@ bool destinationIsEmpty(const QString& root, QString& error)
     if (!directory.exists())
         return true;
 
-    const QSet<QString> allowedDirectories = {
+    // GameHQ refills these itself from the captures and the database, so
+    // whatever they hold is a cache the import may replace.
+    const QSet<QString> regenerableDirectories = {
         QStringLiteral("logs"), QStringLiteral("thumbnails"), QStringLiteral("game-icons"),
-        QStringLiteral("replay-cache"), QStringLiteral("sound-packs")
+        QStringLiteral("replay-cache")
     };
+    // Nothing seeds sound-packs — every file in it was put there by the user,
+    // and the import writes into that same folder. Allowing the directory
+    // without looking inside it is how custom sounds got overwritten.
+    const QSet<QString> mustBeEmptyDirectories = { QStringLiteral("sound-packs") };
     const QSet<QString> allowedFiles = {
         QStringLiteral("config.json"), QStringLiteral("gamehq.db"),
         QStringLiteral("import-evidence.json")
@@ -345,7 +351,15 @@ bool destinationIsEmpty(const QString& root, QString& error)
                 .arg(entry.fileName());
             return false;
         }
-        if ((entry.isDir() && allowedDirectories.contains(entry.fileName()))
+        if (entry.isDir() && mustBeEmptyDirectories.contains(entry.fileName())) {
+            if (!QDir(entry.absoluteFilePath()).isEmpty(QDir::NoDotAndDotDot | QDir::AllEntries)) {
+                error = QStringLiteral("The installed profile already has its own %1.")
+                    .arg(entry.fileName());
+                return false;
+            }
+            continue;
+        }
+        if ((entry.isDir() && regenerableDirectories.contains(entry.fileName()))
             || (entry.isFile() && allowedFiles.contains(entry.fileName())))
             continue;
         error = QStringLiteral("The installed profile contains unsupported data: %1.").arg(entry.fileName());
@@ -381,14 +395,40 @@ bool destinationIsEmpty(const QString& root, QString& error)
             error = QStringLiteral("The installed database cannot be inspected.");
             empty = false;
         } else {
-            const QStringList tables = { QStringLiteral("captures"), QStringLiteral("games"),
-                QStringLiteral("folders"), QStringLiteral("sound_settings"),
-                QStringLiteral("binding_overrides") };
-            for (const QString& table : tables) {
-                if (!db.tables().contains(table))
+            // Every table the database actually has, not a fixed list: a table
+            // a newer schema adds would otherwise carry the user's data
+            // straight past this check and be overwritten.
+            //
+            // Two are exempt because a first launch fills them on its own:
+            // `settings` holds internal.* sentinels written by the startup
+            // repair, and `bindings` is the legacy table seeded with the
+            // built-in defaults (the editor writes `binding_overrides`, which
+            // is checked like everything else).
+            for (const QString& table : db.tables()) {
+                if (table.startsWith(QStringLiteral("sqlite_"), Qt::CaseInsensitive)
+                    || table == QStringLiteral("bindings"))
                     continue;
+                if (table == QStringLiteral("settings")) {
+                    QSqlQuery keys(db);
+                    if (!keys.exec(QStringLiteral("SELECT key FROM settings"))) {
+                        error = QStringLiteral("The installed database cannot be inspected.");
+                        empty = false;
+                        break;
+                    }
+                    while (keys.next()) {
+                        if (keys.value(0).toString().startsWith(QStringLiteral("internal.")))
+                            continue;
+                        error = QStringLiteral("The installed profile is not empty.");
+                        empty = false;
+                        break;
+                    }
+                    if (!empty)
+                        break;
+                    continue;
+                }
                 QSqlQuery query(db);
-                if (!query.exec(QStringLiteral("SELECT 1 FROM %1 LIMIT 1").arg(table)) || query.next()) {
+                if (!query.exec(QStringLiteral("SELECT 1 FROM \"%1\" LIMIT 1").arg(table))
+                    || query.next()) {
                     error = QStringLiteral("The installed profile is not empty.");
                     empty = false;
                     break;

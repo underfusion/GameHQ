@@ -21,6 +21,20 @@ durable-journal recovery after hard interruption on either side of publication.
 - Automatic v1 import targets only a new or empty installed profile. If an
   installed database or non-default configuration already exists, stop and
   offer an explicit backup-and-replace workflow later; do not merge libraries.
+- "Empty" is decided by what is actually there, never by a list of known names.
+  `destinationIsEmpty()` walks every table the destination database has and
+  requires each to be empty, exempting only `settings` (whose `internal.*`
+  sentinels a first launch writes) and the legacy `bindings` seed; a table a
+  later schema adds therefore blocks the import instead of being overwritten.
+  `sound-packs` must be empty too — nothing seeds it, so every file in it came
+  from the user and the import writes into that same folder. `logs`,
+  `thumbnails`, `game-icons` and `replay-cache` may hold anything, because
+  GameHQ regenerates them.
+- The import runs in a second process that waits for the first to exit. It
+  identifies that process by id *and* creation time (`core/ProcessIdentity`),
+  because Windows reuses ids, and it refuses to continue when the process
+  cannot be inspected rather than assuming it has gone. It then takes the same
+  single-instance lock a normal start takes and holds it for the whole import.
 - Stage configuration and database changes beside the destination, validate
   them, then publish them atomically. Never edit the portable source in place.
 - Keep capture media and watched folders where they are. Copy only profile

@@ -91,32 +91,53 @@ QString capturesRoot()
                                              movies + QStringLiteral("/PlayHQ") });
 }
 
-QString toStoredPath(const QString& path)
+QString toStoredPath(const QString& path, const QString& root)
 {
     if (path.trimmed().isEmpty())
         return {};
-    const QString absolute = QDir::cleanPath(QFileInfo(fromStoredPath(path)).absoluteFilePath());
-    const QString root = portableRoot();
+    const QString absolute = QDir::cleanPath(QFileInfo(fromStoredPath(path, root)).absoluteFilePath());
     if (root.isEmpty())
         return absolute;
     const QString relative = QDir(root).relativeFilePath(absolute);
-    if (relative != QStringLiteral("..") && !relative.startsWith(QStringLiteral("../")))
-        return QStringLiteral("portable:/") + relative;
-    return absolute;
+    // On another drive — or for a UNC share — relativeFilePath() gives the
+    // candidate back unchanged, still absolute. Such a path is not inside the
+    // package and must never be filed under "portable:/", which would later be
+    // resolved as <package>/D:/... and lose the capture.
+    if (!QDir::isRelativePath(relative))
+        return absolute;
+    if (relative == QStringLiteral("..") || relative.startsWith(QStringLiteral("../")))
+        return absolute;
+    return QStringLiteral("portable:/") + relative;
 }
 
-QString fromStoredPath(const QString& path)
+QString fromStoredPath(const QString& path, const QString& root)
 {
     if (path.trimmed().isEmpty())
         return {};
     const QString clean = QDir::fromNativeSeparators(path.trimmed());
-    if (clean.startsWith(QStringLiteral("portable:/"))) {
-        const QString root = portableRoot();
-        return root.isEmpty() ? clean : QDir::cleanPath(root + QLatin1Char('/') + clean.mid(10));
+    const QString prefix = QStringLiteral("portable:/");
+    if (clean.startsWith(prefix, Qt::CaseInsensitive)) {
+        const QString remainder = clean.mid(prefix.size());
+        // Recovery for rows an older build wrote: a cross-drive or UNC path
+        // could end up behind this prefix even though it was never relative to
+        // the package. Honour what it actually is.
+        if (!QDir::isRelativePath(remainder))
+            return QDir::cleanPath(remainder);
+        return root.isEmpty() ? clean : QDir::cleanPath(root + QLatin1Char('/') + remainder);
     }
-    if (QDir::isRelativePath(clean) && !portableRoot().isEmpty())
-        return QDir::cleanPath(portableRoot() + QLatin1Char('/') + clean);
+    if (QDir::isRelativePath(clean) && !root.isEmpty())
+        return QDir::cleanPath(root + QLatin1Char('/') + clean);
     return QDir::cleanPath(clean);
+}
+
+QString toStoredPath(const QString& path)
+{
+    return toStoredPath(path, portableRoot());
+}
+
+QString fromStoredPath(const QString& path)
+{
+    return fromStoredPath(path, portableRoot());
 }
 
 QString repairMovedPath(const QString& path)

@@ -4,6 +4,24 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.38] - 2026-07-25
+
+### Fixed
+
+- A portable GameHQ stored a capture folder on another drive, or on a network
+  share, as if it were inside the package. The path was then rebuilt against
+  the package folder and the captures appeared to be missing. Such paths now
+  stay absolute, and libraries already affected recover on their own.
+- Importing a portable profile checked only a fixed list of files and tables to
+  decide the destination was empty. Custom sounds, and anything a newer version
+  of GameHQ stores, were treated as absent and overwritten. The import now
+  refuses whenever the destination holds data it does not recognise.
+- The import waited for the running GameHQ by process number alone. Windows
+  reuses those, so it could wait on an unrelated program, and it treated "cannot
+  check" as "already closed" and started replacing the data folder anyway. It
+  now identifies the exact process, refuses when it cannot confirm the previous
+  instance closed, and holds the single-instance lock for the whole import.
+
 ## [0.6.37] - 2026-07-25
 
 ### Fixed

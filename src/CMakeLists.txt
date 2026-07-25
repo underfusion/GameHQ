@@ -19,6 +19,7 @@ qt_add_executable(GameHQ
     config/ConfigManager.cpp config/ConfigManager.h
     config/CaptureLocations.cpp config/CaptureLocations.h
     core/ApplicationMutex.cpp core/ApplicationMutex.h
+    core/ProcessIdentity.cpp core/ProcessIdentity.h
     core/GameIdentity.cpp core/GameIdentity.h
     core/UpdateMaintenance.cpp core/UpdateMaintenance.h
     core/UpdaterHandshake.cpp core/UpdaterHandshake.h
