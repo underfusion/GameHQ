@@ -37,8 +37,8 @@ if "%NEED_CONFIG%"=="1" (
     )
 )
 
-echo [GameHQ] Building latest version in out\...
-"%CMAKE%" --build out
+echo [GameHQ] Building required app components in out\...
+"%CMAKE%" --build out --target GameHQ GameHQLauncher GameHQUpdater
 if errorlevel 1 (
     echo [GameHQ] Build failed - launching the last packaged build.
     goto restart

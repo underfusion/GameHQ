@@ -18,15 +18,35 @@ function(gamehq_add_test name)
     # console it does not have — ctest then reports a pass with no output.
     set_target_properties(${name} PROPERTIES WIN32_EXECUTABLE FALSE)
     add_test(NAME ${name} COMMAND ${name})
+    # The test exes are not deployed with windeployqt, so a plain `ctest` run
+    # cannot resolve Qt6Core.dll and Windows answers with one modal "DLL was
+    # not found" box per test — ctest then hangs until every box is dismissed.
+    # Handing each test the project-local Qt bin directory keeps `ctest` a
+    # non-interactive command.
+    # Every test is bounded. Without this, one hung test consumes the whole CI
+    # job budget and reports nothing useful; the slowest test here finishes in
+    # about seven seconds, so two minutes is generous while still failing fast.
+    # Tests that legitimately need longer raise it explicitly below.
+    set_tests_properties(${name} PROPERTIES
+        TIMEOUT 120
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 endfunction()
 
 gamehq_add_test(tst_gameidentity
     tst_gameidentity.cpp
     "${CMAKE_SOURCE_DIR}/src/core/GameIdentity.cpp")
 
+gamehq_add_test(tst_controllerarbitration
+    tst_controllerarbitration.cpp)
+
 gamehq_add_test(tst_configmanager
     tst_configmanager.cpp
     "${CMAKE_SOURCE_DIR}/src/config/ConfigManager.cpp")
+
+gamehq_add_test(tst_portableprofileimporter
+    tst_portableprofileimporter.cpp
+    "${CMAKE_SOURCE_DIR}/src/config/PortableProfileImporter.cpp")
+target_link_libraries(tst_portableprofileimporter PRIVATE Qt6::Sql)
 
 gamehq_add_test(tst_gamerowrepair
     tst_gamerowrepair.cpp
@@ -36,3 +56,245 @@ gamehq_add_test(tst_gamerowrepair
 # so the translation unit needs Qt::Sql to link even though the tested function
 # does not touch it.
 target_link_libraries(tst_gamerowrepair PRIVATE Qt6::Sql)
+
+gamehq_add_test(tst_versionnumber
+    tst_versionnumber.cpp
+    "${CMAKE_SOURCE_DIR}/src/updates/VersionNumber.cpp")
+
+gamehq_add_test(tst_releasenotes
+    tst_releasenotes.cpp
+    "${CMAKE_SOURCE_DIR}/src/app/ReleaseNotes.cpp")
+
+gamehq_add_test(tst_releasetrust tst_releasetrust.cpp)
+target_link_libraries(tst_releasetrust PRIVATE gamehq_release_trust)
+target_compile_definitions(tst_releasetrust PRIVATE
+    UPDATER_EXE="$<TARGET_FILE:GameHQUpdater>"
+    GAMEHQ_RELEASE_VECTOR="${CMAKE_SOURCE_DIR}/tests/fixtures/release-trust/gamehq-test-vector.json")
+add_dependencies(tst_releasetrust GameHQUpdater)
+
+# TEST ONLY signing helper. Kept out of gamehq_release_trust so no shipped
+# binary can ever produce a release signature.
+add_library(gamehq_test_release_signer STATIC support/TestReleaseSigner.cpp)
+target_include_directories(gamehq_test_release_signer
+    PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/support"
+    PRIVATE "${monocypher_SOURCE_DIR}/src" "${monocypher_SOURCE_DIR}/src/optional")
+target_link_libraries(gamehq_test_release_signer PUBLIC gamehq_release_trust)
+
+gamehq_add_test(tst_releasemanifest tst_releasemanifest.cpp)
+target_link_libraries(tst_releasemanifest PRIVATE gamehq_release_trust)
+target_compile_definitions(tst_releasemanifest PRIVATE
+    GAMEHQ_RELEASE_VECTOR="${CMAKE_SOURCE_DIR}/tests/fixtures/release-trust/gamehq-test-vector.json")
+
+gamehq_add_test(tst_updatemaintenance
+    tst_updatemaintenance.cpp
+    "${CMAKE_SOURCE_DIR}/src/core/UpdateMaintenance.cpp")
+
+gamehq_add_test(tst_applicationmutex
+    tst_applicationmutex.cpp
+    "${CMAKE_SOURCE_DIR}/src/core/ApplicationMutex.cpp")
+
+gamehq_add_test(tst_integrationprotocol
+    tst_integrationprotocol.cpp
+    "${CMAKE_SOURCE_DIR}/src/integration/IntegrationProtocol.cpp"
+    "${CMAKE_SOURCE_DIR}/src/integration/LocalIntegrationServer.cpp"
+    "${CMAKE_SOURCE_DIR}/src/integration/LocalIntegrationServer.h")
+target_link_libraries(tst_integrationprotocol PRIVATE Qt6::Network)
+
+gamehq_add_test(tst_integrationservice
+    tst_integrationservice.cpp
+    "${CMAKE_SOURCE_DIR}/src/integration/IntegrationProtocol.cpp"
+    "${CMAKE_SOURCE_DIR}/src/integration/LocalIntegrationServer.cpp"
+    "${CMAKE_SOURCE_DIR}/src/integration/LocalIntegrationServer.h"
+    "${CMAKE_SOURCE_DIR}/src/integration/ExternalGameContext.cpp"
+    "${CMAKE_SOURCE_DIR}/src/integration/ExternalGameContext.h"
+    "${CMAKE_SOURCE_DIR}/src/integration/IntegrationService.cpp"
+    "${CMAKE_SOURCE_DIR}/src/integration/IntegrationService.h")
+target_link_libraries(tst_integrationservice PRIVATE Qt6::Network)
+
+add_executable(integration_server_fixture
+    integration_server_fixture.cpp
+    "${CMAKE_SOURCE_DIR}/src/integration/IntegrationProtocol.cpp"
+    "${CMAKE_SOURCE_DIR}/src/integration/LocalIntegrationServer.cpp"
+    "${CMAKE_SOURCE_DIR}/src/integration/LocalIntegrationServer.h"
+    "${CMAKE_SOURCE_DIR}/src/integration/ExternalGameContext.cpp"
+    "${CMAKE_SOURCE_DIR}/src/integration/ExternalGameContext.h"
+    "${CMAKE_SOURCE_DIR}/src/integration/IntegrationService.cpp"
+    "${CMAKE_SOURCE_DIR}/src/integration/IntegrationService.h")
+target_include_directories(integration_server_fixture PRIVATE "${CMAKE_SOURCE_DIR}/src")
+target_link_libraries(integration_server_fixture PRIVATE Qt6::Core Qt6::Network)
+set_target_properties(integration_server_fixture PROPERTIES WIN32_EXECUTABLE FALSE)
+
+gamehq_add_test(tst_integrationclient
+    tst_integrationclient.cpp
+    "${CMAKE_SOURCE_DIR}/src/integration/IntegrationProtocol.cpp"
+    "${CMAKE_SOURCE_DIR}/src/integration/IntegrationClient.cpp")
+target_link_libraries(tst_integrationclient PRIVATE Qt6::Network)
+target_compile_definitions(tst_integrationclient PRIVATE
+    INTEGRATION_SERVER_FIXTURE="$<TARGET_FILE:integration_server_fixture>")
+add_dependencies(tst_integrationclient integration_server_fixture)
+
+gamehq_add_test(tst_gamemetadatabackfill
+    tst_gamemetadatabackfill.cpp
+    "${CMAKE_SOURCE_DIR}/src/storage/GameMetadataBackfill.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameIconCache.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/Paths.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/LegacyMigration.cpp"
+    "${CMAKE_SOURCE_DIR}/src/core/GameIdentity.cpp")
+target_link_libraries(tst_gamemetadatabackfill PRIVATE Qt6::Sql Qt6::Gui Qt6::Widgets)
+
+gamehq_add_test(tst_gameiconcache
+    tst_gameiconcache.cpp
+    "${CMAKE_SOURCE_DIR}/src/storage/GameIconCache.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/Paths.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/LegacyMigration.cpp")
+target_link_libraries(tst_gameiconcache PRIVATE Qt6::Gui Qt6::Widgets)
+
+gamehq_add_test(tst_captureiconrefresh
+    tst_captureiconrefresh.cpp
+    "${CMAKE_SOURCE_DIR}/src/storage/CaptureDatabase.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/CaptureQueries.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameRowRepair.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameMetadataBackfill.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameIconCache.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/Paths.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/LegacyMigration.cpp"
+    "${CMAKE_SOURCE_DIR}/src/core/GameIdentity.cpp")
+target_link_libraries(tst_captureiconrefresh PRIVATE Qt6::Sql Qt6::Gui Qt6::Widgets)
+
+gamehq_add_test(tst_capturedatabaserepair
+    tst_capturedatabaserepair.cpp
+    "${CMAKE_SOURCE_DIR}/src/storage/CaptureDatabase.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/CaptureQueries.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameRowRepair.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameMetadataBackfill.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameIconCache.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/Paths.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/LegacyMigration.cpp"
+    "${CMAKE_SOURCE_DIR}/src/core/GameIdentity.cpp")
+target_link_libraries(tst_capturedatabaserepair PRIVATE Qt6::Sql Qt6::Gui Qt6::Widgets)
+
+gamehq_add_test(tst_bindingeditor
+    tst_bindingeditor.cpp
+    "${CMAKE_SOURCE_DIR}/src/input/ActionCatalog.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/BindingEditorModel.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/BindingResolver.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/BindingRuntime.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/CaptureDatabase.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/CaptureQueries.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameRowRepair.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameMetadataBackfill.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameIconCache.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/Paths.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/LegacyMigration.cpp"
+    "${CMAKE_SOURCE_DIR}/src/core/GameIdentity.cpp")
+target_link_libraries(tst_bindingeditor PRIVATE Qt6::Sql Qt6::Gui Qt6::Widgets)
+
+# Stand-in for app\GameHQ.exe: it reports the arguments Windows actually handed
+# it, so the launcher's pass-through can be checked against a real process.
+gamehq_add_test(tst_updateschedule
+    tst_updateschedule.cpp
+    "${CMAKE_SOURCE_DIR}/src/updates/UpdateSchedule.cpp")
+
+gamehq_add_test(tst_releasecatalog
+    tst_releasecatalog.cpp
+    "${CMAKE_SOURCE_DIR}/src/updates/ReleaseCatalog.cpp"
+    "${CMAKE_SOURCE_DIR}/src/updates/VersionNumber.cpp")
+
+gamehq_add_test(tst_logrotation
+    tst_logrotation.cpp
+    "${CMAKE_SOURCE_DIR}/src/diagnostics/Logger.cpp")
+
+add_executable(process_identity_fixture process_identity_fixture.cpp)
+target_link_options(process_identity_fixture PRIVATE -static -municode)
+set_target_properties(process_identity_fixture PROPERTIES WIN32_EXECUTABLE FALSE)
+
+gamehq_add_test(tst_processidentity
+    tst_processidentity.cpp
+    "${CMAKE_SOURCE_DIR}/src/core/ProcessIdentity.cpp")
+target_compile_definitions(tst_processidentity PRIVATE
+    PROCESS_IDENTITY_FIXTURE="$<TARGET_FILE:process_identity_fixture>")
+add_dependencies(tst_processidentity process_identity_fixture)
+
+gamehq_add_test(tst_storedpaths
+    tst_storedpaths.cpp
+    "${CMAKE_SOURCE_DIR}/src/config/Paths.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/LegacyMigration.cpp")
+
+gamehq_add_test(tst_capturepublisher
+    tst_capturepublisher.cpp
+    "${CMAKE_SOURCE_DIR}/src/capture/CapturePublisher.cpp")
+
+add_executable(launcher_argecho_fixture launcher_argecho_fixture.cpp)
+target_link_options(launcher_argecho_fixture PRIVATE -static -municode)
+target_link_libraries(launcher_argecho_fixture PRIVATE shell32)
+set_target_properties(launcher_argecho_fixture PROPERTIES WIN32_EXECUTABLE FALSE)
+
+gamehq_add_test(tst_launchercommandline
+    tst_launchercommandline.cpp
+    "${CMAKE_SOURCE_DIR}/src/launcher/LauncherCommandLine.cpp")
+target_compile_definitions(tst_launchercommandline PRIVATE
+    LAUNCHER_ARGECHO_FIXTURE="$<TARGET_FILE:launcher_argecho_fixture>")
+add_dependencies(tst_launchercommandline launcher_argecho_fixture)
+
+gamehq_add_test(tst_updatedownloader
+    tst_updatedownloader.cpp
+    "${CMAKE_SOURCE_DIR}/src/updates/UpdateDownloader.cpp")
+target_link_libraries(tst_updatedownloader PRIVATE Qt6::Network gamehq_test_release_signer)
+
+gamehq_add_test(tst_updatepreflight
+    tst_updatepreflight.cpp
+    "${CMAKE_SOURCE_DIR}/src/updates/UpdatePreflight.cpp")
+
+gamehq_add_test(tst_hdrtonemap
+    tst_hdrtonemap.cpp
+    "${CMAKE_SOURCE_DIR}/src/capture/hdr/HdrToneMapMath.cpp")
+
+gamehq_add_test(tst_hdrcapabilities
+    tst_hdrcapabilities.cpp
+    "${CMAKE_SOURCE_DIR}/src/capture/HdrCapabilities.cpp")
+target_link_libraries(tst_hdrcapabilities PRIVATE
+    user32 dxgi ole32 mfplat mfuuid mf)
+
+# GPU smoke test (t24): needs a real D3D11 device, so it is not "pure logic"
+# like the tests above — it self-skips via QSKIP when no D3D11 hardware
+# device or no FP16 support is available (see the test file header comment).
+gamehq_add_test(tst_hdrgputonemap
+    tst_hdrgputonemap.cpp
+    "${CMAKE_SOURCE_DIR}/src/capture/hdr/HdrToneMapMath.cpp"
+    "${CMAKE_SOURCE_DIR}/src/capture/hdr/GpuToneMapper.cpp")
+target_link_libraries(tst_hdrgputonemap PRIVATE d3d11 d3dcompiler)
+
+gamehq_add_test(tst_updateinstaller
+    tst_updateinstaller.cpp
+    "${CMAKE_SOURCE_DIR}/src/updates/UpdateInstaller.cpp"
+    "${CMAKE_SOURCE_DIR}/src/updates/UpdateDownloader.cpp"
+    "${CMAKE_SOURCE_DIR}/src/updater/UpdaterTransaction.cpp"
+    "${CMAKE_SOURCE_DIR}/src/core/UpdaterHandshake.cpp")
+target_link_libraries(tst_updateinstaller PRIVATE Qt6::Network gamehq_test_release_signer)
+
+gamehq_add_test(tst_updatertransaction
+    tst_updatertransaction.cpp
+    "${CMAKE_SOURCE_DIR}/src/updater/UpdaterDataSnapshot.cpp"
+    "${CMAKE_SOURCE_DIR}/src/updater/UpdaterSwap.cpp"
+    "${CMAKE_SOURCE_DIR}/src/updater/UpdaterHealth.cpp"
+    "${CMAKE_SOURCE_DIR}/src/updater/UpdaterRecovery.cpp"
+    "${CMAKE_SOURCE_DIR}/src/core/UpdateMaintenance.cpp"
+    "${CMAKE_SOURCE_DIR}/src/updater/UpdaterStaging.cpp"
+    "${CMAKE_SOURCE_DIR}/src/updater/UpdaterTransaction.cpp"
+    "${CMAKE_SOURCE_DIR}/src/launcher/UpdaterPromotion.cpp")
+add_executable(updater_health_fixture updater_health_fixture.cpp)
+target_link_options(updater_health_fixture PRIVATE -static -municode)
+target_compile_definitions(tst_updatertransaction PRIVATE
+    UPDATER_EXE="$<TARGET_FILE:GameHQUpdater>"
+    HEALTH_FIXTURE_EXE="$<TARGET_FILE:updater_health_fixture>"
+    GAMEHQ_UPDATER_VERSION="${GAMEHQ_VERSION_FULL}")
+add_dependencies(tst_updatertransaction GameHQUpdater updater_health_fixture)
+target_link_libraries(tst_updatertransaction PRIVATE miniz bcrypt Qt6::Sql gamehq_test_release_signer)
+
+# The end-to-end updater tests drive real child processes through swap,
+# rollback and recovery, so they need more than the default bound - especially
+# on a shared CI runner.
+set_tests_properties(tst_updatertransaction tst_updateinstaller PROPERTIES TIMEOUT 600)
+set_tests_properties(tst_integrationservice tst_integrationclient
+                     tst_portableprofileimporter PROPERTIES TIMEOUT 300)

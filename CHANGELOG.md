@@ -4,6 +4,729 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-07-25
+
+### Added
+
+- GameHQ can now check for updates, download and install them, restart
+  automatically, and roll back safely when an update fails.
+- HDR-aware capture uses GPU tone mapping so screenshots and SDR replay videos
+  no longer appear washed out or overexposed on HDR displays.
+- A standard per-user Windows Setup package is now available alongside the
+  Portable package.
+- The new Playnite integration discovers GameHQ, launches it with games,
+  forwards game state, and restores that state after reconnects.
+- Settings and About have been redesigned with clearer diagnostics, update
+  controls, offline release notes, and a What's New view.
+
+### Changed
+
+- Setup now uses restrained GameHQ artwork and a shorter welcome message while
+  keeping the standard Windows wizard layout and per-user installation.
+- The GameHQ logo is cleaner without the former red recording indicator, and
+  Setup uses the normal rounded app logo on later wizard pages.
+- Release manifests now use the production Ed25519 trust key, while private
+  signing material remains outside the repository and ordinary CI.
+
+### Fixed
+
+- When the gallery is empty, controller focus now stays in the sidebar instead
+  of moving into a thumbnail area with nothing to select.
+- Controller shortcuts now follow the input backend and device producing real
+  button activity, so stale virtual controllers cannot block input in games.
+- Screenshots and replay thumbnails are published atomically, and unreadable
+  cached thumbnails are regenerated from the working video.
+- Portable imports preserve existing data, failed database or configuration
+  recovery rolls back safely, and invalid storage paths are reported.
+- Long-path handling, IPC reconnects, update discovery, log rotation, and
+  Setup/update conflict prevention are more reliable.
+
+## [0.6.45] - 2026-07-25
+
+### Fixed
+
+- The unsigned Beta workflow now installs the valid Qt 6.8.3 module set and
+  stops on the first failed native command instead of continuing without Qt.
+
+## [0.6.44] - 2026-07-25
+
+### Fixed
+
+- When GitHub limited update checks, GameHQ told you when it would retry but
+  then asked again an hour later regardless, and restarting cleared the wait
+  entirely. The retry time is now remembered and respected, including across
+  restarts. A manual check during that wait tells you when it can try again
+  instead of failing.
+
+## [0.6.43] - 2026-07-25
+
+### Changed
+
+- Developer documentation now reports the real size and scope of the automated
+  test suite instead of the figures from when it was first added.
+
+## [0.6.42] - 2026-07-25
+
+### Changed
+
+- The build now re-runs the timing-sensitive tests three times each, so a race
+  that only fails occasionally is caught before a release rather than after it.
+
+## [0.6.41] - 2026-07-25
+
+### Changed
+
+- Every automated test now has a time limit, so a hung test fails quickly
+  instead of consuming the whole build.
+- The Playnite plugin records the .NET version it needs, so a build on an older
+  toolchain fails clearly instead of producing a different result.
+- Release evidence now records which tools produced the build (CMake, Ninja,
+  Python, .NET, Qt, compiler, PowerShell and Windows build).
+
+## [0.6.40] - 2026-07-25
+
+### Fixed
+
+- After a restart, the first update check could report "up to date" even when a
+  newer release existed, because GameHQ remembered the server's cache tag but
+  not the release it described.
+- The update check only looked at the 20 most recent releases. Plugin releases
+  published between app releases could push the app release out of view, so no
+  update was ever found. It now reads more releases, in pages, with a limit.
+- GitHub's second kind of rate limit was treated as an ordinary error, so
+  GameHQ retried straight back into it instead of waiting.
+- The "check at most once a day" timer restarted on every launch, so GameHQ
+  checked more often than intended.
+
+## [0.6.39] - 2026-07-25
+
+### Fixed
+
+- `gamehq.log` grew forever. It now rotates at 8 MB and keeps three previous
+  files, so logs can never take more than about 32 MB.
+- A log folder GameHQ could not write to made the whole session silent. It now
+  reports the problem and writes diagnostics to the console instead, and the
+  copied diagnostic summary says whether the log is being written.
+
+## [0.6.38] - 2026-07-25
+
+### Fixed
+
+- A portable GameHQ stored a capture folder on another drive, or on a network
+  share, as if it were inside the package. The path was then rebuilt against
+  the package folder and the captures appeared to be missing. Such paths now
+  stay absolute, and libraries already affected recover on their own.
+- Importing a portable profile checked only a fixed list of files and tables to
+  decide the destination was empty. Custom sounds, and anything a newer version
+  of GameHQ stores, were treated as absent and overwritten. The import now
+  refuses whenever the destination holds data it does not recognise.
+- The import waited for the running GameHQ by process number alone. Windows
+  reuses those, so it could wait on an unrelated program, and it treated "cannot
+  check" as "already closed" and started replacing the data folder anyway. It
+  now identifies the exact process, refuses when it cannot confirm the previous
+  instance closed, and holds the single-instance lock for the whole import.
+
+## [0.6.37] - 2026-07-25
+
+### Fixed
+
+- Uninstall checked only whether GameHQ was running, so it could remove an
+  installation while an update was still working on it. It now applies the same
+  update and recovery checks Setup does.
+- A `maintenance.lock` left behind by a crash blocked Setup permanently. Setup
+  and Uninstall now tell the difference between an update that is running, one
+  that already finished, and one that never completed — the last of which asks
+  you to start GameHQ once so it can recover. Neither ever deletes that
+  evidence.
+- Setup and Uninstall now also notice a GameHQ running in another Windows
+  session, which the previous per-session check could not see.
+
+## [0.6.36] - 2026-07-25
+
+### Fixed
+
+- Two screenshots finishing in the same second could be given the same file
+  name, so one overwrote the other. A capture now claims its name by creating
+  the file exclusively, which two encoder threads cannot both win.
+- Screenshots were encoded straight to their final name, so an interrupted or
+  failed write left a truncated image in the gallery. A capture is now written
+  to a temporary file beside it and appears under its real name only once it is
+  complete; leftovers from a crash are cleaned up at startup.
+- Holding the capture button no longer grows memory without limit. Once eight
+  screenshots or 256 MB of frames are waiting to be saved, further captures are
+  refused with a message instead of being queued.
+
+## [0.6.35] - 2026-07-25
+
+### Fixed
+
+- The package launcher built its paths and the command line it passed to
+  `app\GameHQ.exe` in fixed buffers, so a long install path was silently
+  truncated and a long argument list could overrun the buffer entirely. All of
+  it is now dynamic; a command line Windows cannot carry, or an install path
+  too deep for Windows to start, is reported instead.
+- Arguments are forwarded exactly as typed. Quotes, embedded spaces and
+  trailing backslashes previously survived by luck rather than by rule.
+- `--post-update` is recognised only as a whole argument. Opening a file whose
+  name merely contained that text made the launcher treat the start as part of
+  an update and skip the "update in progress" guard.
+
+## [0.6.34] - 2026-07-25
+
+### Added
+
+- Failure-injection tests for the startup library repair. Each durable step of
+  the pass — the duplicate-game merge, the "repairs done" marker and the icon
+  format marker — is now made to fail on purpose, and the test asserts the
+  database comes back exactly as it was and that the next start finishes the
+  repair it rolled back.
+
+## [0.6.33] - 2026-07-25
+
+### Fixed
+
+- GameHQ no longer continues past a storage location it could not create. A
+  missing data root or captures root now stops startup and names the failing
+  path; a missing cache, thumbnail or log directory is reported and startup
+  continues, because only diagnostics are affected.
+
+## [0.6.32] - 2026-07-25
+
+### Fixed
+
+- An unreadable `config.json` was silently ignored and the next save then
+  overwrote it, destroying the only copy of the user's settings. The file is
+  now preserved as `config.json.corrupt-<timestamp>.json` before GameHQ falls
+  back to defaults, with one non-blocking notice pointing at it. If it cannot
+  be preserved, GameHQ refuses to start rather than discard it.
+- Startup database repair could continue outside a transaction, and several of
+  its writes ignored their result. A failure part-way through could leave the
+  library half-repaired with the "repairs done" marker set, so it was never
+  retried. Repair now requires a transaction, checks every statement and
+  helper, rolls back on any failure, and records the marker last.
+- A database written by a newer GameHQ is now refused instead of being modified
+  against a schema this build cannot see.
+
+## [0.6.31] - 2026-07-25
+
+### Fixed
+
+- Playnite state could vanish a few seconds after a reconnect. When Playnite
+  reconnected before its previous connection reported the disconnect, the stale
+  disconnect expired the source the live connection had just populated. Only
+  the last remaining Playnite connection now starts that clock.
+- A message handler that disconnects a client no longer leaves the reader
+  walking a removed entry when several messages arrived in the same read.
+- A reply that could not be queued in full left a truncated frame in the socket
+  buffer, which would corrupt every later message on that connection. Such a
+  connection is now closed instead.
+- Broadcasting maintenance no longer iterates the client list while a failed
+  send is removing an entry from it.
+
+## [0.6.30] - 2026-07-25
+
+### Security
+
+- The updater now waits on the exact application process that authorised the
+  update, identified by process id *and* process creation time. Windows reuses
+  process ids, so a id-only wait could return immediately for an unrelated
+  process while GameHQ was still running and holding files.
+- The helper opens and verifies that process before it signals READY, so the
+  app only exits once a meaningful handle is already held.
+- Only an observed clean exit allows the helper to touch files. A timeout, an
+  access failure, a reused process id, an abandoned wait or a failed wait all
+  abort before any snapshot, extraction or swap.
+- A handoff failure now releases maintenance mode, so a failure that changed no
+  file can no longer leave Setup and the next launch blocked.
+
+### Fixed
+
+- Update transaction validation no longer reports a stale error message from a
+  previous validation attempt.
+
+## [0.6.29] - 2026-07-25
+
+### Security
+
+- The updater now installs only releases authorised by an Ed25519-signed
+  release manifest. GameHQ downloads `gamehq-release.json` and
+  `gamehq-release.sig` before the package, verifies the signature over the
+  exact downloaded bytes with a key compiled into the binary, and accepts the
+  archive only when its name, length and SHA-256 match the signed record.
+- A manifest can no longer choose its own signing key, and release sequence,
+  key activation, rollback and same-sequence equivocation are all enforced,
+  with the accepted sequence stored atomically in the user data root.
+- The `.sha256` asset is now a manual-verification convenience only. Replacing
+  the update archive and its checksum together no longer produces an
+  installable update.
+- The updater helper repeats the whole verification from the manifest on disk
+  before extraction, so a package swapped after the transaction was written is
+  rejected before any file is touched.
+
+## [0.6.28] - 2026-07-22
+
+### Changed
+
+- Confirmed that GameHQ remains under MIT and aligned product, package,
+  contribution, trademark, and SignPath materials with that decision.
+- Added dependency and asset provenance plus optional source-archive tooling.
+
+### Security
+
+- Release validation now rejects license drift, unclassified dependencies or
+  assets, private identity data, secret files, credentials, and personal paths.
+
+## [0.6.27] - 2026-07-22
+
+### Added
+
+- Added an installed-only portable-profile import flow under Advanced settings.
+- Added transactional staging, strict path rebasing, source immutability checks,
+  SQLite validation, evidence output and automatic rollback.
+
+### Security
+
+- Portable imports reject populated destinations, package escapes, unknown
+  portable path fields, unsupported schemas and invalid referenced assets.
+
+## [0.6.26] - 2026-07-22
+
+### Added
+
+- Added a clean-Windows unsigned-Beta CI gate that builds and tests GameHQ,
+  then produces Setup, Portable, Update, manifest, signature and evidence.
+- Added a strict pre-upload audit that recomputes every recorded size and
+  SHA-256 value and rejects missing or unexpected release files.
+
+### Security
+
+- CI artifacts remain short-lived test-key evidence and are never published as
+  a GitHub Release; publishable tags continue to reject test-key manifests.
+
+## [0.6.25] - 2026-07-22
+
+### Added
+
+- Added a byte-exact Ed25519 release-manifest generator and verifier in an
+  explicit test-key mode, covering Setup, Portable and Update artifacts.
+- GameHQ, the static updater and the Playnite plugin now consume shared RFC
+  8032 and GameHQ-specific verification vectors.
+- Added strict signature encoding, trusted/current/next/revoked key handling,
+  atomic anti-rollback state and tamper/equivocation tests.
+
+### Security
+
+- Pinned Monocypher 4.0.3 and BouncyCastle.Cryptography 2.6.2 with locked
+  integrity metadata and redistributable license notices.
+- Test-key manifests are rejected for tagged releases; production private key
+  creation and activation remain outside the repository and ordinary CI.
+
+## [0.6.24] - 2026-07-21
+
+### Added
+
+- A pinned, project-local Inno Setup toolchain now builds a full offline,
+  per-user Windows installer with stable identity, metadata, shortcuts and
+  installed-location discovery registration.
+- Playnite 0.4.11 discovers GameHQ through the installer registry contract,
+  Windows App Paths, autostart and the standard per-user location in a tested
+  deterministic order.
+- GameHQ holds an application-lifetime mutex so Setup and Uninstall can wait
+  for capture, remux and database work to close normally.
+- Security, privacy, download-verification, troubleshooting and code-signing
+  policies now document Windows warnings and private vulnerability reporting.
+
+### Changed
+
+- Release packaging now creates one flag-free neutral payload. Portable staging
+  alone adds `portable.flag`; Setup consumes the payload unchanged; update
+  staging retains its strict program-file allowlist.
+- Distribution identity, registry ownership and release artifact names are
+  centralized in `packaging/distribution-identity.psd1`.
+- Settings -> About now links to the concise Security & Privacy guidance.
+
+## [0.6.23] - 2026-07-21
+
+### Added
+
+- The passive version label at the bottom of the main sidebar is now a full
+  **About GameHQ** row. It opens a compact, controller-friendly About and
+  What's New modal without leaving the current gallery or Settings page.
+- Current-version release notes are bundled as validated structured data, so
+  What's New remains available offline. A distinct sidebar mark indicates
+  unread notes, while an available update changes the row and action explicitly.
+
+### Changed
+
+- The one-time post-update greeting now opens the same useful What's New modal
+  after the desktop window becomes active. It never appears in the game overlay,
+  and closing it records the installed version as read.
+- Update controls and technical project links remain on Settings -> About; the
+  compact modal only presents status, release highlights, and key actions.
+
+## [0.6.22] - 2026-07-21
+
+### Fixed
+
+- The automated test suite could not be run unattended. Test executables are
+  not deployed with the Qt runtime, so a plain `ctest` opened one modal
+  "Qt6Core.dll was not found" dialog per test and then waited for a human.
+  CTest now hands every test the project-local Qt binary directory.
+- Two of the new icon tests crashed instead of reporting a result. They ran
+  under `QTEST_GUILESS_MAIN`, while the icon extractor's fallback path uses
+  `QFileIconProvider` — a QtWidgets class that needs a GUI application object,
+  as the app itself always has. Both now run as `QApplication` tests.
+- The metadata backfill test used a `games` table without the `last_seen_at`
+  column the real database has, so every backfill update silently failed to
+  prepare and the test never exercised what it claimed to.
+
+## [0.6.21] - 2026-07-21
+
+### Fixed
+
+- Improving the icon extractor never reached games already in the library. An
+  icon is extracted once and pinned in `games.icon_path`, and the only thing
+  that rewrote it was detecting that game running again — so an Xbox title sat
+  on the generic `.exe` glyph indefinitely, because there was no reason to
+  relaunch it. The database now re-extracts icons for every game with a known
+  executable whenever `GameIconCache`'s format version moves, recorded as
+  `internal.icon_format`.
+
+## [0.6.20] - 2026-07-21
+
+### Fixed
+
+- Xbox app game installs still showed the generic `.exe` glyph. The 0.6.18
+  package-manifest lookup only searched for `AppxManifest.xml`, but GDK titles
+  under `XboxGames\<title>\Content` ship `MicrosoftGame.config` instead, which
+  declares the same artwork as attributes on its `<ShellVisuals>` element.
+  `GameIconCache` now accepts either manifest and also reads GDK's
+  `Square480x480Logo`.
+- Icon extraction was silent about why it fell back to the shell icon. It now
+  logs the manifest it found, the logo asset it used, and the specific failure
+  (no manifest nearby, manifest declares no logo, or no declared asset present
+  on disk).
+
+### Changed
+
+- The icon cache format version moved to `v3`, so executables cached as the
+  generic glyph by 0.6.19 are re-extracted through the fixed manifest lookup.
+
+## [0.6.19] - 2026-07-21
+
+### Added
+
+- The overlay capture strip's hover icons are now live for the mouse: the
+  heart toggles the favourite, the folder icon reveals the capture on disk,
+  and the trash icon opens a clickable "Delete capture?" confirmation. They
+  previously only rendered — every click was swallowed, and deleting from the
+  overlay needed the pad's action menu.
+
+### Fixed
+
+- Games without a Steam name (Xbox/MSIX, itch, standalone launchers) never got
+  an icon. The historical-detection backfill only accepted the log line's
+  `steam:` candidate, so a `steam: <none>` title was skipped and its
+  `icon_path` stayed empty forever; it now matches on any logged candidate
+  (window title, `ProductName`, `FileDescription` or executable name). The
+  candidates are ranked and the whole log is scanned before anything is
+  written, because a launcher shim is logged under the game's window title one
+  line ahead of the real executable — first-match-wins would have bound the
+  shim's path (`gamingservicesui.exe`) as the game.
+- The icon cache key now carries an extractor format version. A cache hit
+  short-circuits extraction, so executables already cached by the previous
+  shell-icon-only extractor kept serving the generic `.exe` glyph and never
+  reached the 0.6.18 package-manifest path.
+
+## [0.6.18] - 2026-07-21
+
+### Added
+
+- The overlay sidebar now prints the running app version under the GameHQ
+  logo, so the build in use is readable without opening Settings.
+
+### Fixed
+
+- MSIX/Appx games (Xbox app installs under `XboxGames\<title>\Content`) showed
+  the generic Windows application icon in the sidebar. Their executables carry
+  no icon resource — the artwork lives in `AppxManifest.xml` — so
+  `GameIconCache` now resolves the manifest's logo (largest square tile first,
+  falling back through `Square310x310Logo`, `Square44x44Logo` and
+  `<Properties><Logo>`) and picks the highest-resolution qualified variant on
+  disk (`Square150x150Logo.scale-200.png` and friends) before falling back to
+  the shell icon.
+
+## [0.6.17] - 2026-07-21
+
+### Fixed
+
+- `GameIconCache::iconPathForExecutable` failed silently on every error path
+  (missing file, no embedded icon resource, PNG write failure), leaving no
+  trace of why a detected game ended up with a blank icon. All three cases
+  now log a `qWarning`.
+
+## [0.6.16] - 2026-07-21
+
+### Changed
+
+- Replaced the experimental HDR tone-map curve's hard clip above SDR white
+  with a real shoulder: identity below a 0.9 knee, then a smooth,
+  monotonically compressing curve that never quite reaches full white.
+  Highlights at 1.5x/2x/4x/8x/16x reference white now stay visually
+  distinct instead of clipping to one flat value — a hard clip discarded
+  all highlight detail, defeating the point of tone mapping. SDR white
+  (1.0) is now intentionally slightly below 255 (headroom reserved for
+  highlights) rather than pixel-identical to the untouched SDR path.
+- `FramePumpService::createSession` now falls back to the BGRA8 SDR pool
+  if FP16 pool creation itself fails after every earlier gate passed,
+  instead of aborting the capture attempt outright.
+- Extracted the FP16-attempt decision into `capture::hdr::shouldAttemptFp16Capture`
+  (pure function, unit-tested) so `internal.capture.experimental_hdr`
+  being off is verified, not just asserted by code review.
+
+## [0.6.15] - 2026-07-20
+
+### Added
+
+- Experimental HDR capture stage for the replay pipeline (t24), hidden
+  behind `internal.capture.experimental_hdr` (default off, not exposed in
+  Settings). When enabled, the display is HDR-active, and the GPU reports
+  FP16 texture/sample support, `FramePumpService` captures an FP16 scRGB
+  frame pool and tone-maps each frame to BGRA8 on the GPU before handing it
+  to the existing `SegmentRecorder` — the recorder itself is unchanged, and
+  any failure at any gate falls back to the original BGRA8 SDR pool.
+- `capture::hdr::HdrToneMapMath` (CPU reference) and `capture::hdr::GpuToneMapper`
+  (GPU shader stage): identity in the SDR range [0,1], hard-clipped to white
+  above it, then sRGB-encoded — see the code comments for why a perceptual
+  curve is deferred. Covered by `tst_hdrtonemap` (pure logic) and
+  `tst_hdrgputonemap` (opt-in GPU smoke test, self-skips without a D3D11
+  device or FP16 support).
+
+### Status
+
+Code-complete and verified by this machine's own build/test/GPU smoke test,
+but **not accepted** — nobody has run it against a real HDR-active display
+or a live HDR game yet. Stays hidden until that hardware acceptance pass.
+
+## [0.6.14] - 2026-07-20
+
+### Fixed
+
+- Update discovery no longer relies on `/releases/latest`, which could return
+  the wrong release once the upcoming Playnite plugin starts publishing its
+  own `playnite-v*` tags into this repo. `GitHubReleaseSource` now scans the
+  release list and selects the highest-versioned entry that is non-draft,
+  non-prerelease, has a tag matching the app's `vX.Y.Z` pattern, and carries
+  the exact update ZIP + checksum assets — a plugin release can never be
+  mistaken for an app update.
+
+## [0.6.13] - 2026-07-20
+
+### Added
+
+- HDR detection and diagnostics: GameHQ now reports, per display, whether
+  Windows HDR is currently active, along with bit depth and the display's
+  luminance range, and probes whether an HEVC Main10 encoder is installed.
+- Settings → Advanced shows a "Display HDR" row with the full report and a
+  Refresh button; the report is also logged at startup, re-probed when the
+  display topology changes, and included in the copied diagnostic summary.
+- The replay buffer logs the HDR state of the display its capture target sits
+  on when arming, making it obvious when HDR content is being captured through
+  the SDR path.
+
+Detection only: capture, screenshots and clips are unchanged and still SDR.
+
+## [0.6.12] - 2026-07-20
+
+### Added
+
+- Install-and-restart controls: the update banner and About page now cover the
+  full install flow (ready, preparing, installing) with state-specific actions,
+  and a failed check offers "Check again" instead of a misleading retry.
+- Updater READY handshake: the app only exits after the helper confirms it
+  validated the transaction, and the helper waits for the old process to fully
+  exit before touching any file.
+- Persistent `.update/updater.log` recording every helper outcome, retained
+  across the post-update cleanup for diagnostics.
+
+### Fixed
+
+- `UpdateService` double ownership: the service is no longer parented to the
+  QML engine while also held by the application, removing a shutdown
+  double-delete.
+- Data-restore rollback now reverses only the operations it performed instead
+  of deleting every known state file, so an aborted restore can no longer
+  discard an untouched database.
+- A release whose assets are still uploading is no longer offered, and its
+  ETag is not cached (previously the check could stick on 304 and never see
+  the finished assets).
+- A failed health-token release from job supervision now rolls back instead of
+  reporting success while the new process is killed on helper exit.
+- Screenshot encoding now finishes before shutdown, preventing a crash when
+  quitting during a background encode.
+- Integration clients rejected for malformed frames free their connection slot
+  immediately, and install-directory game matching no longer accepts
+  executables from a different drive.
+- Completed updates also clean the downloaded package and stale transaction
+  file; the About page License link points at the real repository file.
+
+## [0.6.11] - 2026-07-20
+
+### Added
+
+- Same-user `GameHQ.Local.v1` integration channel with bounded 64 KiB framing,
+  strict UTF-8/JSON/type validation, handshake negotiation, lifecycle snapshots,
+  structured replies, disconnect expiry, and hostile-input tests.
+- Friendly second-instance forwarding for window activation and gallery opening,
+  with short connection/reply bounds and the existing lock as final authority.
+- Playnite identity hints for foreground detection. Exact or descendant process
+  evidence can recognize windowed games; names and directory hints never weaken
+  existing capture-safety gates.
+- Durable update-maintenance suppression across the app, launcher, helper and
+  local protocol, including terminal cleanup and five-minute stale recovery.
+
+## [0.6.10] - 2026-07-20
+
+### Added
+
+- Safe update-package download and cancellation: HTTPS-only redirects, bounded
+  streaming into install-local `.partial` files, atomic publication, stale
+  partial cleanup, exact release-size enforcement, and visible progress.
+- Strict `.sha256` parsing and local SHA-256 verification. Malformed checksum
+  files, mismatched package names, truncated downloads, and corrupted packages
+  are deleted before the update can enter `ReadyToInstall`.
+- Focused updater tests covering accepted checksum formats and rejection of
+  malformed, mismatched, and corrupted packages.
+- Static `GameHQUpdater.exe` Stage 1 foundation with a strict transaction
+  schema, canonical package-root path containment, a per-transaction mutex,
+  and `--dry-run` output listing every planned operation without file writes.
+- Transaction tests prove a valid dry run leaves staging and backup absent,
+  while an escaped backup path is rejected before anything is created.
+- Hardened Stage 2 ZIP staging with pinned miniz 3.1.2: the helper re-hashes
+  the package, enforces file/count/size/method and positive-path allowlists,
+  rejects traversal, links, user-data paths and invalid manifests/layouts,
+  and removes staging after every rejection without touching live files.
+- Update quiescence barrier: new screenshot/replay requests are blocked during
+  preparation, in-flight writes and clip exports finish naturally, replay
+  auto-arming stops, configuration is flushed, and a 30-second timeout cancels
+  the update instead of cancelling or killing capture work.
+- Helper-side data snapshot and restoration for config plus SQLite DB/WAL/SHM.
+  The manifest preserves originally absent sidecars, restoration has its own
+  rollback path, and automated mutation/restore coverage proves `Captures/`
+  remains byte-identical.
+- Allowlisted program-file swap with bounded Windows lock retries and reverse-
+  order rollback. Tests cover a successful swap preserving `portable.flag`
+  and a deliberately locked executable aborting with old and staged files intact.
+- Healthy-start validation keeps capture hooks disarmed until the upgraded app
+  survives seven seconds with its database, services, QML and event loop active;
+  the helper accepts only the matching version token and times out safely.
+- Durable update phase and swap journals make interrupted replacement
+  deterministic. Failed health checks stop the supervised process tree, restore
+  program and data state together, and restart the previous version.
+- Updater helpers now advertise and enforce their protocol version. A packaged
+  replacement is staged under a pending name, self-tested, and promoted by a
+  later launcher only after the previous helper has exited.
+- End-to-end transaction coverage exercises abandoned staging cleanup,
+  extraction, snapshot, swap and healthy launch while proving settings,
+  captures and `portable.flag` remain byte-identical.
+- Automatic-update preflight now rejects unpackaged, unwritable, network,
+  unsupported-filesystem, overlong, low-space and active-transaction targets;
+  packaged autostart always uses the recovery-aware root launcher.
+- A successful health-validated update records and shows a one-time greeting
+  with a version-specific What's New link, deferred until the desktop window
+  is visible when GameHQ starts minimized.
+- Release packaging now emits separate portable and update-only ZIPs plus a
+  SHA-256 file. A mandatory validator rejects missing, forbidden, mismatched or
+  untested artifacts before publication.
+- The final install action now revalidates the GitHub release, writes a helper-
+  validated transaction, launches the updater, and exits only after successful
+  handoff; withdrawn, superseded or changed releases are refused.
+
+## [0.6.9] - 2026-07-20
+
+### Added
+
+- Automatic update-check policy and a non-modal update banner (Phase 1 of
+  the updater plan, `docs/updater.md`). `App::init()` primes `UpdateService`
+  from config, runs the first automatic check 15-30s after startup, and
+  re-checks at most once every 24 hours via an hourly gate timer; manual
+  checks always bypass that cache. New config keys: `updates.check_automatically`
+  (default on), `updates.skipped_version`, and internal persistence keys
+  `internal.updates.etag` / `internal.updates.last_check_utc` (survive
+  "Restore all settings" like other `internal.*` keys).
+- `UpdateBanner.qml`: shown only in the desktop gallery window (never over
+  the pad overlay or a running game) when a newer stable release exists —
+  version, publish date, size, and release notes rendered as plain text
+  (no Markdown/HTML interpretation), with "View on GitHub" (the standalone
+  fallback until download/install lands in Phase 2), "Skip this version",
+  and "Not now".
+- Settings → About "Updates" section now reflects real state (checking /
+  up to date / update available / last-checked time) with a working
+  "Check now" button and a "Check automatically" toggle, replacing the
+  placeholder shipped in 0.6.6.
+
+## [0.6.8] - 2026-07-20
+
+### Added
+
+- Release lookup and update-check service (`src/updates/`): `ReleaseInfo`,
+  `GitHubReleaseSource` (queries the GitHub releases API with ETag caching,
+  a bounded retry, and confirmed-rate-limit detection via
+  `x-ratelimit-remaining`/`x-ratelimit-reset`), and `UpdateService`, a state
+  machine (`Idle`/`Checking`/`UpToDate`/`UpdateAvailable`/…/`Failed`)
+  exposed to QML as the `updates` context object. Only exact-named
+  `GameHQ-<version>-win64-update.zip` (+ `.sha256`) assets are selected;
+  drafts, prereleases, and releases not newer than the installed version are
+  rejected. A failed or rate-limited check never regresses a known-good
+  result. Download/install commands are declared but not yet implemented —
+  that lands with the safe updater helper.
+
+## [0.6.7] - 2026-07-20
+
+### Added
+
+- Linked the Qt Network module (needed by the upcoming update checker and
+  the local integration channel).
+- `VersionNumber` (`src/updates/`): strict `major.minor.patch` parsing and
+  numeric comparison for release version strings, with an optional leading
+  `v`/`V` and no prerelease/build-metadata suffix accepted. Versions are
+  never compared as strings. Covered by `tst_versionnumber` (valid/invalid
+  parsing, numeric ordering, `v`-prefix equivalence).
+
+## [0.6.6] - 2026-07-20
+
+### Added
+
+- About settings page (`Settings → About`): application logo, name, version,
+  storage mode, an Updates placeholder for the upcoming update checker, and
+  project links (website, GitHub, releases, issues, license) plus a GitHub
+  star call-to-action, all reading from `Brand.qml`. Version and Storage mode
+  rows moved here from the Advanced page.
+
+## [0.6.5] - 2026-07-20
+
+### Changed
+
+- Centralized project links (website, repository, releases, issues) in the
+  `Brand.qml` singleton instead of hard-coding them per page. The GitHub
+  link in the Help view now reads from `Brand.repositoryUrl`.
+
+## [0.6.4] - 2026-07-20
+
+### Added
+
+- Design documentation for the upcoming update system and local integration
+  channel: [`docs/updater.md`](docs/updater.md) (path ownership contract,
+  the nine-stage helper flow, authenticity limits) and
+  [`docs/integration-protocol.md`](docs/integration-protocol.md) (the
+  `GameHQ.Local.v1` named-pipe protocol used by the future Playnite
+  companion plugin).
+- Reserved the canonical identifiers for that work (pipe name, release asset
+  naming, plugin repo name, add-on identifiers) so none are invented ad hoc
+  during implementation.
+- Added the `0.6.x — Distribution & Integration Foundation` milestone to
+  [`docs/roadmap.md`](docs/roadmap.md).
+
 ## [0.6.3] - 2026-07-18
 
 ### Added

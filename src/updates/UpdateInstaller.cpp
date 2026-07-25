@@ -1,0 +1,165 @@
+#include "updates/UpdateInstaller.h"
+#include "updates/UpdateDownloader.h"
+#include "core/UpdaterHandshake.h"
+
+#include <QCoreApplication>
+#include <QDir>
+#include <QCryptographicHash>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QProcess>
+#include <QSaveFile>
+#include <QRegularExpression>
+
+#include <limits>
+
+#include <windows.h>
+
+namespace UpdateInstaller
+{
+bool prepareTransaction(const QString &packageRoot, const QString &dataDir,
+                        const VerifiedUpdate &verified, QString &transactionPath,
+                        QString &error)
+{
+    error.clear();
+    if (!verified.isValid()) {
+        error = QStringLiteral("The verified update metadata is incomplete.");
+        return false;
+    }
+    const QString version = verified.version;
+    const QByteArray sha256 = verified.packageSha256;
+    const QString root = QDir::cleanPath(QFileInfo(packageRoot).absoluteFilePath());
+    const QString package = QDir::cleanPath(QFileInfo(verified.packagePath).absoluteFilePath());
+    const QString downloads = QDir(root).filePath(QStringLiteral(".update/downloads"));
+    const auto insideDownloads = [&downloads](const QString &candidate) {
+        const QString relative = QDir(downloads).relativeFilePath(
+            QDir::cleanPath(QFileInfo(candidate).absoluteFilePath()));
+        return relative != QStringLiteral("..") && !relative.startsWith(QStringLiteral("../"));
+    };
+    // The manifest and signature travel with the package so the helper can
+    // repeat the whole verification without trusting anything this process
+    // wrote into the transaction.
+    const QString manifest = QDir::cleanPath(QFileInfo(verified.manifestPath).absoluteFilePath());
+    const QString signature = QDir::cleanPath(QFileInfo(verified.signaturePath).absoluteFilePath());
+    if (!insideDownloads(package) || !insideDownloads(manifest) || !insideDownloads(signature)) {
+        error = QStringLiteral("The verified update package is outside GameHQ's staging directory.");
+        return false;
+    }
+    if (!QRegularExpression(QStringLiteral(R"(^\d+\.\d+\.\d+$)")).match(version).hasMatch()
+        || sha256.size() != QCryptographicHash::hashLength(QCryptographicHash::Sha256)) {
+        error = QStringLiteral("The verified update metadata is invalid.");
+        return false;
+    }
+    if (QFileInfo(package).fileName() != verified.artifactName
+        || QFileInfo(package).size() != verified.artifactSize) {
+        error = QStringLiteral("The staged package no longer matches the signed manifest.");
+        return false;
+    }
+    QByteArray actual;
+    QString verifyError;
+    if (!UpdateDownloader::verifyFile(package, sha256, actual, verifyError)) {
+        error = QStringLiteral("The update package changed before installation: %1").arg(verifyError);
+        return false;
+    }
+    const QString update = QDir(root).filePath(QStringLiteral(".update"));
+    if (!QDir().mkpath(update)) {
+        error = QStringLiteral("GameHQ could not create the update transaction directory.");
+        return false;
+    }
+    // Pin the transaction to this exact process, not just to its id: Windows
+    // reuses process ids, so the helper needs the creation time to prove it is
+    // waiting on the application that actually authorised the update.
+    FILETIME created{};
+    FILETIME exited{};
+    FILETIME kernel{};
+    FILETIME user{};
+    if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user)) {
+        error = QStringLiteral("GameHQ could not identify its own process for the update.");
+        return false;
+    }
+    const quint64 creationTime = (static_cast<quint64>(created.dwHighDateTime) << 32)
+        | created.dwLowDateTime;
+    if (creationTime == 0 || creationTime > static_cast<quint64>(std::numeric_limits<qint64>::max())) {
+        error = QStringLiteral("GameHQ could not identify its own process for the update.");
+        return false;
+    }
+
+    transactionPath = QDir(update).filePath(QStringLiteral("transaction.json"));
+    const QJsonObject object {
+        { QStringLiteral("schemaVersion"), 2 },
+        { QStringLiteral("productId"), QStringLiteral("underfusion.gamehq") },
+        { QStringLiteral("expectedVersion"), version },
+        { QStringLiteral("expectedSha256"), QString::fromLatin1(sha256.toHex()) },
+        { QStringLiteral("packageRoot"), QDir::toNativeSeparators(root) },
+        { QStringLiteral("packagePath"), QDir::toNativeSeparators(package) },
+        { QStringLiteral("stagingDir"), QDir::toNativeSeparators(QDir(update).filePath(QStringLiteral("staging"))) },
+        { QStringLiteral("backupDir"), QDir::toNativeSeparators(QDir(update).filePath(QStringLiteral("backup"))) },
+        { QStringLiteral("restartExecutable"), QDir::toNativeSeparators(QDir(root).filePath(QStringLiteral("GameHQ.exe"))) },
+        { QStringLiteral("healthTokenPath"), QDir::toNativeSeparators(QDir(update).filePath(QStringLiteral("healthy.token"))) },
+        { QStringLiteral("dataDir"), QDir::toNativeSeparators(QFileInfo(dataDir).absoluteFilePath()) },
+        { QStringLiteral("dataSnapshotDir"), QDir::toNativeSeparators(QDir(update).filePath(QStringLiteral("data-snapshot"))) },
+        { QStringLiteral("callerPid"), static_cast<qint64>(QCoreApplication::applicationPid()) },
+        { QStringLiteral("callerCreationTime"), static_cast<qint64>(creationTime) },
+        { QStringLiteral("manifestPath"), QDir::toNativeSeparators(manifest) },
+        { QStringLiteral("signaturePath"), QDir::toNativeSeparators(signature) },
+        { QStringLiteral("manifestSha256"), verified.manifestSha256 },
+        { QStringLiteral("releaseSignature"), verified.signature },
+        { QStringLiteral("releaseKeyId"), verified.keyId },
+        { QStringLiteral("releaseSequence"), static_cast<qint64>(verified.releaseSequence) },
+        { QStringLiteral("artifactName"), verified.artifactName },
+        { QStringLiteral("artifactSize"), verified.artifactSize },
+        { QStringLiteral("artifactSha256"), verified.artifactSha256 },
+        { QStringLiteral("phase"), QStringLiteral("download_verified") }
+    };
+    QSaveFile output(transactionPath);
+    const QByteArray json = QJsonDocument(object).toJson(QJsonDocument::Compact);
+    if (!output.open(QIODevice::WriteOnly) || output.write(json) != json.size() || !output.commit()) {
+        error = QStringLiteral("GameHQ could not publish the update transaction.");
+        return false;
+    }
+    return true;
+}
+
+bool launchPrepared(const QString &packageRoot, const QString &transactionPath,
+                    QString &error)
+{
+    const QString root = QFileInfo(packageRoot).absoluteFilePath();
+    const QString helper = QDir(root).filePath(QStringLiteral("GameHQUpdater.exe"));
+    if (!QFileInfo(helper).isFile() || !QFileInfo(helper).isExecutable()) {
+        error = QStringLiteral("GameHQUpdater.exe is missing or cannot run.");
+        return false;
+    }
+    // Create the READY event before the helper starts so its SetEvent can
+    // never race ahead of us; only quit the app once the helper has validated
+    // the transaction (docs/updater.md "Handoff").
+    const std::wstring readyName =
+        handshake::readyEventNameFor(transactionPath.toStdWString());
+    HANDLE ready = CreateEventW(nullptr, TRUE, FALSE, readyName.c_str());
+    if (!ready) {
+        error = QStringLiteral("GameHQ could not prepare the updater handshake.");
+        return false;
+    }
+    qint64 processId = 0;
+    if (!QProcess::startDetached(helper,
+                                 { QStringLiteral("--apply"), transactionPath },
+                                 root, &processId) || processId <= 0) {
+        CloseHandle(ready);
+        error = QStringLiteral("GameHQ could not start the updater helper.");
+        return false;
+    }
+    HANDLE helperProcess = OpenProcess(SYNCHRONIZE, FALSE, static_cast<DWORD>(processId));
+    HANDLE waitees[2] = { ready, helperProcess };
+    const DWORD count = helperProcess ? 2 : 1;
+    const DWORD result = WaitForMultipleObjects(count, waitees, FALSE, 15000);
+    if (helperProcess)
+        CloseHandle(helperProcess);
+    CloseHandle(ready);
+    if (result == WAIT_OBJECT_0)
+        return true;
+    error = result == WAIT_OBJECT_0 + 1
+        ? QStringLiteral("The updater helper rejected the update before it became ready.")
+        : QStringLiteral("The updater helper did not confirm it is ready in time.");
+    return false;
+}
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "currentKey": {
+    "keyId": "gamehq-prod-2026-01",
+    "publicKeyBase64": "c1HPtFeWwYv+Ey61AEhEL/guL8hsk8gHwqr/fsy0BOo=",
+    "state": "current",
+    "minimumReleaseSequence": 25,
+    "credentialTarget": "GameHQ.Release.Ed25519.gamehq-prod-2026-01",
+    "githubEnvironment": "production-release"
+  }
+}

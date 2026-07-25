@@ -16,12 +16,16 @@ bool GameRowRepair::isBetterDisplayName(const QString& candidate, const QString&
     return candidate.size() > current.size();
 }
 
-void GameRowRepair::normalizeDuplicateNames(QSqlDatabase& db)
+bool GameRowRepair::normalizeDuplicateNames(QSqlDatabase& db)
 {
     struct Row { int id; QString name; };
     QVector<Row> rows;
 
     QSqlQuery q(QStringLiteral("SELECT id, display_name FROM games ORDER BY id"), db);
+    if (q.lastError().isValid()) {
+        qWarning() << "DB: could not list games for duplicate repair:" << q.lastError().text();
+        return false;
+    }
     while (q.next())
         rows.append({ q.value(0).toInt(), q.value(1).toString() });
 
@@ -54,16 +58,19 @@ void GameRowRepair::normalizeDuplicateNames(QSqlDatabase& db)
             if (!updateCaptures.exec()) {
                 qWarning() << "DB: could not merge duplicate game captures:"
                            << updateCaptures.lastError().text();
-                continue;
+                return false;
             }
 
             QSqlQuery deleteGame(db);
             deleteGame.prepare(QStringLiteral("DELETE FROM games WHERE id = :id"));
             deleteGame.bindValue(QStringLiteral(":id"), duplicateId);
             if (!deleteGame.exec()) {
+                // The captures were already repointed, so stopping here without
+                // a rollback would strand them on a game row that no longer
+                // means anything. Let the caller roll the transaction back.
                 qWarning() << "DB: could not delete duplicate game:"
                            << deleteGame.lastError().text();
-                continue;
+                return false;
             }
 
             qInfo() << "DB: merged duplicate game" << duplicateName
@@ -79,4 +86,5 @@ void GameRowRepair::normalizeDuplicateNames(QSqlDatabase& db)
             rows.append({ preferredId, preferredName });
         }
     }
+    return true;
 }

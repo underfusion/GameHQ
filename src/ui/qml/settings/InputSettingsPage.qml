@@ -5,9 +5,12 @@ import "../components"
 
 SettingsPage {
     id: root
+    pageTitle: "Input"
+    pageDescription: "Configure controller, keyboard, and mouse shortcuts without changing navigation behavior."
     readonly property var editor: input.bindingEditor
 
     SettingsSection {
+        eyebrow: "Devices"
         title: "Input devices"
         description: "Choose a device type, then select either assignment slot to capture a new input."
         SettingsRow {
@@ -15,31 +18,14 @@ SettingsPage {
             description: editor.deviceGroup === "controller" ? input.controllerStatus
                        : editor.deviceGroup === "keyboard" ? "Focused shortcuts and global key combinations"
                                                            : "Middle, Back, and Forward mouse buttons"
-            RowLayout {
-                spacing: Theme.s8
-                Repeater {
-                    model: [
-                        { label: "Controller", value: "controller" },
-                        { label: "Keyboard", value: "keyboard" },
-                        { label: "Mouse", value: "mouse" }
-                    ]
-                    delegate: AccentButton {
-                        label: modelData.label
-                        primary: editor.deviceGroup === modelData.value
-                        onClicked: editor.deviceGroup = modelData.value
-                    }
-                }
-            }
-        }
-        SettingsRow {
-            visible: input.controllerWarning.length > 0
-            label: "Controller hidden"
-            description: input.controllerWarning
-            AccentButton {
-                visible: input.controllerFixAvailable
-                label: "Fix automatically"
-                primary: true
-                onClicked: input.fixHiddenController()
+            SettingsSegmentedControl {
+                currentValue: editor.deviceGroup
+                options: [
+                    { label: "Controller", value: "controller" },
+                    { label: "Keyboard", value: "keyboard" },
+                    { label: "Mouse", value: "mouse" }
+                ]
+                onActivated: function(value) { editor.deviceGroup = value }
             }
         }
         SettingsRow {
@@ -48,24 +34,39 @@ SettingsPage {
             description: editor.controllerSpecific
                          ? "Changes apply only to " + editor.controllerName + "."
                          : "Position-based assignments work across PlayStation, Xbox, Nintendo, and generic pads."
-            RowLayout {
-                AccentButton {
-                    label: "All controllers"
-                    primary: !editor.controllerSpecific
-                    onClicked: editor.controllerSpecific = false
-                }
-                AccentButton {
-                    visible: editor.controllerSpecificAvailable
-                    label: editor.controllerName.length > 0 ? editor.controllerName : "This controller"
-                    primary: editor.controllerSpecific
-                    onClicked: editor.controllerSpecific = true
-                }
+            SettingsSegmentedControl {
+                currentValue: editor.controllerSpecific ? "specific" : "shared"
+                options: editor.controllerSpecificAvailable
+                    ? [
+                        { label: "All controllers", value: "shared" },
+                        { label: editor.controllerName.length > 0 ? editor.controllerName : "This controller", value: "specific" }
+                      ]
+                    : [{ label: "All controllers", value: "shared" }]
+                onActivated: function(value) { editor.controllerSpecific = value === "specific" }
             }
         }
     }
 
     SettingsSection {
+        visible: input.controllerWarning.length > 0
+        eyebrow: "Attention"
+        title: "Controller hidden"
+        description: input.controllerWarning
+        variant: "warning"
+        headerAction: Component {
+            AccentButton {
+                visible: input.controllerFixAvailable
+                label: "Fix automatically"
+                primary: true
+                onClicked: input.fixHiddenController()
+            }
+        }
+    }
+
+    SettingsSection {
+        eyebrow: "Profile"
         title: "Test and restore"
+        variant: "compact"
         SettingsRow {
             label: "Last input"
             description: input.lastInput
@@ -81,12 +82,14 @@ SettingsPage {
             description: editor.controllerSpecific
                          ? "Remove overrides for this controller only."
                          : "Remove overrides for the selected device type and shared profile."
-            AccentButton { label: "Restore defaults"; primary: true; onClicked: resetProfileDialog.open() }
+            AccentButton { label: "Restore defaults"; quiet: true; onClicked: resetProfileDialog.open() }
         }
     }
 
     SettingsSection {
+        eyebrow: "Gestures"
         title: "Gesture timing"
+        description: "Tune how long a capture button must be held before it becomes a replay action."
         SettingsRow {
             label: "Capture-button hold time"
             description: "A completed hold saves replay and consumes the screenshot tap."
@@ -101,11 +104,14 @@ SettingsPage {
     }
 
     SettingsSection {
+        id: assignmentsSection
+        eyebrow: "Bindings"
         title: "Assignments"
         description: "Primary and secondary slots are independent. Contexts can reuse the same input safely."
 
         GridLayout {
             Layout.fillWidth: true
+            visible: assignmentsSection.width >= 820
             columns: 4
             columnSpacing: Theme.s12
             Item { Layout.fillWidth: true }
@@ -133,9 +139,11 @@ SettingsPage {
                 spacing: Theme.s8
 
                 GridLayout {
+                    id: bindingGrid
                     Layout.fillWidth: true
-                    columns: 4
+                    columns: width < 820 ? 1 : 4
                     columnSpacing: Theme.s12
+                    rowSpacing: Theme.s8
 
                     ColumnLayout {
                         Layout.fillWidth: true
@@ -159,7 +167,8 @@ SettingsPage {
                     }
 
                     Rectangle {
-                        Layout.preferredWidth: 210
+                        Layout.fillWidth: bindingGrid.columns === 1
+                        Layout.preferredWidth: bindingGrid.columns === 1 ? -1 : 210
                         Layout.preferredHeight: 44
                         radius: Theme.radiusS
                         color: Theme.bg1
@@ -188,7 +197,8 @@ SettingsPage {
                     }
 
                     Rectangle {
-                        Layout.preferredWidth: 210
+                        Layout.fillWidth: bindingGrid.columns === 1
+                        Layout.preferredWidth: bindingGrid.columns === 1 ? -1 : 210
                         Layout.preferredHeight: 44
                         radius: Theme.radiusS
                         color: Theme.bg1
@@ -218,9 +228,12 @@ SettingsPage {
 
                     AccentButton {
                         label: "Reset"
-                        quiet: true
+                        primary: true
+                        contentHorizontalOffset: bindingGrid.columns === 1
+                                                 ? -(34 + Theme.s4) / 2 : 0
                         enabled: modelData.bindable
-                        Layout.preferredWidth: 76
+                        Layout.fillWidth: bindingGrid.columns === 1
+                        Layout.preferredWidth: bindingGrid.columns === 1 ? -1 : 76
                         onClicked: editor.resetAction(modelData.actionId)
                     }
                 }

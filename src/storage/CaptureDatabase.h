@@ -68,6 +68,10 @@ public:
     explicit CaptureDatabase(QString filePath, QObject* parent = nullptr);
     ~CaptureDatabase() override;
 
+    // Highest schema this build understands. A database stamped higher was
+    // written by a newer GameHQ and must never be modified by this one.
+    static constexpr int kCurrentSchemaVersion = 3;
+
     bool open();      // opens + runs pending migrations
     int schemaVersion() const;
 
@@ -122,7 +126,8 @@ private:
     bool applyV3();
     bool ensureGameMetadataColumns();
     bool repairsV1Done() const;
-    void markRepairsV1Done();
+    bool markRepairsV1Done();
+    bool refreshIconsForExtractorFormat();
     int findOrCreateGame(const QString& displayName, const QString& executablePath = QString());
     void updateGameExecutable(int gameId, const QString& executablePath);
 

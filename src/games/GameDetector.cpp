@@ -1,4 +1,5 @@
 #include "games/GameDetector.h"
+#include "integration/ExternalGameContext.h"
 
 #include <QDebug>
 #include <QDir>
@@ -9,10 +10,43 @@
 #include <QRegularExpression>
 
 #include <windows.h>
+#include <tlhelp32.h>
 #include <winver.h>
+
+#include <atomic>
+#include <unordered_map>
 
 namespace
 {
+std::atomic<const integration::ExternalGameContext *> g_externalContext{nullptr};
+
+bool isDescendantProcess(quint32 childPid, quint32 ancestorPid)
+{
+    if (childPid == 0 || ancestorPid == 0 || childPid == ancestorPid)
+        return false;
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE)
+        return false;
+    std::unordered_map<DWORD, DWORD> parents;
+    PROCESSENTRY32W entry{};
+    entry.dwSize = sizeof(entry);
+    if (Process32FirstW(snapshot, &entry)) {
+        do {
+            parents.emplace(entry.th32ProcessID, entry.th32ParentProcessID);
+        } while (Process32NextW(snapshot, &entry));
+    }
+    CloseHandle(snapshot);
+    DWORD current = childPid;
+    for (int depth = 0; depth < 16; ++depth) {
+        const auto it = parents.find(current);
+        if (it == parents.end() || it->second == 0 || it->second == current)
+            return false;
+        if (it->second == ancestorPid)
+            return true;
+        current = it->second;
+    }
+    return false;
+}
 // Shell / system surfaces that are foreground-able but never a "game".
 bool isShellProcess(const QString& exeLower)
 {
@@ -366,7 +400,33 @@ ForegroundGame GameDetector::current()
     // "Covers the monitor" alone is not a game: it also matches every overlay,
     // which is how the replay buffer ended up recording the desktop.
     g.isGame = g.isFullscreen && !g.isExcludedProcess && !isOverlayWindow(hwnd);
+
+    const integration::ExternalGameContext *context = g_externalContext.load();
+    if (context && !g.isExcludedProcess && !isOverlayWindow(hwnd)) {
+        const integration::ExternalGameMatch match = context->matchForeground(
+            static_cast<quint32>(g.pid), g.executablePath, g.isGame,
+            [](quint32 child, quint32 ancestor) {
+                return isDescendantProcess(child, ancestor);
+            });
+        if (match.confidence != integration::MatchConfidence::None) {
+            g.hasExternalIdentity = true;
+            g.externalSource = match.session.sourceId;
+            g.externalId = match.session.playniteGameId;
+            if (!match.session.name.isEmpty())
+                g.gameName = match.session.name;
+            // Only an exact PID or a verified descendant permits a windowed
+            // game. Directory hints may rename an already-safe fullscreen game
+            // but can never turn an arbitrary foreground window into a game.
+            if (match.authorizesWindowedCapture())
+                g.isGame = true;
+        }
+    }
     return g;
+}
+
+void GameDetector::setExternalContext(const integration::ExternalGameContext *context)
+{
+    g_externalContext.store(context);
 }
 
 bool GameDetector::shouldCapture(const ForegroundGame& g, const QString& captureMode)

@@ -12,13 +12,18 @@ Rectangle {
     property string label
     property string glyph: ""          // small unicode glyph stands in for icons pre-1.0
     property string iconSource: ""
+    property string trailingText: ""
+    property string trailingGlyph: ""
+    property color trailingGlyphColor: Theme.accent
     readonly property real gameIconSize: Theme.s12 * 1.2
     property bool active: false
     property bool sidebarHovered: false
     signal clicked()
 
-    width: parent ? parent.width : 200
-    height: 40
+    implicitWidth: 200
+    implicitHeight: 40
+    width: parent ? parent.width : implicitWidth
+    height: implicitHeight
     radius: Theme.radiusS
     color: active || sidebarHovered ? Theme.surfaceAlt
          : mouse.containsMouse || root.activeFocus ? Theme.hoverTint
@@ -86,24 +91,56 @@ Rectangle {
             }
         }
 
-        Text {
-            text: root.glyph
+        Item {
             visible: root.glyph !== "" && root.iconSource === ""
-            color: root.active ? Theme.accent : Theme.textMuted
-            font.pixelSize: Theme.fontBody
+            width: Theme.s24
+            height: Theme.s24
             anchors.verticalCenter: parent.verticalCenter
+
+            Text {
+                anchors.centerIn: parent
+                text: root.glyph
+                color: root.active ? Theme.accent : Theme.textMuted
+                font.pixelSize: Theme.fontBody
+            }
         }
         Text {
             text: root.label
             width: Math.max(0, contentRow.width
                             - (root.iconSource !== "" ? root.gameIconSize + contentRow.spacing
                                : root.glyph !== "" ? Theme.s24 + contentRow.spacing
-                               : 0))
+                               : 0)
+                            - (trailing.visible ? trailing.implicitWidth + contentRow.spacing : 0))
             elide: Text.ElideRight
             color: root.active ? Theme.text : Theme.textMuted
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontBody
             anchors.verticalCenter: parent.verticalCenter
+        }
+
+        Row {
+            id: trailing
+            visible: root.trailingText !== "" || root.trailingGlyph !== ""
+            spacing: Theme.s8
+            anchors.verticalCenter: parent.verticalCenter
+
+            Text {
+                visible: root.trailingText !== ""
+                text: root.trailingText
+                color: Theme.textFaint
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontCaption
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            Text {
+                visible: root.trailingGlyph !== ""
+                text: root.trailingGlyph
+                color: root.trailingGlyphColor
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontCaption
+                font.weight: Font.DemiBold
+                anchors.verticalCenter: parent.verticalCenter
+            }
         }
     }
 

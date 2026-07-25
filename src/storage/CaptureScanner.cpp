@@ -70,7 +70,7 @@ int CaptureScanner::scanFolder(const QString& root, const QString& source,
         const QString key = CaptureDatabase::storedPathKey(path);
         const auto known = index.constFind(key);
         if (known != index.constEnd()) {
-            if (!QFileInfo::exists(known->thumbnailPath)) {
+            if (!ThumbnailService::isUsableThumbnail(known->thumbnailPath)) {
                 const QString thumb = ThumbnailService::ensureThumbnail(path, type, m_thumbnailsDir);
                 if (!thumb.isEmpty() && m_db->setThumbnailForCapture(path, thumb))
                     index[key].thumbnailPath = thumb;
@@ -96,4 +96,3 @@ int CaptureScanner::scanFolder(const QString& root, const QString& source,
     }
     return added;
 }
-

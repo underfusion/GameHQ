@@ -1,0 +1,11 @@
+#pragma once
+
+#include <cstdint>
+
+namespace release_trust_config
+{
+inline constexpr char kProductionKeyId[] = "@GAMEHQ_PRODUCTION_KEY_ID@";
+inline constexpr char kProductionPublicKeyBase64[] = "@GAMEHQ_PRODUCTION_PUBLIC_KEY_BASE64@";
+inline constexpr std::uint64_t kProductionMinimumReleaseSequence =
+    @GAMEHQ_PRODUCTION_MINIMUM_RELEASE_SEQUENCE@ULL;
+} // namespace release_trust_config

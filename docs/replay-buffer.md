@@ -4,7 +4,7 @@
 
 ## Design
 
-Continuously encode **5-second segments** to `gamehq-data/replay-cache/<Game>/video/` or `gamehq-data/replay-cache/<Game>/audio/` (fragmented MP4, depending on whether audio is active). Buffer length is `replay.length_seconds`; ring size = `ceil(length_seconds / replay.segment_seconds)` - e.g. a 5-minute buffer = 60 x 5 s segments. The writer deletes the oldest as it rolls. Segment filenames include milliseconds so a save-time close/reopen cannot reuse the same path.
+Continuously encode **5-second segments** to `gamehq-data/replay-cache/<Game>/<media-format>/` (fragmented MP4). The media-format folder fingerprints dimensions/FPS and audio sample rate/channels, preventing incompatible segments from being restored together after a setting or device change. Buffer length is `replay.length_seconds`; ring size = `ceil(length_seconds / replay.segment_seconds)` - e.g. a 5-minute buffer = 60 x 5 s segments. The writer deletes the oldest as it rolls. Segment filenames include milliseconds so a save-time close/reopen cannot reuse the same path.
 
 ```txt
 Share held 2 s -> freeze ring -> snapshot the last N segments
@@ -26,7 +26,7 @@ Low RAM, crash-resistant fMP4 segments, trivial cleanup, replay length equals se
 - `replay.bitrate_mbps` (`14`, not in the UI).
 - Changing a recording-parameter `replay.*` key from Settings re-arms a running buffer immediately (`AppController::replaySettingsChanged` → `FramePumpService::restartBuffer`); otherwise the new values apply on the next auto-arm. `replay.clip_sound` and `replay.clip_notify` are feedback-only and never re-arm the buffer.
 - `FramePumpService::recordingStateChanged(active, gameName)` drives `AppController::replayBufferActive`/`replayBufferGame`, shown as a live "Buffer state" row in Replay Settings.
-- `audio.enabled` controls replay AAC capture. When enabled, WASAPI desktop loopback is attached and segments are written under the per-game `audio` cache folder. Audio samples are re-expressed on the video clock (shared QPC epoch) before encoding so the AAC track stays aligned with the frames.
+- `audio.enabled` controls replay AAC capture. When enabled, WASAPI desktop loopback is attached and the audio format becomes part of the cache fingerprint. Audio samples are re-expressed on the video clock (shared QPC epoch) before encoding so the AAC track stays aligned with the frames. If Windows invalidates the render endpoint during an HDR/display transition, the incomplete segment is discarded and the capture pipeline automatically re-arms.
 
 ## Timing model
 
@@ -42,7 +42,7 @@ Low RAM, crash-resistant fMP4 segments, trivial cleanup, replay length equals se
 
 ## Status
 
-Implemented: rolling H.264 ring in per-game `replay-cache/<Game>/video/` or `replay-cache/<Game>/audio/` folders (`SegmentRecorder`, Step 5 deletion by `length_seconds`); **Share-hold / Ctrl+Shift+E** save -> `ReplayExporter` remux-concat (no re-encode) -> one MP4 in the current `<ClipsRoot>/<Game>/Clips/` + video thumbnail + DB (`type="video"`) + sound + notification (Steps 6/8). `CaptureLocations` resolves the separate clip root at each save, so Settings changes do not require re-arming the ring. dev.79 re-enables audio when `audio.enabled=true` and resets audio timestamps on segment roll/snapshot. dev.76 also makes export all-or-nothing: unreadable/skipped segments or writer failures produce an explicit failed-save notification instead of a partial short clip.
+Implemented: rolling H.264 ring in per-game format-fingerprinted cache folders (`SegmentRecorder`, Step 5 deletion by `length_seconds`); **Share-hold / Ctrl+Shift+E** save -> `ReplayExporter` remux-concat (no re-encode) -> one MP4 in the current `<ClipsRoot>/<Game>/Clips/` + video thumbnail + DB (`type="video"`) + sound + notification (Steps 6/8). `CaptureLocations` resolves the separate clip root at each save, so Settings changes do not require re-arming the ring. dev.79 re-enables audio when `audio.enabled=true` and resets audio timestamps on segment roll/snapshot. Endpoint invalidation now drops the incomplete segment and automatically rebuilds capture. dev.76 also makes export all-or-nothing: unreadable/skipped segments or writer failures produce an explicit failed-save notification instead of a partial short clip.
 
 Debugging: every save attempt writes a correlated `ReplaySave[...]` block to `gamehq.log`, including ring snapshot paths/sizes, thumbnail timings, remux segment media metadata, per-segment video/audio sample counts, output bytes, and final success/failure timing.
 

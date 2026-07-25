@@ -10,11 +10,15 @@ Rectangle {
     property var categories: []
     property bool settingsOpen: false
     property bool helpOpen: false
+    property bool aboutUnread: false
+    property bool updateAvailable: false
+    property string availableVersion: ""
     property bool sidebarFocused: false
     property int sidebarHoverIndex: 0
 
     signal settingsRequested()
     signal helpRequested()
+    signal aboutRequested()
     signal pageClosed()
 
     Layout.preferredWidth: 220
@@ -119,13 +123,22 @@ Rectangle {
             onClicked: root.helpRequested()
         }
 
-        Text {
-            text: "v" + app.version
-            color: Theme.textFaint
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontCaption
-            Layout.alignment: Qt.AlignHCenter
+        SidebarItem {
+            id: aboutRow
+            Layout.fillWidth: true
             Layout.bottomMargin: Theme.s4
+            label: "About"
+            glyph: "\u24d8"
+            trailingText: "v" + app.version
+            trailingGlyph: root.updateAvailable || root.aboutUnread ? "\u25cf" : ""
+            active: false
+            sidebarHovered: root.sidebarFocused
+                            && root.sidebarHoverIndex === root.categories.length + app.games.length + 2
+            onClicked: root.aboutRequested()
         }
+    }
+
+    function focusAboutLauncher() {
+        aboutRow.forceActiveFocus()
     }
 }

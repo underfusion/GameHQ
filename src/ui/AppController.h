@@ -3,6 +3,8 @@
 #include <QVariantList>
 #include <QUrl>
 #include <memory>
+#include "app/ReleaseNotes.h"
+#include "capture/HdrCapabilities.h"
 #include "ui/GalleryModel.h"
 
 class CaptureDatabase;
@@ -14,6 +16,7 @@ class CurrentGameService;
 class ScreenshotService;
 class SettingsRouter;
 class StartupManager;
+class QTimer;
 
 // The single QML-facing bridge ("app" context property). QML never talks to
 // engines or Win32 directly — see docs/architecture.md dependency rules.
@@ -22,6 +25,8 @@ class AppController : public QObject
     Q_OBJECT
     Q_PROPERTY(GalleryModel* gallery READ gallery CONSTANT)
     Q_PROPERTY(QString version READ version CONSTANT)
+    Q_PROPERTY(QString releaseNotesVersion READ releaseNotesVersion CONSTANT)
+    Q_PROPERTY(QVariantList releaseNotesSections READ releaseNotesSections CONSTANT)
     Q_PROPERTY(QVariantList games READ games NOTIFY gamesChanged)
     Q_PROPERTY(QString category READ category NOTIFY filterChanged)
     Q_PROPERTY(int gameId READ gameId NOTIFY filterChanged)
@@ -41,6 +46,9 @@ class AppController : public QObject
     Q_PROPERTY(QString logsRoot READ logsRoot CONSTANT)
     Q_PROPERTY(bool replayBufferActive READ replayBufferActive NOTIFY replayBufferStateChanged)
     Q_PROPERTY(QString replayBufferGame READ replayBufferGame NOTIFY replayBufferStateChanged)
+    Q_PROPERTY(bool hdrDisplayActive READ hdrDisplayActive NOTIFY hdrStatusChanged)
+    Q_PROPERTY(QString hdrStatusText READ hdrStatusText NOTIFY hdrStatusChanged)
+    Q_PROPERTY(QString hdrDetailText READ hdrDetailText NOTIFY hdrStatusChanged)
 
 public:
     AppController(CaptureDatabase* db, CaptureScanner* scanner,
@@ -52,6 +60,8 @@ public:
 
     GalleryModel* gallery() const { return m_gallery; }
     QString version() const;
+    QString releaseNotesVersion() const { return m_releaseNotes.version(); }
+    QVariantList releaseNotesSections() const { return m_releaseNotes.sections(); }
     QVariantList games() const;
     QString category() const { return m_category; }
     int gameId() const { return m_gameId; }
@@ -71,6 +81,14 @@ public:
     QString logsRoot() const;
     bool replayBufferActive() const { return m_replayBufferActive; }
     QString replayBufferGame() const { return m_replayBufferGame; }
+    bool hdrDisplayActive() const;
+    QString hdrStatusText() const;
+    QString hdrDetailText() const;
+
+    // Re-probes display HDR state and encoder support, logs the full report and
+    // updates the Advanced page. Called once at startup and from its Refresh
+    // button — HDR is a runtime toggle, so a cached answer goes stale silently.
+    Q_INVOKABLE void refreshHdrStatus();
 
     Q_INVOKABLE void setCategory(const QString& category);
     Q_INVOKABLE void setGame(int gameId);
@@ -104,6 +122,7 @@ public:
     Q_INVOKABLE QString resetCaptureRoot(const QString& kind);
     Q_INVOKABLE void openDataFolder();
     Q_INVOKABLE void openLogsFolder();
+    Q_INVOKABLE QString beginPortableImport(const QUrl& folderUrl);
     Q_INVOKABLE void quitApplication();
     // Copies version/mode/paths to the clipboard for bug reports (Advanced page).
     Q_INVOKABLE void copyDiagnosticSummary() const;
@@ -148,8 +167,13 @@ signals:
     void replaySettingsChanged();
     void replayBufferStateChanged();
     void lastScanChanged();
+    void hdrStatusChanged();
+    // Emitted only after a previously-probed display changes HDR/topology state.
+    void hdrDisplayConfigurationChanged();
 
 private:
+    void pollHdrStatus();
+
     CaptureDatabase* m_db;
     CaptureScanner* m_scanner;
     GalleryModel* m_gallery;
@@ -161,9 +185,13 @@ private:
     std::unique_ptr<CaptureLibraryService> m_captureLibrary;
     std::unique_ptr<CurrentGameService> m_currentGame;
     std::unique_ptr<SettingsRouter> m_settings;
+    ReleaseNotes m_releaseNotes;
     QString m_category = QStringLiteral("all");
     int m_gameId = -1;
     bool m_replayBufferActive = false;
     QString m_replayBufferGame;
+    capture::HdrReport m_hdr;
+    bool m_hdrProbed = false;
+    QTimer* m_hdrPollTimer = nullptr;
     int m_lastScanAdded = -1;   // -1 = not yet scanned this session
 };

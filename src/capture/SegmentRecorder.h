@@ -87,6 +87,10 @@ public:
     // Finalize the in-flight segment and release everything.
     void end();
 
+    // Mark the in-flight file as unusable after a device/capture discontinuity.
+    // end() will release it without Finalize and remove it from disk.
+    void discardCurrentSegment() { m_discardCurrentSegment = true; }
+
     bool isActive() const { return m_active; }
     unsigned segmentCount() const { return m_segIndex + (m_writer ? 1 : 0); }
     bool hasAudio() const { return m_audioStream > 0; }
@@ -140,6 +144,7 @@ private:
     QString     m_curPath;                   // current in-flight segment file
     int         m_keepSegments = 12;         // ceil(lengthSeconds / segmentSeconds)
     bool        m_ringPinned = false;        // deletion paused during an async export
+    bool        m_discardCurrentSegment = false;
 
     // current segment
     IMFSinkWriter* m_writer = nullptr;

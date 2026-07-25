@@ -57,7 +57,7 @@ GameHQ/
 
 ## Key Data Flows
 
-**Screenshot:** InputEngine or hotkey -> GameDetector gate -> CaptureLocations screenshot root -> ScreenshotService GDI grab -> async PNG write -> AppController facade -> CaptureLibraryService -> CaptureDatabase insert -> ThumbnailService -> gallery refresh -> sound/notification.
+**Screenshot:** InputEngine or hotkey -> GameDetector gate -> SDR uses ScreenshotService GDI, HDR uses FramePumpService FP16 WGC plus GPU tone mapping -> async PNG/JPEG write -> AppController facade -> CaptureLibraryService -> CaptureDatabase insert -> ThumbnailService -> gallery refresh -> sound/notification.
 
 **Replay save:** InputEngine hold or hotkey -> current CaptureLocations clip root copied to FramePumpService worker -> SegmentRecorder ring snapshot -> ReplayExporter remux -> AppController facade -> CaptureLibraryService -> CaptureDatabase insert -> gallery refresh -> sound/notification.
 
@@ -68,8 +68,8 @@ GameHQ/
 ## Threading Model
 
 - UI thread: Qt/QML, AppController, model refresh, and most short DB calls.
-- Screenshot worker: PNG encoding/writing after the synchronous GDI grab.
-- Replay worker: WGC frame pump, D3D access, Media Foundation segment writing, optional audio capture, and replay export.
+- Screenshot worker: PNG/JPEG encoding after an SDR GDI grab or HDR tone-mapped WGC readback.
+- Replay worker: WGC frame pump, HDR tone mapping/readback, D3D access, Media Foundation segment writing, optional audio capture, and replay export.
 - Input/hotkeys: native events and device polling feed Qt signals.
 
 Current DB access stays behind the storage API. `CaptureDatabase` owns the public database facade, mutations, and migrations; read-only capture/game listing SQL lives in `CaptureQueries`. Keep queries short on the UI path; if scanning or repair work grows, move that work behind a worker boundary.

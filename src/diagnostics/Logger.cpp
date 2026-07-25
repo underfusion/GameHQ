@@ -1,15 +1,30 @@
 #include "diagnostics/Logger.h"
 
 #include <QDateTime>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QMutex>
 #include <QTextStream>
+
+#include <cstdio>
 
 namespace
 {
 QFile g_logFile;
 QMutex g_mutex;
 QtMessageHandler g_previous = nullptr;
+QString g_logDirectory;
+bool g_handlerInstalled = false;
+// Tracked rather than stat'ed: every line is flushed already, and asking the
+// filesystem for the size on each one would double that cost.
+qint64 g_bytesInFile = 0;
+
+const QString& logFileName()
+{
+    static const QString name = QStringLiteral("gamehq.log");
+    return name;
+}
 
 const char* levelName(QtMsgType type)
 {
@@ -23,15 +38,50 @@ const char* levelName(QtMsgType type)
     return "???";
 }
 
+// Caller holds g_mutex.
+bool openLogFile()
+{
+    g_logFile.setFileName(g_logDirectory + QLatin1Char('/') + logFileName());
+    if (!g_logFile.open(QIODevice::Append | QIODevice::Text)) {
+        g_bytesInFile = 0;
+        return false;
+    }
+    g_bytesInFile = g_logFile.size();
+    return true;
+}
+
+// Caller holds g_mutex.
+void rotateIfFull()
+{
+    if (g_bytesInFile < Logger::kMaxLogBytes)
+        return;
+    g_logFile.close();
+    // If rotation could not move the files, reopening simply continues the
+    // existing log: growing is better than dropping messages on the floor.
+    Logger::rotateIfNeeded(g_logDirectory, logFileName(), Logger::kMaxLogBytes,
+                           Logger::kRetainedLogs);
+    openLogFile();
+}
+
 void handler(QtMsgType type, const QMessageLogContext& ctx, const QString& msg)
 {
+    const QString line = QDateTime::currentDateTime().toString(Qt::ISODateWithMs)
+        + QLatin1Char(' ') + QLatin1String(levelName(type)) + QLatin1Char(' ') + msg;
     {
         QMutexLocker lock(&g_mutex);
         if (g_logFile.isOpen()) {
-            QTextStream out(&g_logFile);
-            out << QDateTime::currentDateTime().toString(Qt::ISODateWithMs)
-                << ' ' << levelName(type) << ' ' << msg << '\n';
-            out.flush();
+            rotateIfFull();
+            if (g_logFile.isOpen()) {
+                QTextStream out(&g_logFile);
+                out << line << '\n';
+                out.flush();
+                g_bytesInFile += line.size() + 1;
+            }
+        } else if (!g_logDirectory.isEmpty()) {
+            // The log could not be opened. Say it somewhere rather than run a
+            // whole session silently.
+            std::fputs(qPrintable(line), stderr);
+            std::fputc('\n', stderr);
         }
     }
 #ifdef QT_DEBUG
@@ -48,11 +98,64 @@ namespace Logger
 
 void install(const QString& logsDir)
 {
+    bool alreadyInstalled = false;
+    bool opened = false;
+    {
+        QMutexLocker lock(&g_mutex);
+        alreadyInstalled = g_handlerInstalled;
+        g_handlerInstalled = true;
+        if (g_logFile.isOpen())
+            g_logFile.close();
+        g_logDirectory = logsDir;
+        QDir().mkpath(logsDir);
+        opened = openLogFile();
+    }
+    if (!opened) {
+        std::fputs("GameHQ: the log file could not be opened; "
+                   "diagnostics go to stderr for this session\n", stderr);
+    }
+    // Installing the handler a second time would hand back this very function
+    // as the "previous" one, and a debug build chains to it — straight into
+    // unbounded recursion.
+    if (!alreadyInstalled)
+        g_previous = qInstallMessageHandler(handler);
+}
+
+bool writingToFile()
+{
     QMutexLocker lock(&g_mutex);
-    g_logFile.setFileName(logsDir + QStringLiteral("/gamehq.log"));
-    g_logFile.open(QIODevice::Append | QIODevice::Text);
-    lock.unlock();
-    g_previous = qInstallMessageHandler(handler);
+    return g_logFile.isOpen();
+}
+
+bool rotateIfNeeded(const QString& directory, const QString& baseName,
+                    qint64 maxBytes, int retained)
+{
+    const QString current = directory + QLatin1Char('/') + baseName;
+    const QFileInfo info(current);
+    if (!info.exists() || info.size() < maxBytes || retained < 1)
+        return false;
+
+    const QFileInfo nameParts(baseName);
+    const QString stem = nameParts.completeBaseName();
+    const QString suffix = nameParts.suffix();
+    const auto generation = [&](int index) {
+        QString name = directory + QLatin1Char('/') + stem + QLatin1Char('.')
+            + QString::number(index);
+        if (!suffix.isEmpty())
+            name += QLatin1Char('.') + suffix;
+        return name;
+    };
+
+    // The oldest generation is the one we are allowed to lose.
+    if (QFile::exists(generation(retained)) && !QFile::remove(generation(retained)))
+        return false;
+    for (int index = retained - 1; index >= 1; --index) {
+        if (!QFile::exists(generation(index)))
+            continue;
+        if (!QFile::rename(generation(index), generation(index + 1)))
+            return false;
+    }
+    return QFile::rename(current, generation(1));
 }
 
 } // namespace Logger

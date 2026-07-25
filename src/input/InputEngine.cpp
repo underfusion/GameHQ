@@ -3,6 +3,7 @@
 #include "config/ConfigKeys.h"
 #include "config/ConfigManager.h"
 #include "input/BindingRuntime.h"
+#include "input/ControllerArbitration.h"
 #include "input/BindingEditorModel.h"
 #include "input/DualSenseDevice.h"
 #include "input/Gamepad.h"
@@ -42,6 +43,7 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
     , m_lastInput(QStringLiteral("Connect a controller and press a button..."))
     , m_controllerStatus(QStringLiteral("No controller detected"))
 {
+    m_controllerClock.start();
     m_runtime->setDefaultHoldMs(
         m_config->value(ConfigKeys::InputShareHoldMs, 2000).toInt());
     connect(m_config, &ConfigManager::valueChanged, this,
@@ -240,6 +242,10 @@ void InputEngine::attachGamepad(std::unique_ptr<Gamepad> pad, const QString& dis
         else if (raw == m_winmmPad)
             m_winmmConnected = c;
 
+        if (!c) {
+            m_backendLastControlMs.remove(raw);
+            m_backendLastControlId.remove(raw);
+        }
         updateActiveBackend();
         if (!c && !anyBackendConnected())
             setLastInput(displayName + QStringLiteral(" disconnected"));
@@ -247,14 +253,15 @@ void InputEngine::attachGamepad(std::unique_ptr<Gamepad> pad, const QString& dis
     m_pads.push_back(std::move(pad));
 }
 
-// Pick the one backend whose events route to actions: Sony > XInput > WinMM
-// among the connected ones. The same physical pad is often visible through
-// several APIs at once (DSX/ViGEm), so routing more than one would double
-// every press. Any change of the active source cancels in-flight gestures —
-// a held nav repeat or a half-finished Share tap/hold must not survive into
-// (or leak out of) a backend switch.
+// Keep the current backend while it remains connected. Sony > XInput > WinMM
+// is only the initial/fallback choice; real control activity may move the
+// active role later. This avoids a stale Raw Input or virtual-device path
+// suppressing the backend a game is actually using.
 void InputEngine::updateActiveBackend()
 {
+    if (backendConnected(m_activeBackend))
+        return;
+
     Gamepad* pick = nullptr;
     if (m_sonyConnected)
         pick = m_sonyPad;
@@ -263,9 +270,13 @@ void InputEngine::updateActiveBackend()
     else if (m_winmmConnected)
         pick = m_winmmPad;
 
+    activateBackend(pick, QStringLiteral("connection fallback"));
+}
+
+void InputEngine::activateBackend(Gamepad* pick, const QString& reason)
+{
     if (pick == m_activeBackend)
         return;
-
     stopNavRepeat();
     m_runtime->cancelAll();
     m_activeBackend = pick;
@@ -273,7 +284,8 @@ void InputEngine::updateActiveBackend()
     if (pick) {
         m_bindingEditor->setControllerProfile(pick->profile());
         const QString name = backendDisplayName(pick);
-        qInfo() << "Input: active controller backend →" << name;
+        qInfo() << "Input: active controller backend ->" << name
+                << "(" << reason << ")";
         setControllerStatus(name + QStringLiteral(" connected"));
         setLastInput(name + QStringLiteral(" connected"));
     } else {
@@ -281,6 +293,17 @@ void InputEngine::updateActiveBackend()
         qInfo() << "Input: no controller backend connected";
         setControllerStatus(QStringLiteral("No controller detected"));
     }
+}
+
+bool InputEngine::backendConnected(const Gamepad* pad) const
+{
+    if (pad == m_sonyPad)
+        return m_sonyConnected;
+    if (pad == m_xinputPad)
+        return m_xinputConnected;
+    if (pad == m_winmmPad)
+        return m_winmmConnected;
+    return false;
 }
 
 QString InputEngine::backendDisplayName(const Gamepad* pad) const
@@ -330,8 +353,25 @@ void InputEngine::onControlPressed(const QString& controlId, int family,
                                    const QString&, const QString& fingerprint,
                                    const QString&)
 {
-    if (sender() != m_activeBackend)
+    auto* source = qobject_cast<Gamepad*>(sender());
+    if (!source || !backendConnected(source))
         return;
+
+    const qint64 now = m_controllerClock.elapsed();
+    if (source != m_activeBackend) {
+        const auto activeIt = m_backendLastControlMs.constFind(m_activeBackend);
+        if (activeIt != m_backendLastControlMs.cend()
+            && !ControllerArbitration::backendMayTakeOver(
+                true,
+                m_backendLastControlId.value(m_activeBackend) == controlId,
+                *activeIt,
+                now))
+            return;
+        activateBackend(source, QStringLiteral("control activity"));
+    }
+    m_backendLastControlMs.insert(source, now);
+    m_backendLastControlId.insert(source, controlId);
+
     setLastInput(ControlId::label(controlId, static_cast<ControlId::ControllerFamily>(family))
                  + QStringLiteral(" pressed"));
     if (m_bindingEditor->captureInput(
@@ -345,7 +385,8 @@ void InputEngine::onControlPressed(const QString& controlId, int family,
 void InputEngine::onControlReleased(const QString& controlId, int, const QString&,
                                     const QString& fingerprint, const QString&)
 {
-    if (sender() != m_activeBackend)
+    auto* source = qobject_cast<Gamepad*>(sender());
+    if (source != m_activeBackend)
         return;
     m_runtime->release(QStringLiteral("controller"), fingerprint, controlId);
     if (controlId == m_repeatTrigger)

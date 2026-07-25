@@ -1,6 +1,8 @@
 #pragma once
 #include <QString>
 
+namespace integration { class ExternalGameContext; }
+
 // Identifies the current foreground window and decides whether it is a
 // capturable "game" under the active capture.mode (docs/capture-engine.md).
 // Fullscreen heuristic: the window rect covers its whole monitor. Windows
@@ -12,6 +14,9 @@ struct ForegroundGame
     bool isGame = false;         // passes the "in a game" heuristic
     bool isFullscreen = false;   // window rect == monitor rect
     bool isExcludedProcess = false; // shell/system/GameHQ surfaces are never games
+    bool hasExternalIdentity = false;
+    QString externalSource;
+    QString externalId;
     QString processName;         // e.g. "Cyberpunk2077.exe"
     QString executablePath;      // full foreground executable path, when Windows exposes it
     QString gameName;            // resolved display title (best of the sources below)
@@ -24,6 +29,7 @@ struct ForegroundGame
 namespace GameDetector
 {
     ForegroundGame current();
+    void setExternalContext(const integration::ExternalGameContext *context);
 
     // captureMode: only_in_games | whitelist | always (see ConfigManager).
     bool shouldCapture(const ForegroundGame& g, const QString& captureMode);

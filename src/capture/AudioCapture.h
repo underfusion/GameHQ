@@ -52,6 +52,7 @@ public:
     unsigned poll(float* outBuf, unsigned maxFrames, long long* outTimestamp100ns);
 
     bool isActive() const { return m_active; }
+    bool deviceInvalidated() const { return m_deviceInvalidated; }
     unsigned sampleRate() const { return m_sampleRate; }
     unsigned channels() const { return m_channels; }
     // QPC epoch (100 ns) of this capture's t=0 — lets the caller re-express
@@ -80,4 +81,5 @@ private:
     // First poll timestamp — used to compute relative offsets
     long long m_startQpc100ns = 0;
     bool      m_active = false;
+    bool      m_deviceInvalidated = false;
 };

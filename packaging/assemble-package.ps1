@@ -1,10 +1,13 @@
-# Builds a clean portable GameHQ folder from the separate CMake output tree.
+# Builds a clean GameHQ program payload or portable folder from CMake output.
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$Destination,
 
     [string]$BuildDirectory = 'out',
+
+    [ValidateSet('Portable', 'Neutral')]
+    [string]$Mode = 'Portable',
 
     [switch]$PreserveUserData
 )
@@ -40,7 +43,8 @@ $source = Get-ProjectPath $BuildDirectory
 $target = Get-ProjectPath $Destination
 $devTarget = Get-ProjectPath 'build'
 $distTarget = Get-ProjectPath 'dist\GameHQ'
-$allowedTargets = @($devTarget, $distTarget)
+$payloadTarget = Get-ProjectPath 'dist\.program-payload'
+$allowedTargets = @($devTarget, $distTarget, $payloadTarget)
 
 if ($allowedTargets -notcontains $target) {
     throw "Refusing to assemble outside the approved package folders: $target"
@@ -48,13 +52,23 @@ if ($allowedTargets -notcontains $target) {
 if ($PreserveUserData -and $target -ne $devTarget) {
     throw '-PreserveUserData is only valid for the local build package.'
 }
+if ($PreserveUserData -and $Mode -ne 'Portable') {
+    throw '-PreserveUserData requires -Mode Portable.'
+}
+if ($target -eq $devTarget -and $Mode -ne 'Portable') {
+    throw 'The local build package must remain portable.'
+}
+if ($target -eq $payloadTarget -and $Mode -ne 'Neutral') {
+    throw 'The program payload must be assembled with -Mode Neutral.'
+}
 
 $qtBin = Join-Path $root 'tools\Qt\6.8.3\mingw_64\bin'
 $realExe = Join-Path $source 'GameHQ.exe'
 $launcherExe = Join-Path $source 'GameHQLauncher.exe'
+$updaterExe = Join-Path $source 'GameHQUpdater.exe'
 $deployTool = Join-Path $qtBin 'windeployqt.exe'
 
-foreach ($required in @($realExe, $launcherExe, $deployTool)) {
+foreach ($required in @($realExe, $launcherExe, $updaterExe, $deployTool)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
         throw "Missing $required - configure and build $BuildDirectory first."
     }
@@ -98,6 +112,7 @@ Copy-Item (Join-Path $qtBin 'sw*.dll') $app -ErrorAction SilentlyContinue
 
 $version = (Get-Content (Join-Path $root 'VERSION') -Raw).Trim()
 Copy-Item -LiteralPath $launcherExe -Destination (Join-Path $target 'GameHQ.exe')
+Copy-Item -LiteralPath $updaterExe -Destination (Join-Path $target 'GameHQUpdater.exe')
 (Get-Content (Join-Path $PSScriptRoot 'README-dist.txt') -Raw).Replace('{VERSION}', $version) |
     Set-Content (Join-Path $target 'README.txt') -NoNewline
 Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $target 'LICENSE.txt')
@@ -116,11 +131,14 @@ if (Test-Path -LiteralPath $qtSbom -PathType Container) {
             Copy-Item -Destination $sbomTarget
     }
 }
-New-Item -ItemType File -Path (Join-Path $target 'portable.flag') -Force | Out-Null
+if ($Mode -eq 'Portable') {
+    New-Item -ItemType File -Path (Join-Path $target 'portable.flag') -Force | Out-Null
+}
 
 $programBytes = (Get-ChildItem -LiteralPath $app -Recurse -File |
     Measure-Object Length -Sum).Sum
 $programBytes += (Get-Item -LiteralPath (Join-Path $target 'GameHQ.exe')).Length
+$programBytes += (Get-Item -LiteralPath (Join-Path $target 'GameHQUpdater.exe')).Length
 $programBytes += (Get-Item -LiteralPath (Join-Path $target 'README.txt')).Length
 $programBytes += (Get-Item -LiteralPath (Join-Path $target 'LICENSE.txt')).Length
 $programBytes += (Get-Item -LiteralPath (Join-Path $target 'THIRD_PARTY_NOTICES.md')).Length

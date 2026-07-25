@@ -20,6 +20,10 @@ Changing a root affects new writes only. GameHQ never auto-moves or deletes exis
 
 `gamehq-data/`: `config.json`, `gamehq.db`, `thumbnails/`, `game-icons/` (cached foreground executable icons, including icons recovered from historical detector logs), `logs/`, `replay-cache/`, `sound-packs/`.
 
+### Stored paths
+
+In portable mode, a path genuinely below the package root is persisted as `portable:/<relative>` so the folder can be moved; everything else is persisted absolutely. "Below the root" is decided by `QDir::relativeFilePath` **plus** a check that the answer is actually relative: on another drive, or for a UNC share, Qt hands the absolute path straight back, and that result does not start with `../`. It used to be stored as `portable:/D:/Shots/...` and later resolved as `<package>/D:/Shots/...`, which lost the capture. `Paths::fromStoredPath` also recognises that shape and resolves such a row to what it really says, so libraries written by an affected build recover on their own. `toStoredPath`/`fromStoredPath` have overloads taking an explicit root, which is what `tst_storedpaths` exercises.
+
 ## Legacy name adoption (`LegacyMigration.cpp`)
 
 The app was previously called SavePlay, then PlayHQ ([branding.md](branding.md)). Old installs are adopted on first start, and all of it lives in `LegacyMigration`:
@@ -33,6 +37,12 @@ Each helper is a no-op once the current path exists, so later starts cost only a
 ## Watched/import folders
 
 Game Bar Captures, Steam Screenshots, NVIDIA Gallery, OBS, custom — rows in `folders` table, captures tagged with `source`. **Imported folders are read-only unless the user explicitly enables management.**
+
+## Log retention (`Logger.cpp`)
+
+`gamehq.log` rotates once it reaches 8 MiB, keeping `gamehq.1.log` … `gamehq.3.log` and dropping the oldest — at most four files, ~32 MiB, no matter how long the install lives. Rotation is best effort: if a generation cannot be renamed because something still has it open, the current log is left in place and keeps growing, because losing the log is worse than exceeding the limit. Logs are local only and are never uploaded ([privacy-data-flow.md](privacy-data-flow.md)); delete them from **Settings → About → Open logs folder** at any time.
+
+If the log directory cannot be created or the file cannot be opened, GameHQ still starts and writes diagnostics to stderr instead of running silently, and the copied diagnostic summary says so on its "Logs folder" line.
 
 ## Cleanup rules (0.7)
 

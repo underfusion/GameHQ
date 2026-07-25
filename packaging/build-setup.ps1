@@ -1,0 +1,50 @@
+[CmdletBinding()]
+param()
+
+$ErrorActionPreference = 'Stop'
+$root = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+$identity = Import-PowerShellDataFile (Join-Path $PSScriptRoot 'distribution-identity.psd1')
+$toolchain = Import-PowerShellDataFile (Join-Path $PSScriptRoot 'inno-toolchain.psd1')
+$version = (Get-Content (Join-Path $root 'VERSION') -Raw).Trim()
+if ($version -notmatch '^(\d+)\.(\d+)\.(\d+)$') {
+    throw 'VERSION must contain exactly three numeric components.'
+}
+
+$payloadRoot = Join-Path $root 'dist\.program-payload'
+$releaseRoot = Join-Path $root 'dist\releases'
+$compiler = Join-Path $root "tools\InnoSetup\$($toolchain.Version)\ISCC.exe"
+if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) {
+    & (Join-Path $PSScriptRoot 'bootstrap-inno.ps1')
+}
+foreach ($required in @('GameHQ.exe', 'GameHQUpdater.exe', 'app\GameHQ.exe')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $payloadRoot $required) -PathType Leaf)) {
+        throw "Neutral payload is missing $required; run packaging/make-dist.ps1 first."
+    }
+}
+if (Test-Path -LiteralPath (Join-Path $payloadRoot 'portable.flag')) {
+    throw 'Refusing to compile Setup from a portable payload.'
+}
+
+New-Item -ItemType Directory -Path $releaseRoot -Force | Out-Null
+$setupName = $identity.ArtifactPatterns.Setup -f $version
+$setupBaseName = [System.IO.Path]::GetFileNameWithoutExtension($setupName)
+$versionInfo = "$($Matches[1]).$($Matches[2]).$($Matches[3]).0"
+$arguments = @(
+    '/Qp',
+    "/DAppVersion=$version",
+    "/DAppVersionInfo=$versionInfo",
+    "/DInstallerAppId=$($identity.InnoAppId)",
+    "/DPayloadRoot=$payloadRoot",
+    "/DReleaseOutput=$releaseRoot",
+    "/DSetupBaseName=$setupBaseName",
+    (Join-Path $PSScriptRoot 'GameHQ.iss')
+)
+& $compiler @arguments
+if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed ($LASTEXITCODE)." }
+
+$setupPath = Join-Path $releaseRoot $setupName
+if (-not (Test-Path -LiteralPath $setupPath -PathType Leaf)) {
+    throw "Setup output was not created: $setupPath"
+}
+$file = Get-Item -LiteralPath $setupPath
+Write-Host "[setup] ready: $setupPath ($([math]::Round($file.Length / 1MB, 1)) MB)"

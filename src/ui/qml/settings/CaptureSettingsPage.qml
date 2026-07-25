@@ -6,6 +6,8 @@ import "../components"
 
 SettingsPage {
     id: root
+    pageTitle: "Capture"
+    pageDescription: "Choose when, how, and where GameHQ saves screenshots."
     property string locationError: ""
 
     function finishLocationChange(error) {
@@ -13,8 +15,13 @@ SettingsPage {
         sounds.play(error.length > 0 ? "error" : "confirm")
     }
 
+    function openFolder(path) {
+        Qt.openUrlExternally("file:///" + path.replace(/\\/g, "/"))
+    }
+
     SettingsSection {
-        title: "Capture behavior"
+        eyebrow: "Capture mode"
+        title: "When to capture"
         description: "Control when screenshots and replay recording are allowed."
         SettingsRow {
             label: "Capture mode"
@@ -32,8 +39,9 @@ SettingsPage {
     }
 
     SettingsSection {
-        title: "Screenshot format"
-        description: "JPEG makes smaller files at a visible quality cost; PNG is lossless."
+        eyebrow: "Image"
+        title: "Format and quality"
+        description: "PNG is lossless; JPEG trades some quality for smaller files."
         SettingsRow {
             label: "Format"
             SettingsCombo {
@@ -62,7 +70,8 @@ SettingsPage {
     }
 
     SettingsSection {
-        title: "Screenshot feedback"
+        eyebrow: "Feedback"
+        title: "After a screenshot"
         description: "Combined with the master switches on the Notifications & Sound page."
         SettingsRow {
             label: "Screenshot sound"
@@ -75,67 +84,29 @@ SettingsPage {
     }
 
     SettingsSection {
-        title: "Capture locations"
-        description: "New screenshots and clips can use separate folders. Changing or resetting a location never moves or deletes existing media; " + Brand.name + " keeps scanning previous managed roots."
+        eyebrow: "Storage"
+        title: "Where captures are saved"
+        description: "Changing a location never moves or deletes existing media."
 
-        SettingsRow {
-            label: "Screenshots folder"
-            description: "PNG captures are written below this root in <Game>/Screenshots/."
-            ColumnLayout {
-                Layout.preferredWidth: Theme.s48 * 7
-                spacing: Theme.s8
-                SettingsPathField {
-                    text: app.screenshotsRoot
-                }
-                RowLayout {
-                    Layout.alignment: Qt.AlignRight
-                    spacing: Theme.s8
-                    AccentButton {
-                        label: "Use default"
-                        primary: true
-                        visible: app.screenshotsRoot !== app.capturesRoot
-                        onClicked: root.finishLocationChange(app.resetCaptureRoot("screenshots"))
-                    }
-                    AccentButton {
-                        label: "Choose..."
-                        primary: true
-                        onClicked: screenshotFolderDialog.open()
-                    }
-                }
-            }
+        SettingsPathRow {
+            label: "Screenshots"
+            path: app.screenshotsRoot
+            showChange: true
+            showReset: app.screenshotsRoot !== app.capturesRoot
+            onChangeRequested: screenshotFolderDialog.open()
+            onOpenRequested: root.openFolder(app.screenshotsRoot)
+            onResetRequested: root.finishLocationChange(app.resetCaptureRoot("screenshots"))
         }
 
-        Rectangle { // separator between the two folder rows
-            Layout.fillWidth: true
-            implicitHeight: 1
-            color: Theme.borderLight
-        }
-
-        SettingsRow {
-            label: "Clips folder"
-            description: "Saved replay MP4 files are written below this root in <Game>/Clips/."
-            ColumnLayout {
-                Layout.preferredWidth: Theme.s48 * 7
-                spacing: Theme.s8
-                SettingsPathField {
-                    text: app.clipsRoot
-                }
-                RowLayout {
-                    Layout.alignment: Qt.AlignRight
-                    spacing: Theme.s8
-                    AccentButton {
-                        label: "Use default"
-                        primary: true
-                        visible: app.clipsRoot !== app.capturesRoot
-                        onClicked: root.finishLocationChange(app.resetCaptureRoot("clips"))
-                    }
-                    AccentButton {
-                        label: "Choose..."
-                        primary: true
-                        onClicked: clipFolderDialog.open()
-                    }
-                }
-            }
+        SettingsPathRow {
+            label: "Replay clips"
+            path: app.clipsRoot
+            showChange: true
+            showReset: app.clipsRoot !== app.capturesRoot
+            showDivider: false
+            onChangeRequested: clipFolderDialog.open()
+            onOpenRequested: root.openFolder(app.clipsRoot)
+            onResetRequested: root.finishLocationChange(app.resetCaptureRoot("clips"))
         }
 
         Text {

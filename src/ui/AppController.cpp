@@ -6,6 +6,8 @@
 #include "config/ConfigManager.h"
 #include "config/SettingsCategories.h"
 #include "config/Paths.h"
+#include "core/ProcessIdentity.h"
+#include "diagnostics/Logger.h"
 #include "storage/CaptureDatabase.h"
 #include "storage/CaptureScanner.h"
 #include "ui/CaptureLibraryService.h"
@@ -21,9 +23,14 @@
 #include <QGuiApplication>
 #include <QHash>
 #include <QImage>
+#include <QFileInfo>
+#include <QProcess>
+#include <QTimer>
 #include <QVariantMap>
 #include <QVideoFrame>
 #include <QVideoSink>
+
+#include <utility>
 
 namespace
 {
@@ -68,6 +75,7 @@ AppController::AppController(CaptureDatabase* db, CaptureScanner* scanner,
     , m_captureLibrary(std::make_unique<CaptureLibraryService>(db, gallery, overlayGallery))
     , m_currentGame(std::make_unique<CurrentGameService>(db))
     , m_settings(std::make_unique<SettingsRouter>(startup, locations))
+    , m_releaseNotes(ReleaseNotes::loadBundled())
 {
     connect(m_config, &ConfigManager::valueChanged,
             this, &AppController::configChanged);
@@ -75,6 +83,15 @@ AppController::AppController(CaptureDatabase* db, CaptureScanner* scanner,
             this, &AppController::configGroupReset);
     connect(m_locations, &CaptureLocations::locationsChanged,
             this, &AppController::captureLocationsChanged);
+
+    // Qt's screen topology signals do not fire when Windows' per-display HDR
+    // toggle changes. Poll only the lightweight DXGI/DisplayConfig snapshot;
+    // the slow HEVC encoder probe remains a startup/manual-refresh operation.
+    m_hdrPollTimer = new QTimer(this);
+    m_hdrPollTimer->setInterval(1000);
+    m_hdrPollTimer->setTimerType(Qt::CoarseTimer);
+    connect(m_hdrPollTimer, &QTimer::timeout, this, &AppController::pollHdrStatus);
+    m_hdrPollTimer->start();
 }
 
 AppController::~AppController() = default;
@@ -137,6 +154,34 @@ void AppController::openLogsFolder()
     ShellActions::openFile(Paths::logsDir());
 }
 
+QString AppController::beginPortableImport(const QUrl& folderUrl)
+{
+    if (portableMode())
+        return QStringLiteral("Portable profiles can only be imported by an installed copy of GameHQ.");
+    if (!folderUrl.isLocalFile())
+        return QStringLiteral("Select a local GameHQ portable folder.");
+    const QString source = QDir::cleanPath(folderUrl.toLocalFile());
+    if (!QFileInfo(source + QStringLiteral("/portable.flag")).isFile()
+        || !QFileInfo(source + QStringLiteral("/GameHQ.exe")).isFile()
+        || !QFileInfo(source + QStringLiteral("/gamehq-data")).isDir())
+        return QStringLiteral("The selected folder is not a GameHQ portable package.");
+
+    // Identify this process by more than its id: the importer refuses to start
+    // until it can prove *this* instance has exited, and a bare id can name a
+    // different program once Windows recycles it.
+    const QString identity = ProcessIdentity::currentToken();
+    if (identity.isEmpty())
+        return QStringLiteral("GameHQ could not identify its own process for the import.");
+    const QStringList arguments {
+        QStringLiteral("--import-portable"), source,
+        QStringLiteral("--wait-for-pid"), identity
+    };
+    if (!QProcess::startDetached(QCoreApplication::applicationFilePath(), arguments))
+        return QStringLiteral("GameHQ could not start the portable import process.");
+    QCoreApplication::quit();
+    return {};
+}
+
 void AppController::quitApplication()
 {
     QCoreApplication::quit();
@@ -144,15 +189,78 @@ void AppController::quitApplication()
 
 void AppController::copyDiagnosticSummary() const
 {
+    // Whether the log is actually being written is the first thing worth
+    // knowing when a report arrives without one attached.
     const QString summary = QStringLiteral(
         "GameHQ %1 (%2)\n"
         "Data folder: %3\n"
-        "Logs folder: %4\n"
-        "Screenshots folder: %5\n"
-        "Clips folder: %6")
+        "Logs folder: %4 (%5)\n"
+        "Screenshots folder: %6\n"
+        "Clips folder: %7\n"
+        "%8")
         .arg(version(), portableMode() ? QStringLiteral("portable") : QStringLiteral("installed"),
-             dataRoot(), logsRoot(), screenshotsRoot(), clipsRoot());
+             dataRoot(), logsRoot(),
+             Logger::writingToFile() ? QStringLiteral("writing")
+                                     : QStringLiteral("NOT writable — logging to stderr"),
+             screenshotsRoot(), clipsRoot(),
+             m_hdr.summaryLines().join(QLatin1Char('\n')));
     QGuiApplication::clipboard()->setText(summary);
+}
+
+void AppController::refreshHdrStatus()
+{
+    const bool experimentalHdrEnabled =
+        m_config->value(ConfigKeys::InternalCaptureExperimentalHdr, false).toBool();
+    const capture::HdrReport refreshed =
+        capture::HdrCapabilities::query(experimentalHdrEnabled);
+    const bool displayChanged =
+        m_hdrProbed && !capture::HdrCapabilities::sameDisplayState(m_hdr, refreshed);
+    m_hdr = refreshed;
+    m_hdrProbed = true;
+    capture::HdrCapabilities::logReport(m_hdr);
+    emit hdrStatusChanged();
+    if (displayChanged)
+        emit hdrDisplayConfigurationChanged();
+}
+
+void AppController::pollHdrStatus()
+{
+    if (!m_hdrProbed)
+        return;
+
+    const bool experimentalHdrEnabled =
+        m_config->value(ConfigKeys::InternalCaptureExperimentalHdr, false).toBool();
+    capture::HdrReport refreshed =
+        capture::HdrCapabilities::refreshDisplayState(m_hdr, experimentalHdrEnabled);
+    if (capture::HdrCapabilities::sameDisplayState(m_hdr, refreshed))
+        return;
+
+    m_hdr = std::move(refreshed);
+    capture::HdrCapabilities::logReport(m_hdr);
+    emit hdrStatusChanged();
+    emit hdrDisplayConfigurationChanged();
+}
+
+bool AppController::hdrDisplayActive() const
+{
+    return m_hdr.anyHdrActive;
+}
+
+QString AppController::hdrStatusText() const
+{
+    if (!m_hdrProbed)
+        return QStringLiteral("Not checked yet");
+    if (m_hdr.outputs.isEmpty())
+        return QStringLiteral("No displays reported by the graphics driver");
+    return m_hdr.anyHdrActive ? QStringLiteral("Windows HDR is active")
+                              : QStringLiteral("Windows HDR is inactive");
+}
+
+QString AppController::hdrDetailText() const
+{
+    if (!m_hdrProbed)
+        return QStringLiteral("Check the current HDR state of every display.");
+    return m_hdr.summaryLines().join(QLatin1Char('\n'));
 }
 
 QString AppController::setCaptureRoot(const QString& kindValue, const QUrl& folderUrl)
@@ -278,10 +386,8 @@ void AppController::resetCategory(const QString& category)
 {
     for (const QString& prefix : SettingsCategories::groups().value(category))
         resetConfigGroup(prefix);
-    if (category == SettingsCategories::CaptureCategory) {
-        for (const QString& key : SettingsCategories::captureOnlyKeys())
-            resetConfig(key);
-    }
+    for (const QString& key : SettingsCategories::keys().value(category))
+        resetConfig(key);
 }
 
 QString AppController::version() const

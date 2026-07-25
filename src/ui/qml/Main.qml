@@ -55,6 +55,85 @@ ApplicationWindow {
 
     property bool settingsOpen: false
     property bool helpOpen: false
+    property string pendingPostUpdateVersion: app
+        ? app.config("internal.updates.pending_post_update_version", "") : ""
+    property string whatsNewSeenVersion: app
+        ? app.config("internal.ui.whats_new_seen_version", "") : ""
+
+    function maybeShowPostUpdateGreeting() {
+        if (!window.visible || !window.active || lightbox.visible
+                || aboutDialog.visible || helpDialog.visible
+                || pendingPostUpdateVersion === "")
+            return
+        if (app.config("internal.ui.whats_new_seen_version", "") === pendingPostUpdateVersion) {
+            app.setConfig("internal.updates.pending_post_update_version", "")
+            pendingPostUpdateVersion = ""
+            return
+        }
+        window.openAbout(true)
+    }
+
+    function acknowledgePostUpdateGreeting() {
+        app.setConfig("internal.ui.whats_new_seen_version", pendingPostUpdateVersion)
+        app.setConfig("internal.updates.pending_post_update_version", "")
+        pendingPostUpdateVersion = ""
+    }
+
+    function aboutSidebarIndex() {
+        return window.sidebarCategories.length + app.games.length + 2
+    }
+
+    function openAbout(asPostUpdateGreeting) {
+        if (lightbox.visible || helpDialog.visible)
+            return
+        window.menuOpen = false
+        window.sidebarFocused = false
+        aboutDialog.open(asPostUpdateGreeting)
+        sounds.play("nav_tick")
+    }
+
+    function finishAbout() {
+        app.setConfig("internal.ui.whats_new_seen_version", app.version)
+        if (pendingPostUpdateVersion !== "")
+            window.acknowledgePostUpdateGreeting()
+        Qt.callLater(window.focusGalleryOrSidebar)
+    }
+
+    function openHelp() {
+        if (lightbox.visible || aboutDialog.visible)
+            return
+        window.menuOpen = false
+        window.settingsOpen = false
+        window.helpOpen = true
+        window.sidebarFocused = false
+        helpDialog.open()
+        sounds.play("nav_tick")
+    }
+
+    function finishHelp() {
+        window.helpOpen = false
+        window.focusGalleryOrSidebar()
+    }
+
+    function openAboutSettings() {
+        aboutDialog.close()
+        window.helpOpen = false
+        window.settingsOpen = true
+        window.sidebarFocused = false
+        settingsView.selectCategory(settingsView.categories.length - 1, true)
+    }
+
+    Connections {
+        target: app
+        function onConfigChanged(key, value) {
+            if (key === "internal.updates.pending_post_update_version") {
+                window.pendingPostUpdateVersion = value
+                window.maybeShowPostUpdateGreeting()
+            } else if (key === "internal.ui.whats_new_seen_version") {
+                window.whatsNewSeenVersion = value
+            }
+        }
+    }
 
     // DualSense support (0.3/0.6 extended to the desktop window): L1 is the
     // ONLY entry to the sidebar (left panel), R1 is the ONLY way back to the
@@ -76,7 +155,7 @@ ApplicationWindow {
     property bool usingGamepad: false
     // Sidebar focus region: when true the "cursor" has left the grid (L1 from
     // the pad — the only entry path) and now lives in the sidebar. UP/DOWN
-    // walks the flat sidebar list (categories → games → Settings → Help),
+    // walks the flat sidebar list (categories → games → Settings → Help → About),
     // R1 (or activating an entry, or Esc) returns focus to the grid.
     property bool sidebarFocused: false
     // Flat index into the sidebar list while sidebarFocused. Layout:
@@ -84,6 +163,7 @@ ApplicationWindow {
     //   catCount .. catCount+gameCount-1                 → games
     //   catCount+gameCount                               → Settings
     //   catCount+gameCount+1                             → Help
+    //   catCount+gameCount+2                             → About / What's New
     property int sidebarHoverIndex: 0
 
     // Gallery zoom target — the *ideal* tile size in px (160 → 480). The actual
@@ -143,13 +223,19 @@ ApplicationWindow {
         app.setConfig("ui.zoom_level", window.zoomLevel)
     }
 
-    onActiveChanged: input.setDesktopFocused(window.active || lightbox.active)
+    onActiveChanged: {
+        input.setDesktopFocused(window.active || lightbox.active)
+        if (window.active)
+            Qt.callLater(window.maybeShowPostUpdateGreeting)
+    }
     // OS-level minimize (title bar button or taskbar): when enabled, drop
     // straight to the tray instead of leaving a taskbar entry. showWindow()
     // (tray click / gallery open) restores to the normal windowed state.
     onVisibilityChanged: function(visibility) {
         if (visibility === Window.Minimized && app.config("tray.minimize_to_tray", false))
             window.hide()
+        if (visibility === Window.Windowed || visibility === Window.Maximized)
+            window.maybeShowPostUpdateGreeting()
     }
     onClosing: function(close) {
         window.doPersistGeometry()
@@ -167,6 +253,8 @@ ApplicationWindow {
         var savedZoom = app.config("ui.zoom_level", 0)
         if (savedZoom >= 160 && savedZoom <= 480)
             window.zoomLevel = savedZoom
+        Qt.callLater(window.focusGalleryOrSidebar)
+        Qt.callLater(window.maybeShowPostUpdateGreeting)
     }
     onZoomLevelChanged: window.persistGeometry()
 
@@ -220,7 +308,7 @@ ApplicationWindow {
     function bulkExit() {
         window.bulkMode = false
         window.bulkClear()
-        grid.forceActiveFocus()
+        window.focusGalleryOrSidebar()
     }
 
     // Settings from a button rather than the sidebar row: same end state the
@@ -275,7 +363,7 @@ ApplicationWindow {
 
     // ───────────────── Flat sidebar list helpers (sidebarFocused mode) ─────────────────
     function sidebarFlatCount() {
-        return window.sidebarCategories.length + app.games.length + 2  // +Settings +Help
+        return window.sidebarCategories.length + app.games.length + 3  // +Settings +Help +About
     }
 
     function refreshSidebarHoverIndex() {
@@ -288,6 +376,22 @@ ApplicationWindow {
         } else {
             window.sidebarHoverIndex = window.currentTabIndex()
         }
+    }
+
+    function focusGalleryOrSidebar() {
+        // An empty gallery has nothing meaningful to focus on. Keep the real
+        // key target on the grid (it owns the desktop key handlers), but put
+        // the visible controller cursor in the sidebar so the first D-pad
+        // movement gives immediate feedback.
+        if (aboutDialog.visible || helpDialog.visible || lightbox.visible)
+            return
+        if (!window.settingsOpen && !window.helpOpen && grid.count === 0) {
+            window.sidebarFocused = true
+            window.refreshSidebarHoverIndex()
+        } else {
+            window.sidebarFocused = false
+        }
+        grid.forceActiveFocus()
     }
 
     function activateSidebarRow(i) {
@@ -303,15 +407,17 @@ ApplicationWindow {
             app.setGame(app.games[i - catCount].id)
         } else if (i === catCount + gameCount) {
             window.helpOpen = false; window.settingsOpen = true
-        } else {  // Help
-            window.settingsOpen = false; window.helpOpen = true
+        } else if (i === catCount + gameCount + 1) {
+            window.openHelp()
+            return
+        } else {  // About / What's New is a modal over the current page.
+            window.openAbout(false)
+            return
         }
         sounds.play("nav_tick")
-        // Always drop back to the grid — for Settings/Help this means the
-        // sidebar cursor is gone while the panel is up, and the user is back
-        // in the grid when they close it.
-        window.sidebarFocused = false
-        grid.forceActiveFocus()
+        // Gallery pages return to the grid only when it has captures; an empty
+        // result keeps the visible controller cursor in the sidebar.
+        Qt.callLater(window.focusGalleryOrSidebar)
     }
 
     function sidebarStepVertical(direction) {
@@ -329,6 +435,12 @@ ApplicationWindow {
     }
 
     function padTabStep(direction) {
+        if (helpDialog.visible)
+            return
+        if (aboutDialog.visible) {
+            aboutDialog.padVertical(direction)
+            return
+        }
         if (window.settingsOpen) {
             settingsView.padCategoryStep(direction)
             return
@@ -348,6 +460,10 @@ ApplicationWindow {
             window.refreshSidebarHoverIndex()
         } else {
             // R1: enter the thumbnail grid (right panel). No-op if already there.
+            if (grid.count === 0) {
+                window.focusGalleryOrSidebar()
+                return
+            }
             if (!window.sidebarFocused)
                 return
             window.sidebarFocused = false
@@ -357,6 +473,12 @@ ApplicationWindow {
     }
 
     function padNavigate(direction) {
+        if (helpDialog.visible)
+            return
+        if (aboutDialog.visible) {
+            aboutDialog.padStep(direction)
+            return
+        }
         // Settings is three panels — sidebar │ categories │ options — and
         // Left/Right walks between them. Right off the sidebar enters the
         // categories; Left past the categories returns to the sidebar.
@@ -382,6 +504,10 @@ ApplicationWindow {
         if (window.sidebarFocused) {
             // L1/R1 are the only way in/out of the sidebar (see padTabStep);
             // D-pad LEFT/RIGHT inside the sidebar is a no-op.
+            return
+        }
+        if (grid.count === 0) {
+            window.focusGalleryOrSidebar()
             return
         }
         // Refresh the nav-lock so hover-follow can't override this move.
@@ -410,6 +536,14 @@ ApplicationWindow {
     }
 
     function padNavigateVertical(direction) {
+        if (helpDialog.visible) {
+            helpDialog.padScroll(direction)
+            return
+        }
+        if (aboutDialog.visible) {
+            aboutDialog.padStep(direction)
+            return
+        }
         if (window.settingsOpen) {
             // Up/Down moves inside whichever panel is focused, never across.
             if (window.sidebarFocused)
@@ -429,7 +563,8 @@ ApplicationWindow {
         } else if (window.sidebarFocused) {
             window.sidebarStepVertical(direction)
         } else if (grid.count === 0) {
-            return
+            window.focusGalleryOrSidebar()
+            window.sidebarStepVertical(direction)
         } else {
             // Refresh the nav-lock so hover-follow can't override this move.
             grid._navLockUntil = Date.now() + 250
@@ -452,6 +587,8 @@ ApplicationWindow {
     }
 
     function padConfirm() {
+        if (helpDialog.visible) { helpDialog.padConfirm(); return }
+        if (aboutDialog.visible) { aboutDialog.padConfirm(); return }
         if (deleteDialog.visible) { deleteDialog.confirmed(); deleteDialog.close(); return }
         if (bulkDeleteDialog.visible) { window.bulkConfirmDelete(); bulkDeleteDialog.close(); return }
         if (window.settingsOpen) {
@@ -482,7 +619,7 @@ ApplicationWindow {
     }
 
     function padFavorite() {
-        if (window.menuOpen || window.settingsOpen || window.helpOpen)
+        if (aboutDialog.visible || window.menuOpen || window.settingsOpen || window.helpOpen)
             return
         if (window.sidebarFocused)
             return  // favorites only act on a grid tile
@@ -495,7 +632,7 @@ ApplicationWindow {
     }
 
     function padToggleMenu() {
-        if (window.settingsOpen || grid.count === 0)
+        if (aboutDialog.visible || helpDialog.visible || window.settingsOpen || grid.count === 0)
             return
         if (window.sidebarFocused)
             return  // action menu only acts on a grid tile
@@ -526,24 +663,22 @@ ApplicationWindow {
     }
 
     function padBack() {
+        if (helpDialog.visible) { helpDialog.close(); return }
+        if (aboutDialog.visible) { aboutDialog.close(); return }
         if (deleteDialog.visible) { deleteDialog.canceled(); deleteDialog.close(); return }
         if (bulkDeleteDialog.visible) { bulkDeleteDialog.canceled(); bulkDeleteDialog.close(); return }
         if (window.settingsOpen) {
             // Circle unwinds one step at a time: dropdown → options →
-            // categories → sidebar → out of Settings entirely.
+            // categories → out of Settings entirely.
             if (!window.sidebarFocused && settingsView.padBack())
                 return
-            if (!window.sidebarFocused) {
-                window.sidebarFocused = true
-                window.refreshSidebarHoverIndex()
-                return
-            }
             window.settingsOpen = false
-            window.sidebarFocused = false
-            grid.forceActiveFocus()
+            window.focusGalleryOrSidebar()
         } else if (window.bulkMode) {
             window.bulkExit()
         } else if (window.sidebarFocused) {
+            if (grid.count === 0)
+                return
             window.sidebarFocused = false
             grid.forceActiveFocus()
         } else if (window.menuOpen) {
@@ -606,13 +741,13 @@ ApplicationWindow {
         function onDesktopBack() { window.usingGamepad = true; window.padBack() }
         function onDesktopSettings() {
             window.usingGamepad = true
-            if (lightbox.visible)
+            if (lightbox.visible || aboutDialog.visible || helpDialog.visible)
                 return
             window.openSettings()
         }
         function onDesktopZoom(direction) {
             window.usingGamepad = true
-            if (lightbox.visible || window.settingsOpen || window.helpOpen)
+            if (lightbox.visible || aboutDialog.visible || window.settingsOpen || window.helpOpen)
                 return
             if (direction > 0)
                 window.zoomIn()
@@ -621,7 +756,7 @@ ApplicationWindow {
         }
         function onDesktopBulkToggle() {
             window.usingGamepad = true
-            if (lightbox.visible || window.settingsOpen || window.helpOpen)
+            if (lightbox.visible || aboutDialog.visible || window.settingsOpen || window.helpOpen)
                 return
             window.padBulkToggle()
         }
@@ -671,9 +806,16 @@ ApplicationWindow {
 
         // ───────────────────────── Sidebar ─────────────────────────
         DesktopSidebar {
+            id: desktopSidebar
             categories: window.sidebarCategories
             settingsOpen: window.settingsOpen
             helpOpen: window.helpOpen
+            aboutUnread: window.whatsNewSeenVersion !== app.version
+            updateAvailable: updates.latestVersion !== ""
+                             && ["UpdateAvailable", "Downloading", "ReadyToInstall",
+                                 "PreparingForUpdate", "Quiescent", "Installing",
+                                 "Failed"].includes(updates.stateName)
+            availableVersion: updates.latestVersion
             sidebarFocused: window.sidebarFocused
             sidebarHoverIndex: window.sidebarHoverIndex
             onPageClosed: {
@@ -685,32 +827,26 @@ ApplicationWindow {
                 window.settingsOpen = true
             }
             onHelpRequested: {
-                window.settingsOpen = false
-                window.helpOpen = true
+                window.openHelp()
             }
+            onAboutRequested: window.openAbout(false)
         }
         // ───────────────────────── Settings ─────────────────────────
         SettingsView {
             id: settingsView
             visible: window.settingsOpen
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
             Layout.fillHeight: true
             onCloseRequested: {
                 window.settingsOpen = false
-                grid.forceActiveFocus()
+                window.focusGalleryOrSidebar()
             }
-        }
-
-        // ───────────────────────── Help ─────────────────────────
-        HelpView {
-            visible: window.helpOpen
-            Layout.fillWidth: true
-            Layout.fillHeight: true
         }
 
         // ───────────────────────── Content ─────────────────────────
         ColumnLayout {
-            visible: !window.settingsOpen && !window.helpOpen
+            visible: !window.settingsOpen
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: Theme.s16
@@ -748,6 +884,12 @@ ApplicationWindow {
                 onBulkToggleRequested: (index, extendRange) => window.bulkToggle(index, extendRange)
                 onBulkDeleteRequested: window.bulkAskDelete()
                 onBulkSelectAllRequested: window.bulkSelectAll()
+                onCountChanged: {
+                    if (count === 0 && !window.settingsOpen && !window.helpOpen
+                            && !aboutDialog.visible && !helpDialog.visible
+                            && !lightbox.visible)
+                        Qt.callLater(window.focusGalleryOrSidebar)
+                }
             }
 
             DesktopGalleryFooter {
@@ -764,6 +906,19 @@ ApplicationWindow {
 
     }
 
+    // ───────────────────────── Update banner ─────────────────────────
+    // Floats above the content rather than participating in the RowLayout,
+    // so it never has to fight the sidebar/settings/help width math. Only
+    // ever shown here (the desktop gallery window) — never above the pad
+    // overlay or a running game.
+    UpdateBanner {
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: Theme.s16
+        z: 50
+    }
+
     FolderDialog {
         id: folderDialog
         title: "Choose a folder to watch"
@@ -775,7 +930,7 @@ ApplicationWindow {
         id: lightbox
         parentWindow: window
         galleryModel: app.gallery
-        onClosed: grid.forceActiveFocus()
+        onClosed: window.focusGalleryOrSidebar()
     }
 
     // ───────────────────────── Delete confirmation ─────────────────────────
@@ -808,6 +963,21 @@ ApplicationWindow {
         title: "Delete selected captures?"
         confirmLabel: "Delete"
         onConfirmed: window.bulkConfirmDelete()
+    }
+
+    AboutWhatsNewDialog {
+        id: aboutDialog
+        anchors.fill: parent
+        z: 500
+        onClosed: window.finishAbout()
+        onUpdateSettingsRequested: window.openAboutSettings()
+    }
+
+    HelpDialog {
+        id: helpDialog
+        anchors.fill: parent
+        z: 500
+        onClosed: window.finishHelp()
     }
 
     // ───────────────────────── Pad action menu (Square) ─────────────────────────

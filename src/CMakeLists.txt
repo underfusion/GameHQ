@@ -1,18 +1,28 @@
 qt_add_executable(GameHQ
     main.cpp
     app/App.cpp            app/App.h
+    app/ReleaseNotes.cpp   app/ReleaseNotes.h
     app/StartupManager.cpp app/StartupManager.h
+    capture/CapturePublisher.cpp capture/CapturePublisher.h
     capture/CaptureUtil.h
+      capture/HdrCapabilities.cpp capture/HdrCapabilities.h capture/hdr/HdrStateResolver.h
     capture/ScreenshotService.cpp capture/ScreenshotService.h
     capture/FramePumpService.cpp capture/FramePumpService.h capture/wgc_shims.h
+    capture/hdr/HdrToneMapMath.cpp capture/hdr/HdrToneMapMath.h
+    capture/hdr/GpuToneMapper.cpp capture/hdr/GpuToneMapper.h
     capture/AudioCapture.cpp capture/AudioCapture.h capture/wasapi_shims.h
     capture/SegmentRecorder.cpp capture/SegmentRecorder.h
     capture/ReplayExporter.cpp capture/ReplayExporter.h
     config/Paths.cpp       config/Paths.h
     config/LegacyMigration.cpp config/LegacyMigration.h
+    config/PortableProfileImporter.cpp config/PortableProfileImporter.h
     config/ConfigManager.cpp config/ConfigManager.h
     config/CaptureLocations.cpp config/CaptureLocations.h
+    core/ApplicationMutex.cpp core/ApplicationMutex.h
+    core/ProcessIdentity.cpp core/ProcessIdentity.h
     core/GameIdentity.cpp core/GameIdentity.h
+    core/UpdateMaintenance.cpp core/UpdateMaintenance.h
+    core/UpdaterHandshake.cpp core/UpdaterHandshake.h
     diagnostics/Logger.cpp diagnostics/Logger.h
     games/GameDetector.cpp games/GameDetector.h
     input/HotkeyManager.cpp input/HotkeyManager.h
@@ -27,6 +37,12 @@ qt_add_executable(GameHQ
     input/HidCloakMonitor.cpp input/HidCloakMonitor.h
     input/XInputDevice.cpp input/XInputDevice.h
     input/WinMMDevice.cpp input/WinMMDevice.h
+    integration/IntegrationMessage.h
+    integration/IntegrationProtocol.cpp integration/IntegrationProtocol.h
+    integration/LocalIntegrationServer.cpp integration/LocalIntegrationServer.h
+    integration/ExternalGameContext.cpp integration/ExternalGameContext.h
+    integration/IntegrationService.cpp integration/IntegrationService.h
+    integration/IntegrationClient.cpp integration/IntegrationClient.h
     input/MouseHookDevice.cpp input/MouseHookDevice.h
     input/InputEngine.cpp input/InputEngine.h
     notify/NotificationCenter.cpp notify/NotificationCenter.h
@@ -46,6 +62,15 @@ qt_add_executable(GameHQ
     ui/CurrentGameService.cpp ui/CurrentGameService.h
     ui/GalleryModel.cpp    ui/GalleryModel.h
     ui/ShellActions.cpp    ui/ShellActions.h
+    updates/VersionNumber.cpp updates/VersionNumber.h
+    updates/ReleaseInfo.h
+    updates/UpdateDownloader.cpp updates/UpdateDownloader.h
+    updates/UpdatePreflight.cpp updates/UpdatePreflight.h
+    updates/UpdateInstaller.cpp updates/UpdateInstaller.h
+    updates/GitHubReleaseSource.cpp updates/GitHubReleaseSource.h
+    updates/ReleaseCatalog.cpp updates/ReleaseCatalog.h
+    updates/UpdateSchedule.cpp updates/UpdateSchedule.h
+    updates/UpdateService.cpp updates/UpdateService.h
     # Win32 resource: embeds the multi-size app icon into GameHQ.exe.
     ${CMAKE_SOURCE_DIR}/assets/icons/gamehq.rc
 )
@@ -100,17 +125,30 @@ qt_add_qml_module(GameHQ
         ui/qml/components/SettingsPathField.qml
         ui/qml/components/ConfirmDialog.qml
         ui/qml/components/Toast.qml
+        ui/qml/components/UpdateBanner.qml
+        ui/qml/components/AboutWhatsNewDialog.qml
+        ui/qml/components/HelpDialog.qml
+        ui/qml/components/DialogCloseButton.qml
+        ui/qml/components/TextLink.qml
         ui/qml/components/Lightbox.qml
         ui/qml/components/MediaStage.qml
         ui/qml/components/PlayerControls.qml
         ui/qml/components/NavRepeat.qml
         ui/qml/components/SettingsCombo.qml
         ui/qml/components/SettingsPage.qml
+        ui/qml/components/SettingsPageHeader.qml
         ui/qml/components/SettingsSection.qml
         ui/qml/components/SettingsRow.qml
         ui/qml/components/SettingsToggle.qml
         ui/qml/components/SettingsSlider.qml
         ui/qml/components/SettingsCategoryButton.qml
+        ui/qml/components/SettingsSegmentedControl.qml
+        ui/qml/components/SettingsPathRow.qml
+        ui/qml/components/SettingsLinkRow.qml
+        ui/qml/components/SettingsStatusStrip.qml
+        ui/qml/components/SettingsActionTile.qml
+        ui/qml/components/SettingsEmptyState.qml
+        ui/qml/components/SettingsDisclosure.qml
         ui/qml/settings/GeneralSettingsPage.qml
         ui/qml/settings/CaptureSettingsPage.qml
         ui/qml/settings/ReplaySettingsPage.qml
@@ -118,6 +156,7 @@ qt_add_qml_module(GameHQ
         ui/qml/settings/LibrarySettingsPage.qml
         ui/qml/settings/FeedbackSettingsPage.qml
         ui/qml/settings/AdvancedSettingsPage.qml
+        ui/qml/settings/AboutSettingsPage.qml
     )
 
 qt_add_resources(GameHQ "icons"
@@ -142,6 +181,12 @@ qt_add_resources(GameHQ "sounds"
         "${CMAKE_SOURCE_DIR}/assets/sounds/replay_saved.wav"
 )
 
+qt_add_resources(GameHQ "release_notes"
+    PREFIX "/release-notes"
+    BASE "${CMAKE_SOURCE_DIR}/assets"
+    FILES "${CMAKE_SOURCE_DIR}/assets/release-notes.json"
+)
+
 target_include_directories(GameHQ PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_BINARY_DIR}/generated
@@ -152,11 +197,14 @@ target_compile_definitions(GameHQ PRIVATE
 )
 
 target_link_libraries(GameHQ PRIVATE
+    gamehq_release_trust
     Qt6::Core Qt6::Gui Qt6::Quick Qt6::Sql Qt6::Widgets Qt6::Svg
-    Qt6::Multimedia
+    Qt6::Multimedia Qt6::Network
     user32 gdi32 version winmm cfgmgr32
     # 0.5 Windows Graphics Capture frame pump (WinRT raw-ABI path, no cppwinrt).
     windowsapp runtimeobject ole32 oleaut32 d3d11 dxgi dxguid uuid
+    # t24 experimental HDR tone-map shader (runtime HLSL compile via D3DCompile).
+    d3dcompiler
     # 0.5 Step 4 H.264 encode via Media Foundation SinkWriter (fragmented MP4).
     mfplat mfreadwrite mfuuid mf avrt ksuser mmdevapi
 )
@@ -170,6 +218,30 @@ set_target_properties(GameHQ PROPERTIES
 # the real executable and every runtime dependency live below app/.
 add_executable(GameHQLauncher WIN32
     launcher/LauncherMain.cpp
+    launcher/LauncherCommandLine.cpp launcher/LauncherCommandLine.h
+    launcher/UpdaterPromotion.cpp launcher/UpdaterPromotion.h
+    core/UpdateMaintenance.cpp core/UpdateMaintenance.h
     ${CMAKE_SOURCE_DIR}/assets/icons/gamehq.rc
 )
+target_include_directories(GameHQLauncher PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_options(GameHQLauncher PRIVATE -static)
+
+# Static updater helper: it must remain runnable while app/ and Qt DLLs are
+# being replaced. Stage 1 exposes only a transaction-safe --dry-run mode.
+add_executable(GameHQUpdater
+    updater/UpdaterMain.cpp
+    updater/UpdaterTransaction.cpp updater/UpdaterTransaction.h
+    updater/UpdaterStaging.cpp updater/UpdaterStaging.h
+    updater/UpdaterDataSnapshot.cpp updater/UpdaterDataSnapshot.h
+    updater/UpdaterSwap.cpp updater/UpdaterSwap.h
+    updater/UpdaterHealth.cpp updater/UpdaterHealth.h
+    updater/UpdaterRecovery.cpp updater/UpdaterRecovery.h
+    core/UpdateMaintenance.cpp core/UpdateMaintenance.h
+    core/UpdaterHandshake.cpp core/UpdaterHandshake.h
+)
+target_include_directories(GameHQUpdater PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(GameHQUpdater PRIVATE miniz bcrypt)
+target_link_libraries(GameHQUpdater PRIVATE gamehq_release_trust)
+target_link_options(GameHQUpdater PRIVATE -static -municode)
+target_compile_definitions(GameHQUpdater PRIVATE
+    GAMEHQ_UPDATER_VERSION="${GAMEHQ_VERSION_FULL}")

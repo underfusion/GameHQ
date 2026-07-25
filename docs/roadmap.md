@@ -27,6 +27,16 @@ WGC screenshot, game detection, PNG to per-game folder, DB, thumbnail, sound, no
 Console-feel gallery: big preview, thumb strip, full pad mapping (X/Circle/Triangle/Square/L1/R1/Options), nav + feedback sounds.
 **Accept:** fully mouse-free · browse/play/favorite/delete from pad · couch-readable · sounds subtle.
 
+## 0.6.x — Distribution & Integration Foundation
+About page with version/links, safe self-update with backup and rollback, a
+private local IPC channel, and a companion Playnite plugin that reports game
+identity without weakening GameHQ's own detection authority. Design in
+[updater.md](updater.md) and [integration-protocol.md](integration-protocol.md).
+**Accept:** users see their version and can check for/apply updates without
+losing recordings, settings, or their portable/installed choice · a failed
+update always rolls back · Playnite users get faster, more reliable game
+detection · GameHQ keeps working fully standalone without Playnite.
+
 ## 0.7 — Storage & Cleanup
 Limits, auto-cleanup, favorite protection, disk warnings, manual cleanup screen, per-game usage.
 **Accept:** limit respected, oldest non-favorites deleted, favorites untouchable, per-game view, imports never modified without opt-in.

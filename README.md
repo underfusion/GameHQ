@@ -19,9 +19,7 @@ continuously keeps the most recent gameplay in a rolling buffer. When something
 worth saving happens, press one button **after the moment** to turn the previous
 configurable minutes into a normal MP4 video clip — there is no need to start
 recording beforehand. You can also take instant screenshots and browse everything
-in a controller-friendly gallery without leaving your game. GameHQ 0.6.3 adds a
-full theme system, stronger overlay behavior, clip-frame screenshots, and clear
-recovery when controller-filtering software hides a connected pad.
+in a controller-friendly gallery without leaving your game.
 
 ## Highlights
 
@@ -52,14 +50,40 @@ recovery when controller-filtering software hides a connected pad.
 
 ## Download
 
-The latest version is **GameHQ 0.6.3**. Download
-`GameHQ-0.6.3-win64.zip` from the
-[latest release](https://github.com/underfusion/GameHQ/releases/latest), extract
-it anywhere writable, and run `GameHQ.exe`.
+Download only from the official
+[GameHQ Releases page](https://github.com/underfusion/GameHQ/releases). Choose
+`GameHQ-<version>-win64-setup.exe` for the recommended per-user installation, or
+the `-portable.zip` package to keep data beside the app.
 
-The application is not code-signed, so Windows SmartScreen may ask for
-confirmation. Verify that the download comes from this repository's Releases
-page before choosing **More info → Run anyway**.
+**Open-source Beta · Not yet code-signed; Windows may show an Unknown publisher
+warning.** Verify the official source and published release hash before running
+an artifact. A specific Defender malware/PUA detection is different: do not
+bypass it or disable Windows security. See
+[Download verification](docs/download-verification.md) and
+[Security & privacy](docs/security-and-privacy.md).
+
+### Portable, installed, and uninstall behavior
+
+Portable keeps its profile and default captures beside the extracted app.
+Installed mode uses the current user's AppData and `Videos\GameHQ`. On a fresh,
+empty installed profile, **Settings > Advanced > Portable profile** can import
+an existing portable configuration and library. The transactional importer
+rebases portable paths but leaves the portable source and all capture media in
+place; populated installed libraries are never merged in version one.
+
+Uninstall removes only installed program files, shortcuts, and registry values
+still owned by that installation. It does not remove AppData, captures, watched
+folders, portable copies, or media, and it does not change the license rights
+already granted for any downloaded release.
+
+## Code signing policy
+
+GameHQ's [Code signing policy](docs/code-signing-policy.md) defines release
+roles, MFA, privacy, signed-file scope, manual approval and verification. The
+planned open-source signing attribution is: **Free code signing provided by
+SignPath.io, certificate by SignPath Foundation.** It applies to distributed
+binaries only after SignPath Foundation accepts the project and the verified
+workflow is active; current Beta downloads remain unsigned as stated above.
 
 ## Default controls
 
@@ -104,12 +128,15 @@ powershell -ExecutionPolicy Bypass -File packaging/make-dist.ps1
 
 Architecture and subsystem documentation lives in [docs/](docs/README.md).
 Changes are summarized in the [changelog](CHANGELOG.md).
+Vulnerabilities can be reported privately through the repository's enabled
+[security advisory form](https://github.com/underfusion/GameHQ/security/advisories/new).
 
 ## License
 
-GameHQ source code is available under the [MIT License](LICENSE). Distributed
-packages also contain Qt, FFmpeg, and compiler runtime components under their
-respective licenses; see [Third-Party Notices](THIRD_PARTY_NOTICES.md).
+GameHQ source code is available under the [MIT License](LICENSE). See
+[Licensing](docs/licensing.md) for the project boundary and
+[Third-Party Notices](THIRD_PARTY_NOTICES.md) for redistributed Qt, FFmpeg,
+compiler-runtime, and other components under their respective licenses.
 
 GameHQ is an independent project and is not affiliated with or endorsed by
 Sony Interactive Entertainment, Microsoft, Valve, NVIDIA, or OBS Project.

@@ -8,6 +8,7 @@ Item {
 
     property string title: "Are you sure?"
     property string message: ""
+    property string cancelLabel: "Cancel"
     property string confirmLabel: "Delete"
     signal confirmed()
     signal canceled()
@@ -75,7 +76,7 @@ Item {
                 anchors.right: parent.right
                 spacing: Theme.s12
                 AccentButton {
-                    label: "Cancel"
+                    label: root.cancelLabel
                     onClicked: { root.canceled(); root.close() }
                 }
                 AccentButton {

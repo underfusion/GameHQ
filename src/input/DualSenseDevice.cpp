@@ -1,5 +1,6 @@
 #include "input/DualSenseDevice.h"
 
+#include "input/ControllerArbitration.h"
 #include "input/HidCloakMonitor.h"
 #include "input/StickNav.h"
 
@@ -78,6 +79,16 @@ bool isGamepadUsage(const RID_DEVICE_INFO_HID& hid)
 const char* padName(int layout)
 {
     return layout == LayoutDs4 ? "DS4-compatible" : "DualSense";
+}
+
+int devicePriority(quint32 vendorId, quint32 productId)
+{
+    if (vendorId == kSonyVid) {
+        if (productId == kVirtualDualSensePid)
+            return 2;
+        return 3;
+    }
+    return 1;
 }
 
 QString devicePath(HANDLE handle)
@@ -539,6 +550,8 @@ void DualSenseDevice::parseReport(void* handle, DeviceState& st,
 
     const bool changed = (s != st.buttons);
     st.buttons = s;
+    if (changed)
+        st.lastChangeMs = st.lastReportMs;
 
     routeReport(handle, st, s, changed, reportId, d, len);
 }
@@ -576,17 +589,22 @@ void DualSenseDevice::routeReport(void* handle, const DeviceState& st, quint32 s
         return;
     }
 
-    // Report from a non-active pad: keep its state current, but only steal
-    // the active role when it shows a real input change while the active pad
-    // has gone silent (DSX swapped its virtual pad, HidHide hid the physical
-    // one mid-session, ...). This is what stops two mirrored pads from
-    // double-firing every press.
+    // Report from a non-active pad: keep its state current. Prefer physical
+    // Sony hardware over virtual DS4 devices immediately; otherwise fail over
+    // when the active device has stopped producing real control changes.
+    // Idle report traffic no longer pins a noisy virtual pad forever.
     auto activeIt = m_devices.constFind(m_activeHandle);
-    const bool activeSilent = activeIt == m_devices.cend()
-        || (st.lastReportMs - activeIt->lastReportMs) > kActiveSilenceMs;
-    if (changed && activeSilent) {
+    const bool shouldSwitch = activeIt == m_devices.cend()
+        || ControllerArbitration::sonyDeviceMayTakeOver(
+            changed,
+            devicePriority(st.vendorId, st.productId),
+            devicePriority(activeIt->vendorId, activeIt->productId),
+            st.lastChangeMs,
+            activeIt->lastChangeMs,
+            kActiveSilenceMs);
+    if (shouldSwitch) {
         qInfo() << "Gamepad: switching active pad to" << padName(st.layout)
-                << "(previous pad went silent)";
+                << "(better device or previous control source went idle)";
         m_activeHandle = handle;
         if (!m_connectedState) {
             m_connectedState = true;

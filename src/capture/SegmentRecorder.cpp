@@ -103,6 +103,7 @@ bool SegmentRecorder::begin(int sourceWidth, int sourceHeight, int encodeWidth, 
     m_audioChannels = audioChannels;
     m_segments.clear();
     m_curPath.clear();
+    m_discardCurrentSegment = false;
     m_cacheDir = cacheDir;
     m_segIndex = 0;
     m_originTime = -1;
@@ -526,6 +527,23 @@ void SegmentRecorder::closeSegment()
 {
     if (!m_writer)
         return;
+
+    if (m_discardCurrentSegment) {
+        m_writer->Release();
+        m_writer = nullptr;
+        m_videoStream = 0;
+        m_audioStream = 0;
+        qWarning().noquote()
+            << QStringLiteral("SegmentRecorder: discarded in-flight segment after capture "
+                              "discontinuity: %1")
+                   .arg(QDir(m_cacheDir).relativeFilePath(m_curPath));
+        if (!m_curPath.isEmpty())
+            QFile::remove(m_curPath);
+        m_curPath.clear();
+        m_discardCurrentSegment = false;
+        return;
+    }
+
     const HRESULT hrFin = m_writer->Finalize();   // writes final index -> playable
     m_writer->Release();
     m_writer = nullptr;

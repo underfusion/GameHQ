@@ -1,6 +1,8 @@
 #include "capture/ScreenshotService.h"
 
+#include "capture/CapturePublisher.h"
 #include "capture/CaptureUtil.h"
+#include "capture/HdrCapabilities.h"
 #include "config/ConfigKeys.h"
 #include "config/ConfigManager.h"
 #include "config/CaptureLocations.h"
@@ -25,10 +27,38 @@ ScreenshotService::ScreenshotService(ConfigManager* config, CaptureLocations* lo
     , m_config(config)
     , m_locations(locations)
 {
+    m_encodePool.setMaxThreadCount(2);
+    // Unfinished captures from a crash or a power cut are invisible to the
+    // scanner but would otherwise stay on disk forever.
+    if (m_locations)
+        CapturePublisher::sweepStale(m_locations->screenshotsBaseRoot(), kStalePendingMaxAgeSecs);
+}
+
+// Checked before the grab: refusing early costs the user a frame, while
+// accepting would cost another full-resolution image in memory.
+bool ScreenshotService::encodeBacklogFull() const
+{
+    return m_pendingWrites.load() >= kMaxPendingEncodes
+        || m_pendingBytes.load() >= kMaxPendingBytes;
+}
+
+ScreenshotService::~ScreenshotService()
+{
+    // ~QThreadPool would wait too, but do it explicitly while the full object
+    // is still alive: workers touch m_pendingWrites and emit signals.
+    m_encodePool.waitForDone();
 }
 
 void ScreenshotService::capture()
 {
+    if (m_updatePreparing.load()) {
+        emit skipped(QStringLiteral("screenshot capture is paused for an update"));
+        return;
+    }
+    if (encodeBacklogFull()) {
+        emit skipped(QStringLiteral("still saving the previous screenshots"));
+        return;
+    }
     const QString mode = m_config
         ? m_config->value(ConfigKeys::CaptureMode,
                           QStringLiteral("only_in_games")).toString()
@@ -39,6 +69,21 @@ void ScreenshotService::capture()
         emit skipped(QStringLiteral("foreground window is not a game (mode=%1, process=%2)")
                          .arg(mode, g.processName.isEmpty() ? QStringLiteral("?") : g.processName));
         return;
+    }
+
+    const bool hdrExperimentalEnabled = m_config
+        && m_config->value(ConfigKeys::InternalCaptureExperimentalHdr, false).toBool();
+    if (hdrExperimentalEnabled) {
+        const capture::HdrOutputInfo output =
+            capture::HdrCapabilities::forWindow(static_cast<HWND>(g.hwnd));
+        if (output.valid && output.hdrActive) {
+            qInfo().noquote() << QStringLiteral(
+                "Screenshot: HDR target detected (%1) — requesting tone-mapped WGC frame")
+                                     .arg(output.describe());
+            emit hdrCaptureRequested(
+                qulonglong(reinterpret_cast<quintptr>(g.hwnd)));
+            return;
+        }
     }
 
     QElapsedTimer t;
@@ -68,8 +113,16 @@ void ScreenshotService::capture()
 void ScreenshotService::saveImage(const QImage& img, const QString& gameName,
                                   const QString& executablePath)
 {
+    if (m_updatePreparing.load()) {
+        emit skipped(QStringLiteral("screenshot capture is paused for an update"));
+        return;
+    }
     if (img.isNull()) {
         emit failed(QStringLiteral("no video frame available to save"));
+        return;
+    }
+    if (encodeBacklogFull()) {
+        emit skipped(QStringLiteral("still saving the previous screenshots"));
         return;
     }
     emit grabbed();
@@ -93,8 +146,20 @@ void ScreenshotService::encodeAndSave(const QImage& img, const QString& gameName
         ? qBound(1, m_config->value(ConfigKeys::CaptureJpegQuality, 90).toInt(), 100)
         : 90;
 
-    QThreadPool::globalInstance()->start(QRunnable::create(
-        [this, img, gameName, executablePath, dir, jpeg, ext, jpegQuality]() {
+    const qint64 imageBytes = img.sizeInBytes();
+    ++m_pendingWrites;
+    m_pendingBytes += imageBytes;
+    m_encodePool.start(QRunnable::create(
+        [this, img, gameName, executablePath, dir, jpeg, ext, jpegQuality, imageBytes]() {
+        struct Completion {
+            ScreenshotService *service;
+            qint64 bytes;
+            ~Completion() {
+                service->m_pendingBytes -= bytes;
+                if (--service->m_pendingWrites == 0 && service->m_updatePreparing.load())
+                    QMetaObject::invokeMethod(service, "updateReady", Qt::QueuedConnection);
+            }
+        } completion{this, imageBytes};
         QElapsedTimer et;
         et.start();
         if (!QDir().mkpath(dir)) {
@@ -102,25 +167,61 @@ void ScreenshotService::encodeAndSave(const QImage& img, const QString& gameName
             return;
         }
 
-        // Timestamped name with same-second clobber protection.
-        const QString path = CaptureUtil::uniqueTimestampedPath(
+        // Take the timestamped name by creating the .part file exclusively, so
+        // the other encoder thread cannot be handed the same one.
+        const CapturePublisher::Reservation reservation = CapturePublisher::reserve(
             dir, QStringLiteral("yyyy-MM-dd_HH-mm-ss"), ext);
-
-        QImageWriter writer(path, jpeg ? "JPG" : "PNG");
-        if (jpeg)
-            writer.setQuality(jpegQuality);
-        else
-            writer.setCompression(1);   // fast zlib level — encode speed over file size
-        if (!writer.write(img)) {
-            emit failed(QStringLiteral("could not write ") + path
-                        + QStringLiteral(": ") + writer.errorString());
+        if (!reservation.isValid()) {
+            emit failed(QStringLiteral("could not reserve a screenshot name in ") + dir);
             return;
         }
 
-        qInfo() << "Screenshot: saved" << path << "(" << img.width() << "x" << img.height()
+        // Encode into the .part file. The scanner ignores that extension, so a
+        // slow, failed or interrupted encode is never visible as a capture.
+        {
+            QImageWriter writer(reservation.pendingPath, jpeg ? "JPG" : "PNG");
+            if (jpeg)
+                writer.setQuality(jpegQuality);
+            else
+                writer.setCompression(1);   // fast zlib level — encode speed over file size
+            if (!writer.write(img)) {
+                const QString reason = writer.errorString();
+                CapturePublisher::discard(reservation);
+                emit failed(QStringLiteral("could not write ") + reservation.finalPath
+                            + QStringLiteral(": ") + reason);
+                return;
+            }
+        }
+
+        // QImageWriter keeps its output file open until destruction. Windows
+        // cannot atomically rename that open file, so publish only after the
+        // writer has left the scope above.
+        QString publishError;
+        if (!CapturePublisher::publish(reservation, &publishError)) {
+            // The .part stays behind on purpose: the pixels are still in it and
+            // the startup sweep will clear it if nothing ever claims it.
+            emit failed(QStringLiteral("could not publish ") + reservation.finalPath
+                        + QStringLiteral(": ") + publishError);
+            return;
+        }
+
+        qInfo() << "Screenshot: saved" << reservation.finalPath
+                << "(" << img.width() << "x" << img.height()
                 << ") encode+write" << et.elapsed() << "ms";
-        emit captured(path, gameName, executablePath);
+        emit captured(reservation.finalPath, gameName, executablePath);
     }));
+}
+
+void ScreenshotService::prepareForUpdate()
+{
+    m_updatePreparing.store(true);
+    if (!busy())
+        emit updateReady();
+}
+
+void ScreenshotService::cancelUpdatePreparation()
+{
+    m_updatePreparing.store(false);
 }
 
 // Screen-DC BitBlt of the window's screen rectangle. CAPTUREBLT pulls in

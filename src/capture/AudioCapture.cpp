@@ -121,6 +121,7 @@ bool AudioCapture::start(unsigned long targetPid)
 {
     if (m_active)
         return true;
+    m_deviceInvalidated = false;
 
     // NOTE: AvSetMmThreadCharacteristicsW removed — passing nullptr as the
     // task-index pointer is UB and the suspected trigger of the dev.74/76
@@ -346,8 +347,21 @@ unsigned AudioCapture::poll(float* outBuf, unsigned maxFrames, long long* outTim
     UINT32 packetFrames = 0;
     HRESULT hr = m_capture->GetNextPacketSize(&packetFrames);
     if (FAILED(hr) || packetFrames == 0) {
-        if (FAILED(hr))
-            qWarning().nospace() << "AudioCapture: GetNextPacketSize hr=0x" << Qt::hex << quint32(hr);
+        if (FAILED(hr)) {
+            if (hr == AUDCLNT_E_DEVICE_INVALIDATED
+                || hr == AUDCLNT_E_RESOURCES_INVALIDATED
+                || hr == AUDCLNT_E_SERVICE_NOT_RUNNING) {
+                m_active = false;
+                m_deviceInvalidated = true;
+                qWarning().nospace()
+                    << "AudioCapture: render endpoint changed during GetNextPacketSize "
+                       "(hr=0x" << Qt::hex << quint32(hr) << Qt::dec
+                    << ") — replay capture must re-arm";
+            } else {
+                qWarning().nospace() << "AudioCapture: GetNextPacketSize hr=0x"
+                                     << Qt::hex << quint32(hr);
+            }
+        }
         return 0;
     }
 
@@ -355,8 +369,21 @@ unsigned AudioCapture::poll(float* outBuf, unsigned maxFrames, long long* outTim
     DWORD flags = 0;
     hr = m_capture->GetBuffer(&data, &packetFrames, &flags, nullptr, nullptr);
     if (FAILED(hr) || packetFrames == 0) {
-        if (FAILED(hr) && hr != AUDCLNT_S_BUFFER_EMPTY)
-            qWarning().nospace() << "AudioCapture: GetBuffer hr=0x" << Qt::hex << quint32(hr);
+        if (FAILED(hr) && hr != AUDCLNT_S_BUFFER_EMPTY) {
+            if (hr == AUDCLNT_E_DEVICE_INVALIDATED
+                || hr == AUDCLNT_E_RESOURCES_INVALIDATED
+                || hr == AUDCLNT_E_SERVICE_NOT_RUNNING) {
+                m_active = false;
+                m_deviceInvalidated = true;
+                qWarning().nospace()
+                    << "AudioCapture: render endpoint changed during GetBuffer "
+                       "(hr=0x" << Qt::hex << quint32(hr) << Qt::dec
+                    << ") — replay capture must re-arm";
+            } else {
+                qWarning().nospace() << "AudioCapture: GetBuffer hr=0x"
+                                     << Qt::hex << quint32(hr);
+            }
+        }
         return 0;
     }
 

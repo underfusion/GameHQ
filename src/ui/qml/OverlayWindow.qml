@@ -46,6 +46,9 @@ Window {
     // to true on any pad input, false on any key press.
     property bool usingGamepad: false
 
+    // Row queued by the mouse delete path until the confirm dialog answers.
+    property int pendingDeleteRow: -1
+
     Connections {
         target: app
         function onCurrentGameChanged() {
@@ -364,6 +367,18 @@ Window {
                 model: overlayGallery
                 usingGamepad: overlayWindow.usingGamepad
                 videoFocused: content.videoFocused
+                onDeleteRequested: function(index) {
+                    overlayWindow.pendingDeleteRow = index
+                    deleteDialog.open()
+                }
+                onOpenFolderRequested: function(index) {
+                    sounds.play("confirm")
+                    app.showInFolderFrom(overlayGallery, index)
+                }
+                onFavoriteToggleRequested: function(index) {
+                    sounds.play("favorite")
+                    overlayGallery.toggleFavorite(index)
+                }
             }
             OverlayPreview {
                 id: previewStage
@@ -408,5 +423,22 @@ Window {
             content.menuIndex = index
             content.menuConfirm()
         }
+    }
+
+    // Mouse delete confirmation. Above the action menu in z-order so it stays
+    // usable no matter which path opened it.
+    ConfirmDialog {
+        id: deleteDialog
+        anchors.fill: parent
+        z: 200
+        title: "Delete capture?"
+        confirmLabel: "Delete"
+        onConfirmed: {
+            sounds.play("confirm")
+            if (overlayWindow.pendingDeleteRow >= 0)
+                app.deleteCaptureFrom(overlayGallery, overlayWindow.pendingDeleteRow)
+            overlayWindow.pendingDeleteRow = -1
+        }
+        onCanceled: overlayWindow.pendingDeleteRow = -1
     }
 }

@@ -28,9 +28,8 @@ GameHQ is a Qt/QML Windows app with a native C++ service layer:
   fullscreen heuristic, and capture gate. The disk-backed title sources (Steam
   `.acf` scan, version-resource reads) are memoized per foreground process, keyed
   by pid and path; the window caption stays live per tick.
-- `ScreenshotService` handles one-shot GDI screenshots and async PNG writes.
-- `FramePumpService` handles always-on WGC replay capture on a dedicated MTA
-  worker thread, rolling H.264/AAC segments, and replay export.
+- `ScreenshotService` handles SDR GDI screenshots, HDR frame-pump requests, and async image writes.
+- `FramePumpService` handles WGC replay capture, HDR tone mapping and screenshot readback on a dedicated MTA worker, plus rolling segments and replay export.
 - `OverlayManager` owns lazy overlay QML loading, topmost window placement,
   foreground stealing, and focus restoration.
 - `InputEngine` routes controller input between global actions, overlay, and
@@ -128,12 +127,19 @@ The project relied entirely on build/run/log verification and real hardware
 tests. That is unavoidable for WGC, controller, and overlay behavior, but not for
 pure logic.
 
-Landed: an opt-in `tests/` target (QtTest + CTest, `-DGAMEHQ_BUILD_TESTS=ON`) with
-51 assertions across `tst_gameidentity` (25), `tst_configmanager` (16), and
-`tst_gamerowrepair` (10). Runs in about 0.1 s; command documented in
-[dev-setup.md](dev-setup.md). Scope is pure logic only - no DB, no GUI, no game
-process. `CaptureScanner::inferGameName` moved to `GameIdentity::inferFromPath`
-as the testing seam, which also removed a duplicated "Unknown Game" fallback.
+Landed: an opt-in `tests/` target (QtTest + CTest, `-DGAMEHQ_BUILD_TESTS=ON`).
+As of 0.6.42 it is **31 CTest tests** running in about 17 s, plus **20 Playnite
+plugin tests** (`dotnet test`); command documented in
+[dev-setup.md](dev-setup.md). `CaptureScanner::inferGameName` moved to
+`GameIdentity::inferFromPath` as the testing seam, which also removed a
+duplicated "Unknown Game" fallback.
+
+The original "pure logic only" rule has one deliberate exception: storage and
+process-lifetime correctness is about what survives a failure, which cannot be
+checked without a real database, real files or a real child process. Those
+tests use `QTemporaryDir` fixtures and disposable child processes
+(`tst_capturedatabaserepair`, `tst_capturepublisher`, `tst_processidentity`,
+`tst_portableprofileimporter`, `tst_updatertransaction`).
 
 The rule going forward: if a unit needs half the app to build, it is not pure
 logic and does not belong in this target.
