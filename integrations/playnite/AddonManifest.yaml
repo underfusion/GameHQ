@@ -1,0 +1,11 @@
+AddonId: GameHQ_Integration
+Type: Generic
+Name: GameHQ Integration
+Author: underfusion
+ShortDescription: Launch GameHQ with Playnite games and keep lifecycle state synchronized.
+InstallerManifestUrl: https://raw.githubusercontent.com/underfusion/GameHQ/main/integrations/playnite/InstallerManifest.yaml
+SourceUrl: https://github.com/underfusion/GameHQ
+IconUrl: https://raw.githubusercontent.com/underfusion/GameHQ/main/integrations/playnite/icon.png
+Links:
+  Repository: https://github.com/underfusion/GameHQ
+  LatestRelease: https://github.com/underfusion/GameHQ/releases/latest

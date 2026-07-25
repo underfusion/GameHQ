@@ -57,6 +57,19 @@ if ($sdkMatch.Success -and
 if ($installerManifest -match "Initial scaffold|Not yet functional") {
     $failures += "InstallerManifest.yaml still contains scaffold release copy"
 }
+$addonManifestPath = Join-Path $root "AddonManifest.yaml"
+$addonManifest = Get-Content $addonManifestPath -Raw
+if ($addonManifest -notmatch "AddonId:\s*GameHQ_Integration") {
+    $failures += "AddonManifest.yaml AddonId must be GameHQ_Integration"
+}
+if ($addonManifest -notmatch "Type:\s*Generic") {
+    $failures += "AddonManifest.yaml Type must be Generic"
+}
+$stableInstallerUrl =
+    "https://raw.githubusercontent.com/underfusion/GameHQ/main/integrations/playnite/InstallerManifest.yaml"
+if ($addonManifest -notmatch [regex]::Escape($stableInstallerUrl)) {
+    $failures += "AddonManifest.yaml must use the stable main InstallerManifest URL"
+}
 if ((Get-FileHash -LiteralPath (Join-Path $root 'LICENSE') -Algorithm SHA256).Hash -ne
     '835AFB738215E42F79ABAF39E12A5A3F936A722CCA5870B753A9B1D1B19C0A7F') {
     $failures += 'Playnite LICENSE must remain the reviewed MIT text'
@@ -65,6 +78,7 @@ if ((Get-FileHash -LiteralPath (Join-Path $root 'LICENSE') -Algorithm SHA256).Ha
 $requiredPaths = @(
     "src\GameHQ.Playnite\GameHQ.Playnite.csproj",
     "src\GameHQ.Playnite\GameHQPlugin.cs",
+    "AddonManifest.yaml",
     "InstallerManifest.yaml",
     "RELEASE_CHECKLIST.md",
     "CHANGELOG.md",

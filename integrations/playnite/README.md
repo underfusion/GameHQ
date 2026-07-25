@@ -54,11 +54,19 @@ building this plugin never touches GameHQ.
    and point it at `src/GameHQ.Playnite/bin/Debug/net462/`.
 3. Restart Playnite.
 
-## Releasing
+## Releasing and automatic updates
 
-Releases are tagged `playnite-vX.Y.Z` in the `underfusion/GameHQ` repository
-(distinct from the app's own `vX.Y.Z` tags) and publish a single
-`GameHQ_Integration_<version>.pext` asset. See `packaging/package.ps1`.
+Published packages use the explicit
+`GameHQ_Playnite_Integration_<version>.pext` filename. The Playnite add-on
+database entry points to this repository's stable `InstallerManifest.yaml`
+URL. For each update, publish the new `.pext` and prepend its version,
+release date, API requirement, immutable package URL, and changelog to the
+manifest. Playnite then discovers the newer version automatically; another
+add-on database pull request is needed only if the database metadata or
+installer-manifest URL changes.
+
+See `packaging/package.ps1`, `InstallerManifest.yaml`, and
+`AddonManifest.yaml`.
 
 ## License
 
