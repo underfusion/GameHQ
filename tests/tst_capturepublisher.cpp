@@ -26,9 +26,11 @@ private slots:
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
 
-        // Far more contenders than the two real encoder threads, all inside one
-        // timestamp tick, which is exactly the case the old check lost.
-        constexpr int kThreads = 32;
+        // More contenders than the two real encoder threads, all inside one
+        // timestamp tick, which is exactly the case the old check lost. Keep
+        // this bounded: Windows CI runners may refuse a 32-thread burst before
+        // the test reaches the code it is meant to exercise.
+        constexpr int kThreads = 8;
         QVector<CapturePublisher::Reservation> results(kThreads);
         std::atomic_int ready{0};
         QThreadPool pool;
