@@ -4,6 +4,15 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-07-25
+
+### Changed
+
+- Setup now uses restrained GameHQ artwork and a shorter welcome message while
+  keeping the standard Windows wizard layout and per-user installation.
+- The GameHQ logo is cleaner without the former red recording indicator, and
+  Setup uses the normal rounded app logo on later wizard pages.
+
 ## [0.6.45] - 2026-07-25
 
 ### Fixed

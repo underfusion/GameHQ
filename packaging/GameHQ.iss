@@ -44,6 +44,8 @@ MinVersion=10.0.18362
 OutputDir={#ReleaseOutput}
 OutputBaseFilename={#SetupBaseName}
 SetupIconFile={#SourcePath}\..\assets\icons\gamehq.ico
+WizardImageFile={#SourcePath}\..\assets\installer\wizard-large.png
+WizardSmallImageFile={#SourcePath}\..\assets\installer\wizard-small.png
 UninstallDisplayIcon={app}\GameHQ.exe
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -51,6 +53,10 @@ WizardStyle=modern
 DisableProgramGroupPage=yes
 DisableWelcomePage=no
 AllowNoIcons=yes
+
+[Messages]
+WelcomeLabel1=Welcome to GameHQ
+WelcomeLabel2=Setup will install [name/ver] on this computer.%n%nClose GameHQ before continuing.
 
 [Files]
 Source: "{#PayloadRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

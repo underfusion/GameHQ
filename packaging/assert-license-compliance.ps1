@@ -64,6 +64,8 @@ foreach ($relative in $claimFiles) {
 $expectedAssets = @(
     'assets/icons/gamehq.ico', 'assets/icons/gamehq.rc', 'assets/icons/gamehq.svg',
     'assets/icons/generate_icon.py', 'assets/icons/icongen.cpp', 'assets/icons/icon-preview.html',
+    'assets/installer/generate_installer_artwork.py',
+    'assets/installer/wizard-large.png', 'assets/installer/wizard-small.png',
     'assets/release-notes.json', 'assets/sounds/README.md', 'assets/sounds/generate_sounds.py',
     'assets/sounds/confirm.wav', 'assets/sounds/error.wav', 'assets/sounds/favorite.wav',
     'assets/sounds/nav_tick.wav', 'assets/sounds/overlay_close.wav',

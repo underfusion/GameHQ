@@ -1,6 +1,6 @@
 # Dependency and distributed-asset license audit
 
-Audit date: 2026-07-22. Target: the current Windows app payload, Setup toolchain,
+Audit date: 2026-07-25. Target: the current Windows app payload, Setup toolchain,
 and Playnite integration package. This is engineering evidence, not legal advice.
 
 ## Shipped application components
@@ -38,7 +38,8 @@ confirm the Setup/uninstaller signing scope before t46 is submitted.
 ## Project assets
 
 - `assets/icons/gamehq.svg` is the first-party vector source. The ICO and
-  Playnite PNG are derived GameHQ branding assets.
+  Playnite PNG are derived GameHQ branding assets. The Inno Setup wizard PNGs
+  are generated from that ICO by `assets/installer/generate_installer_artwork.py`.
 - All eight WAV files are first-party synthesis from
   `assets/sounds/generate_sounds.py`; a clean regeneration matched every
   tracked WAV by SHA-256 on 2026-07-22.
