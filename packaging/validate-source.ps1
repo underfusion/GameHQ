@@ -2,11 +2,13 @@
 [CmdletBinding()]
 param(
     [string]$ReleaseDirectory = 'dist\releases',
+    [string]$NinjaPath = '',
     [switch]$SkipBuild
 )
 
 $ErrorActionPreference = 'Stop'
 $root = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+. (Join-Path $PSScriptRoot 'resolve-ninja.ps1')
 $releaseRoot = if ([System.IO.Path]::IsPathRooted($ReleaseDirectory)) {
     [System.IO.Path]::GetFullPath($ReleaseDirectory)
 } else { [System.IO.Path]::GetFullPath((Join-Path $root $ReleaseDirectory)) }
@@ -50,7 +52,7 @@ try {
         $buildRoot = Join-Path $validationRoot 'out'
         $qtPrefix = Join-Path $root 'tools\Qt\6.8.3\mingw_64'
         $mingwBin = Join-Path $root 'tools\Qt\Tools\mingw1310_64\bin'
-        $ninja = Join-Path $root 'tools\ninja.exe'
+        $ninja = Resolve-GameHQNinja -NinjaPath $NinjaPath -RepositoryRoot $root
         $cCompiler = Join-Path $mingwBin 'gcc.exe'
         $cxxCompiler = Join-Path $mingwBin 'g++.exe'
         $env:PATH = "$mingwBin;$qtPrefix\bin;$env:PATH"

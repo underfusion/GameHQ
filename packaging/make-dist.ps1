@@ -10,6 +10,7 @@ param(
     [string]$TrustMode = $env:RELEASE_TRUST_MODE,
     [ValidateSet('none', 'test', 'production')]
     [string]$ManifestMode = 'none',
+    [string]$NinjaPath = '',
     [string]$GitTag = ''
 )
 
@@ -111,6 +112,9 @@ $validationArguments = @{
     GitTag = $GitTag
 }
 if ($SkipTests) { $validationArguments.SkipTests = $true }
+if (-not [string]::IsNullOrWhiteSpace($NinjaPath)) {
+    $validationArguments.NinjaPath = $NinjaPath
+}
 & (Join-Path $PSScriptRoot 'validate-release.ps1') @validationArguments
 if ($LASTEXITCODE -ne 0) { throw "Release validation failed ($LASTEXITCODE)" }
 

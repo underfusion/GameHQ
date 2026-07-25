@@ -34,6 +34,24 @@ jobs:
           & packaging/update-public-downloads.ps1 -Check
           & integrations/playnite/packaging/verify.ps1
 
+      - name: Bootstrap pinned Ninja
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ninja = & packaging/bootstrap-ninja.ps1
+          if (-not (Test-Path -LiteralPath $ninja -PathType Leaf)) {
+            throw "Pinned Ninja was not installed: $ninja"
+          }
+          [System.IO.File]::AppendAllText(
+            $env:GITHUB_ENV, "NINJA_EXE=$ninja`n",
+            [System.Text.UTF8Encoding]::new($false))
+
+      - name: Verify clean-source Ninja discovery
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & packaging/test-ninja-resolution.ps1
+
       - name: Install pinned Qt and MinGW toolchain
         shell: pwsh
         run: |
@@ -60,7 +78,7 @@ jobs:
             "-DCMAKE_PREFIX_PATH=$qt" `
             "-DCMAKE_C_COMPILER=$mingw\gcc.exe" `
             "-DCMAKE_CXX_COMPILER=$mingw\g++.exe" `
-            -DCMAKE_MAKE_PROGRAM=ninja.exe
+            "-DCMAKE_MAKE_PROGRAM=$env:NINJA_EXE"
           cmake --build out --parallel 4
 
       - name: Run native and Playnite tests
@@ -96,7 +114,8 @@ jobs:
           $qt = "$PWD\tools\Qt\6.8.3\mingw_64"
           $mingw = "$PWD\tools\Qt\Tools\mingw1310_64\bin"
           $env:PATH = "$mingw;$qt\bin;$env:PATH"
-          & packaging/make-dist.ps1 -TrustMode unsigned-beta -ManifestMode test
+          & packaging/make-dist.ps1 -TrustMode unsigned-beta -ManifestMode test `
+            -NinjaPath $env:NINJA_EXE
           & packaging/assert-beta-artifact-set.ps1
 
       - name: Prove test keys cannot validate a publishable tag

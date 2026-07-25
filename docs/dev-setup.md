@@ -9,18 +9,18 @@
 | Qt (MinGW 64-bit kit) | 6.8.3 | `tools/Qt/6.8.3/mingw_64` |
 | MinGW-w64 (GCC) | 13.1.0 | `tools/Qt/Tools/mingw1310_64` |
 | CMake | 4.3.3 | `tools/cmake` |
-| Ninja | 1.13.2 | `tools/ninja.exe` |
+| Ninja | 1.13.2 | `tools/Ninja/1.13.2/ninja.exe` |
 | aqt (Qt installer CLI) | 3.3.0 | `tools/aqt.exe` |
 
 ## Recreating `tools/` from scratch
 
 ```bat
-cd /d C:\path\to\GameHQ\tools
-curl -L -o aqt.exe https://github.com/miurahr/aqtinstall/releases/latest/download/aqt.exe
-curl -L -o ninja-win.zip https://github.com/ninja-build/ninja/releases/latest/download/ninja-win.zip && tar -xf ninja-win.zip
+cd /d C:\path\to\GameHQ
+curl -L -o tools\aqt.exe https://github.com/miurahr/aqtinstall/releases/latest/download/aqt.exe
+powershell -ExecutionPolicy Bypass -File packaging\bootstrap-ninja.ps1
 :: cmake: unzip the windows-x86_64 release zip from github.com/Kitware/CMake as tools\cmake
-aqt install-qt   windows desktop 6.8.3 win64_mingw   --outputdir Qt
-aqt install-tool windows desktop tools_mingw1310     --outputdir Qt
+tools\aqt.exe install-qt   windows desktop 6.8.3 win64_mingw   --outputdir tools\Qt
+tools\aqt.exe install-tool windows desktop tools_mingw1310     --outputdir tools\Qt
 ```
 
 ## Configure and build
@@ -36,7 +36,7 @@ tools\cmake\bin\cmake.exe -S . -B out -G Ninja -DCMAKE_BUILD_TYPE=Debug ^
   -DCMAKE_PREFIX_PATH=%GAMEHQ_ROOT%/tools/Qt/6.8.3/mingw_64 ^
   -DCMAKE_C_COMPILER=%GAMEHQ_ROOT%/tools/Qt/Tools/mingw1310_64/bin/gcc.exe ^
   -DCMAKE_CXX_COMPILER=%GAMEHQ_ROOT%/tools/Qt/Tools/mingw1310_64/bin/g++.exe ^
-  -DCMAKE_MAKE_PROGRAM=%GAMEHQ_ROOT%/tools/ninja.exe
+  -DCMAKE_MAKE_PROGRAM=%GAMEHQ_ROOT%/tools/Ninja/1.13.2/ninja.exe
 tools\cmake\bin\cmake.exe --build out
 ```
 

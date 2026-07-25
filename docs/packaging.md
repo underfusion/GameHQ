@@ -39,6 +39,10 @@ by both the embedded update metadata and the signed release manifest. Release
 validation requires those values to match so a target version cannot
 accidentally require its own not-yet-installed updater.
 
+Clean-source validation resolves Ninja from an explicit parameter, `NINJA_EXE`,
+`PATH`, or the optional local developer fallback. CI bootstraps and passes the
+checksum-pinned Ninja version explicitly; source archives never contain it.
+
 ## Distribution identity contract
 
 [`packaging/distribution-identity.psd1`](../packaging/distribution-identity.psd1)

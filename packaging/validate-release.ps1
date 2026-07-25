@@ -7,6 +7,7 @@ param(
     [string]$TrustMode,
     [ValidateSet('none', 'test', 'production')]
     [string]$ManifestMode = 'none',
+    [string]$NinjaPath = '',
     [switch]$SkipTests
 )
 
@@ -174,6 +175,9 @@ $actualSourceHash = (Get-FileHash -LiteralPath $sourceZip -Algorithm SHA256).Has
 if ($actualSourceHash -ne $Matches[1]) { throw 'Source ZIP checksum does not match.' }
 $sourceValidationArguments = @{ ReleaseDirectory = $releaseRoot }
 if ($SkipTests) { $sourceValidationArguments.SkipBuild = $true }
+if (-not [string]::IsNullOrWhiteSpace($NinjaPath)) {
+    $sourceValidationArguments.NinjaPath = $NinjaPath
+}
 & (Join-Path $PSScriptRoot 'validate-source.ps1') @sourceValidationArguments
 if ($LASTEXITCODE -ne 0) { throw 'Corresponding-source validation failed.' }
 foreach ($entries in @($portableEntries, $updateEntries)) {
@@ -256,9 +260,16 @@ function Get-ToolVersion {
         return 'unavailable'
     }
 }
+$ninjaForEvidence = if (-not [string]::IsNullOrWhiteSpace($NinjaPath)) {
+    $NinjaPath
+} elseif (-not [string]::IsNullOrWhiteSpace($env:NINJA_EXE)) {
+    $env:NINJA_EXE
+} else {
+    'ninja'
+}
 $buildTools = [ordered]@{
     cmake = Get-ToolVersion 'cmake' @('--version')
-    ninja = Get-ToolVersion 'ninja' @('--version')
+    ninja = Get-ToolVersion $ninjaForEvidence @('--version')
     python = Get-ToolVersion 'python' @('--version')
     dotnetSdk = Get-ToolVersion 'dotnet' @('--version')
     qt = Get-ToolVersion 'qmake' @('-query', 'QT_VERSION')
