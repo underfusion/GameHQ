@@ -1,7 +1,6 @@
 # Release Manifest Security Review
 
-Status: approved for implementation with test keys. Production-key activation
-remains a separate release operation.
+Status: implemented and production-key activation rehearsed.
 
 ## Scope and threat boundary
 
@@ -122,6 +121,12 @@ Test private keys live only under an unmistakable test-fixture path, carry a
 `TEST ONLY` marker, and are rejected by packaging and Stable release gates.
 Production private material is created and used outside the repository and
 ordinary CI, is never logged, and is never copied into a developer package.
+
+The active production record is `gamehq-prod-2026-01`, starting at release
+sequence 25. The seed is available only through Windows Credential Manager or
+the review-protected GitHub `production-release` environment. Rehearsal covers
+successful signing, public-key verification, tamper rejection, test-key
+exclusion from production binaries, and the existing next/revoked-key vectors.
 
 ## Implementation gate
 

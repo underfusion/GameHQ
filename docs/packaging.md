@@ -171,9 +171,12 @@ PowerShell and the OS build. A tool that cannot be queried is recorded as
 `unsigned-beta` requires
 honest Beta wording and consistently unsigned GameHQ-built binaries; `signed`
 rejects a missing/invalid signature or inconsistent publisher.
-`-ManifestMode test` exercises the reviewed Ed25519 generator and all three
-verification consumers with an explicitly public test key. Production key
-activation and public signed-manifest mode remain separately gated.
+`-ManifestMode test` exercises the reviewed Ed25519 generator and verification
+consumers with an explicitly public test key. `-ManifestMode production` loads
+the production seed from Windows Credential Manager for a local release, or
+from the protected `production-release` GitHub environment, and emits only the
+detached manifest signature. The checked-in `packaging/release-trust.json`
+contains the corresponding public key and key ID only.
 
 The `Unsigned Beta release gate` workflow repeats that exact path on a clean
 Windows runner for pull requests and pushes to `dev` or `main`. Before upload,
@@ -181,8 +184,8 @@ Windows runner for pull requests and pushes to `dev` or `main`. Before upload,
 recomputes every size and SHA-256 value recorded in `release-evidence.json`.
 The uploaded bundle is short-lived CI evidence, not a GitHub Release. A
 separate negative step proves that a publishable tag cannot validate while the
-public test key is selected. Production signing configuration remains absent
-until the separately authorized production-key and Authenticode tasks.
+public test key is selected. Production signing remains isolated from ordinary
+CI; Authenticode is a separate release gate.
 
 Installed builds expose **Settings > Advanced > Portable profile**. Import is
 available only when the installed library is empty. GameHQ closes the live

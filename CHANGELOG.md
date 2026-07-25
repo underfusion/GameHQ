@@ -12,6 +12,8 @@ All notable public releases of GameHQ are documented here. The format follows
   keeping the standard Windows wizard layout and per-user installation.
 - The GameHQ logo is cleaner without the former red recording indicator, and
   Setup uses the normal rounded app logo on later wizard pages.
+- Release manifests now use the production Ed25519 trust key, while private
+  signing material remains outside the repository and ordinary CI.
 
 ## [0.6.45] - 2026-07-25
 

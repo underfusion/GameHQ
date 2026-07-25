@@ -45,12 +45,45 @@ FetchContent_Declare(monocypher
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(monocypher)
 
-# Until the production key is activated (t48) the only trusted key is the
-# public RFC 8032 test vector, so a build made with it can verify nothing real.
-# packaging/validate-release.ps1 refuses to publish a signed/Stable artifact
-# while this is ON.
+# Tests are opt-in so a normal build/run stays as fast as it was; start.bat does
+# not enable them. Test builds default to the public RFC 8032 vector, while
+# distributable builds default to production trust only.
+option(GAMEHQ_BUILD_TESTS "Build the automated test target" OFF)
+set(_gamehq_test_key_default OFF)
+if(GAMEHQ_BUILD_TESTS)
+    set(_gamehq_test_key_default ON)
+endif()
 option(GAMEHQ_RELEASE_TRUST_TEST_KEYS
-    "Compile the TEST-ONLY release signing key into the trust table" ON)
+    "Compile the TEST-ONLY release signing key into the trust table"
+    ${_gamehq_test_key_default})
+
+# The production trust input contains public material only. CMake generates one
+# header shared by the app and static updater; private signing material never
+# enters the source tree or compiler command line.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/packaging/release-trust.json"
+    GAMEHQ_RELEASE_TRUST_JSON)
+string(JSON GAMEHQ_RELEASE_TRUST_SCHEMA GET "${GAMEHQ_RELEASE_TRUST_JSON}" schemaVersion)
+string(JSON GAMEHQ_PRODUCTION_KEY_ID GET "${GAMEHQ_RELEASE_TRUST_JSON}" currentKey keyId)
+string(JSON GAMEHQ_PRODUCTION_PUBLIC_KEY_BASE64 GET
+    "${GAMEHQ_RELEASE_TRUST_JSON}" currentKey publicKeyBase64)
+string(JSON GAMEHQ_PRODUCTION_KEY_STATE GET
+    "${GAMEHQ_RELEASE_TRUST_JSON}" currentKey state)
+string(JSON GAMEHQ_PRODUCTION_MINIMUM_RELEASE_SEQUENCE GET
+    "${GAMEHQ_RELEASE_TRUST_JSON}" currentKey minimumReleaseSequence)
+string(LENGTH "${GAMEHQ_PRODUCTION_KEY_ID}" GAMEHQ_PRODUCTION_KEY_ID_LENGTH)
+string(LENGTH "${GAMEHQ_PRODUCTION_PUBLIC_KEY_BASE64}"
+    GAMEHQ_PRODUCTION_PUBLIC_KEY_BASE64_LENGTH)
+if(NOT GAMEHQ_RELEASE_TRUST_SCHEMA EQUAL 1
+   OR NOT GAMEHQ_PRODUCTION_KEY_STATE STREQUAL "current"
+   OR GAMEHQ_PRODUCTION_KEY_ID_LENGTH GREATER 64
+   OR NOT GAMEHQ_PRODUCTION_KEY_ID MATCHES "^[a-z0-9][a-z0-9._-]*$"
+   OR NOT GAMEHQ_PRODUCTION_PUBLIC_KEY_BASE64_LENGTH EQUAL 44
+   OR NOT GAMEHQ_PRODUCTION_PUBLIC_KEY_BASE64 MATCHES "^[A-Za-z0-9+/]*=$"
+   OR GAMEHQ_PRODUCTION_MINIMUM_RELEASE_SEQUENCE LESS 1)
+    message(FATAL_ERROR "packaging/release-trust.json is invalid")
+endif()
+configure_file(src/security/ReleaseTrustConfig.h.in
+    generated/ReleaseTrustConfig.h @ONLY)
 
 add_library(gamehq_release_trust STATIC
     src/security/ReleaseTrust.cpp
@@ -61,7 +94,8 @@ add_library(gamehq_release_trust STATIC
     "${monocypher_SOURCE_DIR}/src/optional/monocypher-ed25519.c")
 target_include_directories(gamehq_release_trust PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
-    PRIVATE "${monocypher_SOURCE_DIR}/src" "${monocypher_SOURCE_DIR}/src/optional")
+    PRIVATE "${CMAKE_BINARY_DIR}/generated"
+            "${monocypher_SOURCE_DIR}/src" "${monocypher_SOURCE_DIR}/src/optional")
 target_link_libraries(gamehq_release_trust PUBLIC bcrypt)
 if(GAMEHQ_RELEASE_TRUST_TEST_KEYS)
     target_compile_definitions(gamehq_release_trust PUBLIC GAMEHQ_RELEASE_TRUST_TEST_KEYS)
@@ -102,9 +136,6 @@ qt_policy(SET QTP0004 NEW)
 
 add_subdirectory(src)
 
-# Tests are opt-in so a normal build/run stays as fast as it was; start.bat does
-# not enable them. See docs/dev-setup.md.
-option(GAMEHQ_BUILD_TESTS "Build the automated test target" OFF)
 if(GAMEHQ_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)

@@ -7,6 +7,8 @@
 #include <QTemporaryDir>
 #include <QtTest>
 
+#include <algorithm>
+
 namespace
 {
 struct Vector
@@ -190,10 +192,19 @@ void ReleaseManifestTest::rejectsUntrustedAndRevokedKeys()
     QVERIFY(!renamed.empty());
     QVERIFY(!release_manifest::verifyAndParse(renamed, vector.signature, nullptr, accepted, error));
 
-    // The trust table itself must not silently become empty or non-test in a
-    // build that still ships the vector key.
+    // Production trust is always present. Test builds additionally ship the
+    // public RFC vector so shared fixtures remain executable.
     QVERIFY(!release_manifest::trustedKeys().empty());
-    QVERIFY(release_manifest::trustTableIsTestOnly());
+    QVERIFY(!release_manifest::trustTableIsTestOnly());
+    const auto production = std::find_if(
+        release_manifest::trustedKeys().cbegin(),
+        release_manifest::trustedKeys().cend(),
+        [](const release_trust::TrustedKey &key) {
+            return key.keyId == "gamehq-prod-2026-01";
+        });
+    QVERIFY(production != release_manifest::trustedKeys().cend());
+    QCOMPARE(production->state, release_trust::KeyState::Current);
+    QCOMPARE(production->minimumReleaseSequence, 25ULL);
 
     // Revoked and next-state keys never verify, even with a good signature.
     release_trust::TrustedKey revoked = release_manifest::trustedKeys().front();

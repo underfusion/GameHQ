@@ -18,6 +18,11 @@ approver authorizes signing only after automated gates pass. No private signing
 key may be committed, uploaded as a release asset, printed in logs, or placed in
 an ordinary CI secret.
 
+The current manifest key is `gamehq-prod-2026-01`. Its private seed is held in
+Windows Credential Manager for controlled local release work and in the
+review-protected GitHub `production-release` environment. Only its public key,
+fingerprint, key ID, and minimum release sequence are versioned.
+
 Current project roles:
 
 - Author, committer, and reviewer: [underfusion](https://github.com/underfusion)

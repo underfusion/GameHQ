@@ -9,8 +9,8 @@ internal static class Program
 {
     private const string ProductId = "underfusion.gamehq";
     private const string TestKeyId = "gamehq-test-2026-01";
-    // RFC 8032 vector seed. TEST ONLY. Release validation rejects this key in
-    // signed/Stable mode; production key material must never enter this tool.
+    // RFC 8032 vector seed. TEST ONLY. Production commands load their seed from
+    // Windows Credential Manager or a protected release environment.
     private static readonly byte[] TestSeed = Convert.FromHexString(
         "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60");
     private static readonly Regex SignatureText = new("^[A-Za-z0-9+/]{86}==$",
@@ -24,8 +24,11 @@ internal static class Program
             var options = ParseOptions(args.Skip(1).ToArray());
             return args[0] switch
             {
-                "generate-test" => Generate(options),
-                "verify-test" => Verify(options),
+                "generate-test" => GenerateTest(options),
+                "verify-test" => VerifyTest(options),
+                "provision-production-key" => ProvisionProductionKey(options),
+                "generate-production" => GenerateProduction(options),
+                "verify-production" => VerifyProduction(options),
                 "print-test-public-key" => PrintPublicKey(),
                 _ => Usage()
             };
@@ -37,7 +40,23 @@ internal static class Program
         }
     }
 
-    private static int Generate(IReadOnlyDictionary<string, string> options)
+    private static int GenerateTest(IReadOnlyDictionary<string, string> options) =>
+        Generate(options, TestSeed, TestKeyId);
+
+    private static int GenerateProduction(IReadOnlyDictionary<string, string> options)
+    {
+        var keyId = Required(options, "key-id");
+        ProductionKeyStore.ValidateKeyId(keyId);
+        var seed = ProductionKeyStore.LoadSeed(options);
+        try {
+            return Generate(options, seed, keyId);
+        } finally {
+            CryptographicOperations.ZeroMemory(seed);
+        }
+    }
+
+    private static int Generate(IReadOnlyDictionary<string, string> options,
+        byte[] seed, string keyId)
     {
         var releaseDir = RequiredPath(options, "release-dir");
         var version = Required(options, "version");
@@ -80,21 +99,37 @@ internal static class Program
                     writer.WriteEndObject();
                 }
                 writer.WriteEndArray();
-                writer.WriteString("keyId", TestKeyId);
+                writer.WriteString("keyId", keyId);
                 writer.WriteEndObject();
             }
             buffer.WriteByte((byte)'\n');
             manifest = buffer.ToArray();
         }
         var signature = new byte[Ed25519.SignatureSize];
-        Ed25519.Sign(TestSeed, 0, manifest, 0, manifest.Length, signature, 0);
+        Ed25519.Sign(seed, 0, manifest, 0, manifest.Length, signature, 0);
         File.WriteAllBytes(manifestPath, manifest);
         File.WriteAllText(signaturePath, Convert.ToBase64String(signature), new UTF8Encoding(false));
-        Console.WriteLine($"generated {Path.GetFileName(manifestPath)} sequence={sequence} keyId={TestKeyId}");
+        Console.WriteLine($"generated {Path.GetFileName(manifestPath)} sequence={sequence} keyId={keyId}");
         return 0;
     }
 
-    private static int Verify(IReadOnlyDictionary<string, string> options)
+    private static int VerifyTest(IReadOnlyDictionary<string, string> options)
+    {
+        var publicKey = new byte[Ed25519.PublicKeySize];
+        Ed25519.GeneratePublicKey(TestSeed, 0, publicKey, 0);
+        return Verify(options, publicKey, TestKeyId);
+    }
+
+    private static int VerifyProduction(IReadOnlyDictionary<string, string> options)
+    {
+        var keyId = Required(options, "key-id");
+        ProductionKeyStore.ValidateKeyId(keyId);
+        return Verify(options,
+            ProductionKeyStore.DecodePublicKey(Required(options, "public-key-base64")), keyId);
+    }
+
+    private static int Verify(IReadOnlyDictionary<string, string> options,
+        byte[] publicKey, string keyId)
     {
         var releaseDir = RequiredPath(options, "release-dir");
         var manifestPath = Path.Combine(releaseDir, "gamehq-release.json");
@@ -108,8 +143,6 @@ internal static class Program
         var signature = Convert.FromBase64String(signatureText);
         if (signature.Length != Ed25519.SignatureSize || Convert.ToBase64String(signature) != signatureText)
             throw new InvalidDataException("signature Base64 is non-canonical");
-        var publicKey = new byte[Ed25519.PublicKeySize];
-        Ed25519.GeneratePublicKey(TestSeed, 0, publicKey, 0);
         if (!Ed25519.Verify(signature, 0, publicKey, 0, manifest, 0, manifest.Length))
             throw new CryptographicException("manifest signature is invalid");
 
@@ -121,7 +154,7 @@ internal static class Program
             "publishedAtUtc", "minimumUpdaterVersion", "artifacts", "keyId");
         if (root.GetProperty("schemaVersion").GetInt32() != 1 ||
             root.GetProperty("productId").GetString() != ProductId ||
-            root.GetProperty("keyId").GetString() != TestKeyId ||
+            root.GetProperty("keyId").GetString() != keyId ||
             root.GetProperty("releaseSequence").GetUInt64() == 0)
             throw new InvalidDataException("manifest identity or sequence is invalid");
         var version = root.GetProperty("version").GetString() ?? "";
@@ -155,7 +188,22 @@ internal static class Program
         }
         if (!seenKinds.SetEquals(new[] { "setup", "portable", "update" }))
             throw new InvalidDataException("manifest does not contain the exact artifact set");
-        Console.WriteLine("verified test-key release manifest");
+        Console.WriteLine($"verified release manifest keyId={keyId}");
+        return 0;
+    }
+
+    private static int ProvisionProductionKey(IReadOnlyDictionary<string, string> options)
+    {
+        var keyId = Required(options, "key-id");
+        var provisioned = ProductionKeyStore.Provision(
+            keyId,
+            Required(options, "credential-target"),
+            Required(options, "github-repository"),
+            Required(options, "github-environment"));
+        Console.WriteLine($"KEY_ID={keyId}");
+        Console.WriteLine($"PUBLIC_KEY_BASE64={provisioned.PublicKeyBase64}");
+        Console.WriteLine($"PUBLIC_KEY_SHA256={provisioned.PublicKeySha256}");
+        Console.WriteLine("PRIVATE_STORES=Windows Credential Manager + protected GitHub environment");
         return 0;
     }
 
@@ -208,7 +256,9 @@ internal static class Program
 
     private static int Usage()
     {
-        Console.Error.WriteLine("Usage: release-manifest <generate-test|verify-test|print-test-public-key> [options]");
+        Console.Error.WriteLine(
+            "Usage: release-manifest <generate-test|verify-test|provision-production-key|"
+            + "generate-production|verify-production|print-test-public-key> [options]");
         return 1;
     }
 

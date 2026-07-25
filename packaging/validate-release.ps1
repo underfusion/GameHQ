@@ -5,7 +5,7 @@ param(
     [Parameter(Mandatory = $true)]
     [ValidateSet('unsigned-beta', 'signed')]
     [string]$TrustMode,
-    [ValidateSet('none', 'test')]
+    [ValidateSet('none', 'test', 'production')]
     [string]$ManifestMode = 'none',
     [switch]$SkipTests
 )
@@ -43,15 +43,26 @@ $payloadRoot = Join-Path $root 'dist\.program-payload'
 foreach ($required in @($setup, $portableZip, $updateZip, $checksum)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Missing release artifact: $required" }
 }
-if ($ManifestMode -eq 'test') {
+if ($ManifestMode -in @('test', 'production')) {
     foreach ($required in @('gamehq-release.json', 'gamehq-release.sig')) {
         if (-not (Test-Path -LiteralPath (Join-Path $releaseRoot $required) -PathType Leaf)) {
-            throw "Missing test release-manifest artifact: $required"
+            throw "Missing $ManifestMode release-manifest artifact: $required"
         }
     }
     $tool = Join-Path $root 'tools\release-manifest\GameHQ.ReleaseManifest.Tool\GameHQ.ReleaseManifest.Tool.csproj'
-    & dotnet run --project $tool --configuration Release --no-restore -- verify-test --release-dir $releaseRoot
-    if ($LASTEXITCODE -ne 0) { throw 'Test-key release manifest verification failed.' }
+    $verifyArguments = @(
+        if ($ManifestMode -eq 'test') { 'verify-test' } else { 'verify-production' }
+        '--release-dir', $releaseRoot
+    )
+    if ($ManifestMode -eq 'production') {
+        $trust = Get-Content (Join-Path $PSScriptRoot 'release-trust.json') -Raw | ConvertFrom-Json
+        $verifyArguments += @(
+            '--key-id', [string]$trust.currentKey.keyId,
+            '--public-key-base64', [string]$trust.currentKey.publicKeyBase64
+        )
+    }
+    & dotnet run --project $tool --configuration Release --no-restore -- @verifyArguments
+    if ($LASTEXITCODE -ne 0) { throw "$ManifestMode release manifest verification failed." }
 } elseif ($TrustMode -eq 'signed') {
     throw 'Signed/Stable validation requires the production manifest mode, which is intentionally gated by t48.'
 }
@@ -148,7 +159,7 @@ $packagedApp = Join-Path $root 'dist\GameHQ\app\GameHQ.exe'
 $versionCheck = Start-Process -FilePath $packagedApp `
     -ArgumentList @('--assert-version', $version) -WindowStyle Hidden -Wait -PassThru
 if ($versionCheck.ExitCode -ne 0) { throw 'Packaged application version does not match VERSION.' }
-if ($ManifestMode -eq 'test') {
+if ($ManifestMode -in @('test', 'production')) {
     foreach ($probe in @(
         @{ Path = $packagedApp; Arguments = @('--release-trust-self-test') },
         @{ Path = (Join-Path $payloadRoot 'GameHQUpdater.exe'); Arguments = @('--release-trust-self-test') }
@@ -156,6 +167,20 @@ if ($ManifestMode -eq 'test') {
         $process = Start-Process -FilePath $probe.Path -ArgumentList $probe.Arguments `
             -WindowStyle Hidden -Wait -PassThru
         if ($process.ExitCode -ne 0) { throw "Release trust self-test failed: $($probe.Path)" }
+    }
+    if ($ManifestMode -eq 'production') {
+        $trust = Get-Content (Join-Path $PSScriptRoot 'release-trust.json') -Raw | ConvertFrom-Json
+        $updater = Join-Path $payloadRoot 'GameHQUpdater.exe'
+        $trustReport = & $updater --release-trust-self-test
+        $reportValid = $LASTEXITCODE -eq 0
+        $reportValid = $reportValid -and
+            ($trustReport -contains "TRUSTED KEY $($trust.currentKey.keyId)")
+        $reportValid = $reportValid -and ($trustReport -contains 'TRUST TABLE production')
+        $reportValid = $reportValid -and
+            (@($trustReport | Where-Object { $_ -like 'TRUSTED KEY gamehq-test-*' }).Count -eq 0)
+        if (-not $reportValid) {
+            throw 'Production package does not contain the exact production-only trust table.'
+        }
     }
 }
 if (-not $SkipTests) {
@@ -172,7 +197,7 @@ if (-not $SkipTests) {
 }
 $toolchain = Import-PowerShellDataFile (Join-Path $PSScriptRoot 'inno-toolchain.psd1')
 $evidencePaths = @($setup, $portableZip, $updateZip, $checksum)
-if ($ManifestMode -eq 'test') {
+if ($ManifestMode -in @('test', 'production')) {
     $evidencePaths += (Join-Path $releaseRoot 'gamehq-release.json')
     $evidencePaths += (Join-Path $releaseRoot 'gamehq-release.sig')
 }
@@ -211,6 +236,16 @@ $evidence = [ordered]@{
     version = $version
     trustMode = $TrustMode
     manifestMode = $ManifestMode
+    releaseTrust = if ($ManifestMode -eq 'production') {
+        $trust = Get-Content (Join-Path $PSScriptRoot 'release-trust.json') -Raw | ConvertFrom-Json
+        [ordered]@{
+            keyId = [string]$trust.currentKey.keyId
+            publicKeySha256 = (Get-FileHash -InputStream ([IO.MemoryStream]::new(
+                [Convert]::FromBase64String([string]$trust.currentKey.publicKeyBase64))) `
+                -Algorithm SHA256).Hash.ToLowerInvariant()
+            minimumReleaseSequence = [uint64]$trust.currentKey.minimumReleaseSequence
+        }
+    } else { $null }
     innoSetup = [ordered]@{ version = $toolchain.Version; installerSha256 = $toolchain.Sha256 }
     buildTools = $buildTools
     compliance = [ordered]@{ license = 'passed'; privacy = 'passed' }

@@ -5,9 +5,10 @@
 [CmdletBinding()]
 param(
     [switch]$SkipTests,
+    [string]$BuildDirectory = 'out',
     [ValidateSet('unsigned-beta', 'signed')]
     [string]$TrustMode = $env:RELEASE_TRUST_MODE,
-    [ValidateSet('none', 'test')]
+    [ValidateSet('none', 'test', 'production')]
     [string]$ManifestMode = 'none'
 )
 
@@ -25,7 +26,7 @@ $releaseRoot = Join-Path $dist 'releases'
 $updateRoot = Join-Path $dist '.update-package-staging'
 
 & (Join-Path $PSScriptRoot 'assemble-package.ps1') `
-    -BuildDirectory 'out' `
+    -BuildDirectory $BuildDirectory `
     -Destination 'dist\.program-payload' `
     -Mode Neutral
 
@@ -66,16 +67,29 @@ Remove-Item -LiteralPath $updateRoot -Recurse -Force
 & (Join-Path $PSScriptRoot 'build-setup.ps1')
 if ($LASTEXITCODE -ne 0) { throw "Setup build failed ($LASTEXITCODE)" }
 
-if ($ManifestMode -eq 'test') {
+if ($ManifestMode -in @('test', 'production')) {
     $sequence = (Get-Content (Join-Path $PSScriptRoot 'release-sequence.txt') -Raw).Trim()
     if ($sequence -notmatch '^[1-9][0-9]*$') { throw 'release-sequence.txt must contain a positive integer.' }
     $publishedAt = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ', [Globalization.CultureInfo]::InvariantCulture)
     $tool = Join-Path $root 'tools\release-manifest\GameHQ.ReleaseManifest.Tool\GameHQ.ReleaseManifest.Tool.csproj'
     & dotnet restore $tool --locked-mode
     if ($LASTEXITCODE -ne 0) { throw "Release manifest tool restore failed ($LASTEXITCODE)" }
-    & dotnet run --project $tool --configuration Release --no-restore -- `
-        generate-test --release-dir $releaseRoot --version $version --sequence $sequence --published-at-utc $publishedAt
-    if ($LASTEXITCODE -ne 0) { throw "Test manifest generation failed ($LASTEXITCODE)" }
+    $manifestArguments = @(
+        if ($ManifestMode -eq 'test') { 'generate-test' } else { 'generate-production' }
+        '--release-dir', $releaseRoot,
+        '--version', $version,
+        '--sequence', $sequence,
+        '--published-at-utc', $publishedAt
+    )
+    if ($ManifestMode -eq 'production') {
+        $trust = Get-Content (Join-Path $PSScriptRoot 'release-trust.json') -Raw | ConvertFrom-Json
+        $manifestArguments += @('--key-id', [string]$trust.currentKey.keyId)
+        if ([string]::IsNullOrWhiteSpace($env:GAMEHQ_RELEASE_ED25519_SEED_BASE64)) {
+            $manifestArguments += @('--credential-target', [string]$trust.currentKey.credentialTarget)
+        }
+    }
+    & dotnet run --project $tool --configuration Release --no-restore -- @manifestArguments
+    if ($LASTEXITCODE -ne 0) { throw "$ManifestMode manifest generation failed ($LASTEXITCODE)" }
 }
 
 $validationArguments = @{ ReleaseDirectory = $releaseRoot; TrustMode = $TrustMode; ManifestMode = $ManifestMode }

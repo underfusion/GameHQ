@@ -1,4 +1,5 @@
 #include "security/ReleaseManifest.h"
+#include "ReleaseTrustConfig.h"
 
 #include <algorithm>
 #include <cctype>
@@ -251,6 +252,16 @@ const std::vector<release_trust::TrustedKey> &trustedKeys()
 {
     static const std::vector<release_trust::TrustedKey> keys = [] {
         std::vector<release_trust::TrustedKey> table;
+        release_trust::TrustedKey productionKey;
+        productionKey.keyId = release_trust_config::kProductionKeyId;
+        if (release_trust::decodeStrictPublicKeyBase64(
+                release_trust_config::kProductionPublicKeyBase64,
+                productionKey.publicKey)) {
+            productionKey.state = release_trust::KeyState::Current;
+            productionKey.minimumReleaseSequence =
+                release_trust_config::kProductionMinimumReleaseSequence;
+            table.push_back(productionKey);
+        }
 #ifdef GAMEHQ_RELEASE_TRUST_TEST_KEYS
         // TEST ONLY. This is the RFC 8032 section 7.1 vector-1 public key, whose
         // private half is published in the RFC, so it authenticates nothing.
