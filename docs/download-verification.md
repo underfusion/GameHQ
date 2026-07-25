@@ -13,8 +13,8 @@ GameHQ-<version>-win64-setup.exe
 GameHQ-<version>-win64-portable.zip
 GameHQ-<version>-win64-update.zip
 GameHQ-<version>-win64-update.zip.sha256
-[optional] GameHQ-<version>-source.zip
-[optional] GameHQ-<version>-source.zip.sha256
+GameHQ-<version>-source.zip
+GameHQ-<version>-source.zip.sha256
 gamehq-release.json
 gamehq-release.sig
 ```
@@ -23,9 +23,10 @@ Setup is the recommended first-install package. Portable keeps its state beside
 the application. The update ZIP belongs to GameHQ's staged updater and is not a
 replacement installer.
 
-When published, the source ZIP is a convenience snapshot of the exact release
-revision. Its checksum verifies the downloaded archive; MIT does not require a
-separate source-offer file inside binary packages.
+The source ZIP is the corresponding source for the exact release revision. Its
+checksum verifies the downloaded archive, while `SOURCE_OFFER.txt` inside Setup,
+Portable, and updater packages binds the version, commit, tag, filename, hash,
+and public source URL.
 
 ## Check SHA-256
 

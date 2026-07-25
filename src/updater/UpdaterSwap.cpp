@@ -10,9 +10,10 @@
 
 namespace
 {
-constexpr std::array<const wchar_t *, 7> kOwned = {
+constexpr std::array<const wchar_t *, 8> kOwned = {
     L"GameHQ.exe", L"app", L"README.txt", L"LICENSE.txt",
-    L"THIRD_PARTY_NOTICES.md", L"licenses", L"GameHQUpdater.pending.exe"
+    L"SOURCE_OFFER.txt", L"THIRD_PARTY_NOTICES.md", L"licenses",
+    L"GameHQUpdater.pending.exe"
 };
 constexpr std::array<DWORD, 6> kBackoffMs = {100, 250, 500, 1000, 1500, 2000};
 

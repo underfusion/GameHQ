@@ -72,5 +72,5 @@ See `packaging/prepare-release.ps1`, `InstallerManifest.yaml`, and
 ## License
 
 The Playnite integration is under the MIT License; see its local
-[`LICENSE`](LICENSE). The GameHQ core uses the same MIT terms at the repository
-root.
+[`LICENSE`](LICENSE). GameHQ core version 0.7.1 and later uses GPL-3.0-only at
+the repository root; the plugin's separate MIT terms are unchanged.

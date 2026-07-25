@@ -11,7 +11,7 @@ Technical and product documentation for contributors and maintainers.
 - [Security & Privacy](security-and-privacy.md) — local data, network behavior, elevation, and reporting.
 - [Download Verification](download-verification.md) — official artifacts, hashes, signatures, and Windows warnings.
 - [Troubleshooting](troubleshooting.md) — Windows trust, installer conflicts, and HidHide guidance.
-- [Licensing](licensing.md) — MIT scope, third-party boundaries, branding, and optional future support.
+- [Licensing](licensing.md) — GPL core scope, MIT exceptions, corresponding source, and branding.
 - [Dependency Licenses](dependency-licenses.md) — shipped-component and asset provenance audit.
 - [Privacy Data Flows](privacy-data-flow.md) — current endpoints and gates for future AI/cloud features.
 - [Maintainer Privacy](maintainer-privacy.md) — public identity boundary and private SignPath workflow.

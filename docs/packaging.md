@@ -27,10 +27,10 @@ deflated ZIP entries and applies GameHQ's own path, size, layout and manifest
 validation before staged files can be considered installable. Its MIT license
 is included at `licenses/miniz.txt`.
 
-`packaging/prepare-source.ps1` can generate a revision-bound source ZIP and
-checksum as an optional release convenience. `packaging/validate-source.ps1`
-checks its layout, hash, and clean build. MIT binary packages do not require an
-embedded source offer.
+`packaging/prepare-source.ps1` generates the mandatory revision-bound
+corresponding-source ZIP, checksum, and package-visible source notice.
+`packaging/validate-source.ps1` checks its layout, hash, and clean build. Every
+GPL binary package includes `SOURCE_OFFER.txt` bound to the exact release.
 
 ## Distribution identity contract
 
@@ -82,8 +82,8 @@ GameHQ-<version>-win64-setup.exe
 GameHQ-<version>-win64-portable.zip
 GameHQ-<version>-win64-update.zip
 GameHQ-<version>-win64-update.zip.sha256
-[optional] GameHQ-<version>-source.zip
-[optional] GameHQ-<version>-source.zip.sha256
+GameHQ-<version>-source.zip
+GameHQ-<version>-source.zip.sha256
 gamehq-release.json
 gamehq-release.sig
 ```
@@ -227,7 +227,7 @@ or recovery location when the operation cannot complete.
 
 Uninstall changes neither data ownership nor license rights. AppData, capture
 media, watched folders, and portable profiles remain user-controlled, and the
-MIT grant continues to apply to every downloaded GameHQ version distributed
+The applicable license grant continues to apply to every downloaded GameHQ version distributed
 under it.
 
 `start.bat` automates the first two commands. It incrementally builds in `out/`,

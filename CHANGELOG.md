@@ -4,6 +4,22 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.1] - 2026-07-26
+
+### Changed
+
+- GameHQ core releases now use GPL-3.0-only while the separately packaged
+  Playnite integration and public integration protocol remain under MIT.
+- The Playnite integration now has an independent `playnite-v0.4.12` release,
+  so plugin updates cannot replace the app's Latest release.
+- Setup, Portable, and updater packages now carry a revision-bound source
+  notice, and every release includes the exact source ZIP and checksum.
+
+### Fixed
+
+- Release validation now fails if source artifacts, source bindings, license
+  boundaries, or corresponding-source evidence drift from the tagged build.
+
 ## [0.7.0] - 2026-07-25
 
 ### Added

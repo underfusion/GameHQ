@@ -3,7 +3,8 @@
 The GameHQ name, logo, and visual identity identify builds and services
 published by the GameHQ project. This document is a project branding policy;
 it does not claim that any mark is registered and it does not change or add a
-restriction to the MIT-licensed software.
+restriction to software distributed under GPL-3.0-only, MIT, or third-party
+licenses.
 
 You may make accurate descriptive references to GameHQ, link to the project,
 state compatibility, and preserve factual attribution. Unmodified official

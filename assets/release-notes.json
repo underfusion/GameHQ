@@ -1,5 +1,5 @@
 {
-  "version": "0.7.0",
+  "version": "0.7.1",
   "sections": [
     {
       "title": "Highlights",
@@ -18,7 +18,8 @@
       "items": [
         "33 native tests passed.",
         "20 Playnite integration tests passed.",
-        "Production update signing, tamper rejection, packaging, privacy, dependency, and licensing checks passed."
+        "Production update signing, tamper rejection, packaging, privacy, dependency, and licensing checks passed.",
+        "The exact corresponding-source archive and checksum are included with this release."
       ]
     },
     {

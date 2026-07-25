@@ -65,7 +65,8 @@ bool validateEntryName(std::string name, std::string &normalized, std::string &e
         }
     }
     const bool allowed = folded == "gamehq.exe" || folded == "readme.txt"
-        || folded == "license.txt" || folded == "third_party_notices.md"
+        || folded == "license.txt" || folded == "source_offer.txt"
+        || folded == "third_party_notices.md"
         || folded == "gamehqupdater.pending.exe" || folded == "update-package.json"
         || folded == "app" || hasPrefix(folded, "app/")
         || folded == "licenses" || hasPrefix(folded, "licenses/");

@@ -61,7 +61,8 @@ bool check(const QString &packageRoot, qint64 downloadBytes, QString &error)
     quint64 programBytes = 0;
     const QStringList owned = { QStringLiteral("GameHQ.exe"), QStringLiteral("GameHQUpdater.exe"),
         QStringLiteral("app"), QStringLiteral("README.txt"), QStringLiteral("LICENSE.txt"),
-        QStringLiteral("THIRD_PARTY_NOTICES.md"), QStringLiteral("licenses") };
+        QStringLiteral("SOURCE_OFFER.txt"), QStringLiteral("THIRD_PARTY_NOTICES.md"),
+        QStringLiteral("licenses") };
     for (const QString &name : owned) {
         const QFileInfo item(QDir(root).filePath(name));
         if (item.isFile()) {

@@ -221,6 +221,7 @@ void UpdaterTransactionTest::dryRunListsOperationsWithoutWriting()
     QVERIFY(output.contains("DRY RUN - no files will be changed"));
     QVERIFY(output.contains("BACKUP IF PRESENT GameHQ.exe"));
     QVERIFY(output.contains("INSTALL IF PRESENT app/"));
+    QVERIFY(output.contains("INSTALL IF PRESENT SOURCE_OFFER.txt"));
     QVERIFY(output.contains("--post-update 9.8.7"));
     QVERIFY2(process.readAllStandardError().isEmpty(), process.readAllStandardError().constData());
     QVERIFY(!QFileInfo::exists(staging));
@@ -254,7 +255,8 @@ void UpdaterTransactionTest::stagesValidPackage()
         QStringLiteral(".update/downloads/GameHQ-9.8.7-win64-update.zip"));
     const QByteArray manifest = R"({"schemaVersion":1,"productId":"underfusion.gamehq","appVersion":"9.8.7","layoutVersion":1,"minimumUpdaterVersion":"0.6.10"})";
     QVERIFY(writeZip(package, {{"GameHQ.exe", "launcher"}, {"app/GameHQ.exe", "application"},
-                               {"update-package.json", manifest}, {"README.txt", "readme"}}));
+                               {"update-package.json", manifest}, {"README.txt", "readme"},
+                               {"SOURCE_OFFER.txt", "source binding"}}));
     QVERIFY(syncTransactionHash(transaction, package));
 
     QScopedPointer<QProcess> process(runHelper(QStringLiteral("--stage"), transaction, this));

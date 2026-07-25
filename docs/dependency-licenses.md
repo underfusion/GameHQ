@@ -7,7 +7,7 @@ and Playnite integration package. This is engineering evidence, not legal advice
 
 | Component | Version / form | License basis | Evidence and obligation | Result |
 |---|---|---|---|---|
-| GameHQ | Native executables and resources | MIT | Root and package license texts must remain exact and first-party notices must stay visible. | Compatible |
+| GameHQ core | Native executables and resources | GPL-3.0-only | Root and package GPL texts remain exact; every release publishes corresponding source. | Project license |
 | Qt | 6.8.3 shared DLLs, plugins, and QML | LGPL-3.0-only or GPL-3.0-only | Dynamically replaceable files; LGPL/GPL texts and four Qt SPDX SBOMs ship in `licenses/`. Upstream source links remain in the notices. | Compatible |
 | FFmpeg | 7.1 shared DLLs | LGPL-2.1-or-later | Runtime export reports 61.19.100, LGPL 2.1+, shared-only configuration, and no GPL/nonfree options. Exact configuration and upstream source links are recorded in `THIRD_PARTY_NOTICES.md`. | Compatible |
 | MinGW-w64 / GCC | GCC 13.1 runtime DLLs | Upstream licenses plus runtime exceptions | Package includes the GCC exception and MinGW runtime notices; compiler runtime remains dynamically replaceable. | Compatible |
@@ -56,6 +56,7 @@ enter a release.
 
 The package must continue to include `THIRD_PARTY_NOTICES.md`, all required
 files under `licenses/`, the four Qt 6.8.3 SPDX SBOMs, and the Bouncy Castle
-notice inside the Playnite package. Optional source archives may be published
-for convenience, but are not an MIT obligation. t65 owns an automated inventory
-gate that rejects unclassified release files and version or notice drift.
+notice inside the Playnite package. Every GPL core release publishes exact
+corresponding source and a checksum and binds them from each binary package.
+The automated inventory gate rejects unclassified release files, source
+omissions, and version or notice drift.

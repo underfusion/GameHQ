@@ -1,4 +1,5 @@
-# Creates an optional exact-revision source archive and checksum.
+# Creates the exact-revision corresponding-source archive, checksum, and
+# package-visible source notice required by every GPL GameHQ release.
 [CmdletBinding()]
 param(
     [string]$ReleaseDirectory = 'dist\releases',
@@ -49,7 +50,7 @@ foreach ($path in @($sourcePath, $checksumPath)) {
 & git -C $root archive --format=zip --prefix="GameHQ-$version-source/" --output=$sourcePath `
     $commit -- . ':(exclude)docs/plans/**'
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
-    throw 'git archive did not create the source ZIP.'
+    throw 'git archive did not create the corresponding-source ZIP.'
 }
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -73,5 +74,34 @@ foreach ($entry in $entries) {
 $hash = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
 [System.IO.File]::WriteAllText($checksumPath, "$hash *$sourceName`n",
     [System.Text.UTF8Encoding]::new($false))
+
+$offerRoot = Join-Path $root 'dist\.source-offer'
+if (Test-Path -LiteralPath $offerRoot) { Remove-Item -LiteralPath $offerRoot -Recurse -Force }
+New-Item -ItemType Directory -Path $offerRoot -Force | Out-Null
+$sourceUrl = if ($GitTag) {
+    "https://github.com/underfusion/GameHQ/releases/download/$GitTag/$sourceName"
+} else {
+    "https://github.com/underfusion/GameHQ/archive/$commit.zip"
+}
+$tagText = if ($GitTag) { $GitTag } else { '(untagged validation build)' }
+$offer = @"
+GameHQ corresponding source
+===========================
+
+Version: $version
+Revision: $commit
+Tag: $tagText
+Source archive: $sourceName
+Source SHA-256: $hash
+Source URL: $sourceUrl
+Build instructions: https://github.com/underfusion/GameHQ/blob/$commit/docs/dev-setup.md
+
+The archive contains the first-party source, tests, build and packaging scripts,
+dependency pins, licenses, and documentation for this exact binary revision.
+Third-party components remain available from the sources recorded in
+THIRD_PARTY_NOTICES.md and docs/dependency-licenses.md.
+"@
+[System.IO.File]::WriteAllText((Join-Path $offerRoot 'SOURCE_OFFER.txt'),
+    $offer.TrimEnd() + "`n", [System.Text.UTF8Encoding]::new($false))
 
 Write-Host "[source] $sourceName -> $commit ($hash)"

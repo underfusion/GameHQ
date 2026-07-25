@@ -1,4 +1,4 @@
-# Validates the MIT project boundary and, when present, the release payload.
+# Validates the GPL core boundary, MIT exceptions, and release payload.
 [CmdletBinding()]
 param(
     [string]$PayloadDirectory = 'dist\.program-payload',
@@ -20,22 +20,25 @@ function Require-Match([string]$Path, [string]$Pattern, [string]$Label) {
     }
 }
 
+$expectedGpl = '3972DC9744F6499F0F9B2DBF76696F2AE7AD8AF9B23DDE66D6AF86C9DFB36986'
 $expectedMit = '835AFB738215E42F79ABAF39E12A5A3F936A722CCA5870B753A9B1D1B19C0A7F'
 $licensePaths = @(
-    @{ Path = 'LICENSE'; Label = 'root MIT license' },
-    @{ Path = 'integrations\playnite\LICENSE'; Label = 'Playnite MIT license' },
-    @{ Path = 'docs\integration-protocol.LICENSE'; Label = 'protocol MIT license' }
+    @{ Path = 'LICENSE'; Hash = $expectedGpl; Label = 'exact GNU GPL version 3 text' },
+    @{ Path = 'licenses\MIT-legacy.txt'; Hash = $expectedMit; Label = 'legacy MIT license' },
+    @{ Path = 'integrations\playnite\LICENSE'; Hash = $expectedMit; Label = 'Playnite MIT license' },
+    @{ Path = 'docs\integration-protocol.LICENSE'; Hash = $expectedMit; Label = 'protocol MIT license' }
 )
 foreach ($entry in $licensePaths) {
     $path = Join-Path $root $entry.Path
     Require-File $path $entry.Label
-    if ((Test-Path -LiteralPath $path -PathType Leaf) -and
-        (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $expectedMit) {
-        $failures.Add("modified $($entry.Label)")
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+        $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+        if ($hash -ne $entry.Hash) { $failures.Add("modified $($entry.Label)") }
     }
 }
 
-Require-Match (Join-Path $root 'docs\licensing.md') 'GameHQ first-party source code and assets are available under the\s+\*\*MIT License\*\*' 'MIT boundary documentation'
+Require-Match (Join-Path $root 'docs\licensing.md') 'GPL-3\.0-only' 'GPL boundary documentation'
+Require-Match (Join-Path $root 'docs\licensing.md') 'GameHQ-<version>-source\.zip' 'corresponding-source policy'
 Require-Match (Join-Path $root 'docs\integration-protocol.md') 'SPDX-License-Identifier:\s*MIT' 'protocol SPDX marker'
 Require-Match (Join-Path $root 'CMakeLists.txt') 'miniz/archive/refs/tags/3\.1\.2\.tar\.gz' 'miniz 3.1.2 pin'
 Require-Match (Join-Path $root 'CMakeLists.txt') 'monocypher-4\.0\.3\.tar\.gz' 'Monocypher 4.0.3 pin'
@@ -44,20 +47,20 @@ Require-Match (Join-Path $root 'integrations\playnite\src\GameHQ.Playnite\GameHQ
 Require-Match (Join-Path $root 'integrations\playnite\src\GameHQ.Playnite\GameHQ.Playnite.csproj') 'PlayniteSDK"\s+Version="6\.16\.0"' 'Playnite SDK 6.16.0 pin'
 
 $stalePatterns = @(
-    @{ Pattern = 'GameHQ[^\r\n]{0,100}GPL-3\.0-only'; Label = 'GPL GameHQ claim' },
-    @{ Pattern = 'GPL-3\.0-only[^\r\n]{0,100}GameHQ'; Label = 'GPL GameHQ claim' },
-    @{ Pattern = 'SOURCE_OFFER\.txt'; Label = 'GPL source-offer claim' },
-    @{ Pattern = 'MIT-legacy\.txt'; Label = 'legacy-license boundary claim' }
+    'GameHQ source code is available under the \[MIT License\]',
+    'GameHQ first-party code is licensed under the MIT License',
+    'GameHQ core uses the same MIT terms',
+    'GameHQ core, Playnite integration, and public protocol[^\r\n]{0,100}MIT'
 )
 $claimFiles = @(& git -C $root ls-files --cached --others --exclude-standard -- `
     '*.md' '*.html' '*.qml' '*.txt' '*.ps1' '*.psd1' '*.cpp') |
-    Where-Object { $_ -notmatch '^(docs/plans/|licenses/|docs/licensing-audit\.md$|docs/dependency-licenses\.md$|packaging/assert-license-compliance\.ps1$)' }
+    Where-Object { $_ -notmatch '^(docs/plans/|licenses/|packaging/assert-license-compliance\.ps1$)' }
 foreach ($relative in $claimFiles) {
     $path = Join-Path $root $relative
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
     $content = Get-Content -LiteralPath $path -Raw
-    foreach ($entry in $stalePatterns) {
-        if ($content -match $entry.Pattern) { $failures.Add("$($entry.Label): $relative") }
+    foreach ($pattern in $stalePatterns) {
+        if ($content -match $pattern) { $failures.Add("stale first-party MIT claim: $relative") }
     }
 }
 
@@ -85,8 +88,8 @@ if (-not $SkipPackage) {
     if (-not [StringComparer]::OrdinalIgnoreCase.Equals($payload, $approvedPayload)) {
         throw "License package validation is restricted to $approvedPayload"
     }
-    foreach ($relative in @('LICENSE.txt', 'THIRD_PARTY_NOTICES.md',
-            'licenses\LGPL-2.1.txt', 'licenses\LGPL-3.0.txt',
+    foreach ($relative in @('LICENSE.txt', 'SOURCE_OFFER.txt', 'THIRD_PARTY_NOTICES.md',
+            'licenses\MIT-legacy.txt', 'licenses\LGPL-2.1.txt', 'licenses\LGPL-3.0.txt',
             'licenses\GCC-RUNTIME-EXCEPTION.txt', 'licenses\MINGW-W64-RUNTIME.txt',
             'licenses\miniz.txt', 'licenses\monocypher.txt', 'licenses\Inno-Setup.txt',
             'licenses\qt-sbom\qtbase-6.8.3.spdx',
@@ -97,8 +100,8 @@ if (-not $SkipPackage) {
     }
     $packagedLicense = Join-Path $payload 'LICENSE.txt'
     if ((Test-Path -LiteralPath $packagedLicense -PathType Leaf) -and
-        (Get-FileHash -LiteralPath $packagedLicense -Algorithm SHA256).Hash -ne $expectedMit) {
-        $failures.Add('package root license is not exact MIT text')
+        (Get-FileHash -LiteralPath $packagedLicense -Algorithm SHA256).Hash -ne $expectedGpl) {
+        $failures.Add('package root license is not exact GPLv3 text')
     }
     $owned = @('GameHQ.exe', 'GameHQUpdater.exe', 'app/GameHQ.exe')
     foreach ($binary in Get-ChildItem -LiteralPath $payload -Recurse -File |
@@ -114,4 +117,4 @@ if (-not $SkipPackage) {
 if ($failures.Count) {
     throw "License compliance failed:`n - $($failures -join "`n - ")"
 }
-Write-Host '[license] MIT boundary, dependency pins, assets, notices, and package inventory passed'
+Write-Host '[license] GPL core, MIT exceptions, dependency pins, assets, notices, and package inventory passed'

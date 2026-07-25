@@ -8,4 +8,5 @@ SourceUrl: https://github.com/underfusion/GameHQ
 IconUrl: https://raw.githubusercontent.com/underfusion/GameHQ/main/integrations/playnite/icon.png
 Links:
   Repository: https://github.com/underfusion/GameHQ
-  LatestRelease: https://github.com/underfusion/GameHQ/releases/latest
+  GameHQDownloads: https://github.com/underfusion/GameHQ/releases/latest
+  ManualPluginDownload: https://github.com/underfusion/GameHQ/releases/download/playnite-v0.4.12/GameHQ_Playnite_Integration_0_4_12.pext

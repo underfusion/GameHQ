@@ -35,12 +35,16 @@ if ($GitTag -and $ManifestMode -eq 'test') {
 $portableName = $identity.ArtifactPatterns.Portable -f $version
 $updateName = $identity.ArtifactPatterns.Update -f $version
 $setupName = $identity.ArtifactPatterns.Setup -f $version
+$sourceName = $identity.ArtifactPatterns.Source -f $version
+$sourceChecksumName = $identity.ArtifactPatterns.SourceChecksum -f $version
 $portableZip = Join-Path $releaseRoot $portableName
 $updateZip = Join-Path $releaseRoot $updateName
 $setup = Join-Path $releaseRoot $setupName
+$sourceZip = Join-Path $releaseRoot $sourceName
+$sourceChecksum = Join-Path $releaseRoot $sourceChecksumName
 $checksum = "$updateZip.sha256"
 $payloadRoot = Join-Path $root 'dist\.program-payload'
-foreach ($required in @($setup, $portableZip, $updateZip, $checksum)) {
+foreach ($required in @($setup, $portableZip, $updateZip, $checksum, $sourceZip, $sourceChecksum)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Missing release artifact: $required" }
 }
 if ($ManifestMode -in @('test', 'production')) {
@@ -105,7 +109,7 @@ if (-not (Test-Path -LiteralPath $payloadRoot -PathType Container)) {
 }
 $payloadRoots = @(Get-ChildItem -LiteralPath $payloadRoot -Force | ForEach-Object Name)
 $requiredPayloadRoots = @('GameHQ.exe', 'GameHQUpdater.exe', 'README.txt', 'LICENSE.txt',
-    'THIRD_PARTY_NOTICES.md', 'app', 'licenses')
+    'SOURCE_OFFER.txt', 'THIRD_PARTY_NOTICES.md', 'app', 'licenses')
 foreach ($required in $requiredPayloadRoots) {
     if ($payloadRoots -notcontains $required) { throw "Neutral payload is missing $required" }
 }
@@ -131,7 +135,7 @@ foreach ($required in @('GameHQ.exe', 'GameHQUpdater.pending.exe', 'app/GameHQ.e
     if ($updateEntries -notcontains $required) { throw "Update ZIP is missing $required" }
 }
 $allowedRoots = @('GameHQ.exe', 'GameHQUpdater.pending.exe', 'README.txt', 'LICENSE.txt',
-    'THIRD_PARTY_NOTICES.md', 'app', 'licenses', 'update-package.json')
+    'SOURCE_OFFER.txt', 'THIRD_PARTY_NOTICES.md', 'app', 'licenses', 'update-package.json')
 $forbiddenRoots = @('portable.flag', 'Captures', 'gamehq-data', 'saveplay-data', 'playhq-data', 'GameHQUpdater.exe')
 foreach ($entry in $updateEntries) {
     $rootName = $entry.TrimEnd('/').Split('/')[0]
@@ -155,6 +159,31 @@ $checksumText = (Get-Content -LiteralPath $checksum -Raw).Trim()
 if ($checksumText -notmatch $expectedChecksum) { throw 'Update checksum file has an invalid format or filename.' }
 $actualHash = (Get-FileHash -LiteralPath $updateZip -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actualHash -ne $Matches[1]) { throw 'Update ZIP checksum does not match.' }
+$expectedSourceChecksum = "^([0-9a-f]{64}) \*$([regex]::Escape($sourceName))$"
+$sourceChecksumText = (Get-Content -LiteralPath $sourceChecksum -Raw).Trim()
+if ($sourceChecksumText -notmatch $expectedSourceChecksum) {
+    throw 'Source checksum has an invalid format or filename.'
+}
+$actualSourceHash = (Get-FileHash -LiteralPath $sourceZip -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($actualSourceHash -ne $Matches[1]) { throw 'Source ZIP checksum does not match.' }
+$sourceValidationArguments = @{ ReleaseDirectory = $releaseRoot }
+if ($SkipTests) { $sourceValidationArguments.SkipBuild = $true }
+& (Join-Path $PSScriptRoot 'validate-source.ps1') @sourceValidationArguments
+if ($LASTEXITCODE -ne 0) { throw 'Corresponding-source validation failed.' }
+foreach ($entries in @($portableEntries, $updateEntries)) {
+    if ($entries -notcontains 'SOURCE_OFFER.txt') {
+        throw 'Binary package is missing SOURCE_OFFER.txt.'
+    }
+}
+$offer = Get-Content -LiteralPath (Join-Path $payloadRoot 'SOURCE_OFFER.txt') -Raw
+foreach ($value in @($version, $actualSourceHash, $sourceName)) {
+    if ($offer -notmatch [regex]::Escape($value)) {
+        throw "SOURCE_OFFER.txt does not bind $value."
+    }
+}
+if ($GitTag -and ($offer -notmatch [regex]::Escape($GitTag))) {
+    throw 'SOURCE_OFFER.txt does not bind the requested Git tag.'
+}
 $packagedApp = Join-Path $root 'dist\GameHQ\app\GameHQ.exe'
 $versionCheck = Start-Process -FilePath $packagedApp `
     -ArgumentList @('--assert-version', $version) -WindowStyle Hidden -Wait -PassThru
@@ -196,7 +225,7 @@ if (-not $SkipTests) {
     if ($LASTEXITCODE -ne 0) { throw 'Updater validation tests failed.' }
 }
 $toolchain = Import-PowerShellDataFile (Join-Path $PSScriptRoot 'inno-toolchain.psd1')
-$evidencePaths = @($setup, $portableZip, $updateZip, $checksum)
+$evidencePaths = @($setup, $portableZip, $updateZip, $checksum, $sourceZip, $sourceChecksum)
 if ($ManifestMode -in @('test', 'production')) {
     $evidencePaths += (Join-Path $releaseRoot 'gamehq-release.json')
     $evidencePaths += (Join-Path $releaseRoot 'gamehq-release.sig')
@@ -248,7 +277,11 @@ $evidence = [ordered]@{
     } else { $null }
     innoSetup = [ordered]@{ version = $toolchain.Version; installerSha256 = $toolchain.Sha256 }
     buildTools = $buildTools
-    compliance = [ordered]@{ license = 'passed'; privacy = 'passed' }
+    compliance = [ordered]@{
+        license = 'passed'
+        privacy = 'passed'
+        correspondingSource = 'passed'
+    }
     artifacts = $artifactEvidence
     authenticode = $signatures
 } | ConvertTo-Json -Depth 6

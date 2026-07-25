@@ -35,7 +35,7 @@ SettingsPage {
                     font.weight: Font.DemiBold
                 }
                 Text {
-                    text: "Free and open source under the MIT License."
+                    text: "Free and open source under the GNU GPL version 3."
                     color: Theme.textMuted
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontBody
@@ -141,7 +141,7 @@ SettingsPage {
         SettingsLinkRow { icon: "\u21BB"; label: "Releases"; description: Brand.releasesUrl; onClicked: Qt.openUrlExternally(Brand.releasesUrl) }
         SettingsLinkRow { icon: "!"; label: "Report an issue"; description: Brand.issuesUrl; onClicked: Qt.openUrlExternally(Brand.issuesUrl) }
         SettingsLinkRow { icon: "\u26E8"; label: "Security & privacy"; description: "Verification, local data, network use, and private reporting"; onClicked: Qt.openUrlExternally(Brand.securityUrl) }
-        SettingsLinkRow { icon: "\u00A7"; label: "MIT License"; description: Brand.repositoryUrl + "/blob/main/LICENSE"; showDivider: false; onClicked: Qt.openUrlExternally(Brand.repositoryUrl + "/blob/main/LICENSE") }
+        SettingsLinkRow { icon: "\u00A7"; label: "GNU GPL v3 License"; description: Brand.repositoryUrl + "/blob/main/LICENSE"; showDivider: false; onClicked: Qt.openUrlExternally(Brand.repositoryUrl + "/blob/main/LICENSE") }
     }
 
     SettingsSection {

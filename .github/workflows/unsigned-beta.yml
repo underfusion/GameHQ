@@ -129,6 +129,8 @@ jobs:
             dist/releases/GameHQ-*-win64-portable.zip
             dist/releases/GameHQ-*-win64-update.zip
             dist/releases/GameHQ-*-win64-update.zip.sha256
+            dist/releases/GameHQ-*-source.zip
+            dist/releases/GameHQ-*-source.zip.sha256
             dist/releases/gamehq-release.json
             dist/releases/gamehq-release.sig
             dist/releases/release-evidence.json
