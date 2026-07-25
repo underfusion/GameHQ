@@ -12,10 +12,10 @@
 #include <QtLogging>
 
 UpdateService::UpdateService(QString owner, QString repo, QString installedVersion,
-                             QString stagingRoot, QObject *parent)
+                             QString stagingRoot, QString trustStatePath, QObject *parent)
     : QObject(parent)
     , m_source(new GitHubReleaseSource(std::move(owner), std::move(repo), this))
-    , m_downloader(new UpdateDownloader(stagingRoot, this))
+    , m_downloader(new UpdateDownloader(stagingRoot, std::move(trustStatePath), this))
     , m_installedVersion(std::move(installedVersion))
     , m_packageRoot(QDir(stagingRoot).absoluteFilePath(QStringLiteral("../..")))
 {
@@ -31,9 +31,8 @@ UpdateService::UpdateService(QString owner, QString repo, QString installedVersi
         Q_EMIT progressChanged();
     });
     connect(m_downloader, &UpdateDownloader::ready, this,
-            [this](const QString &packagePath, const QByteArray &sha256) {
-        m_downloadedPackagePath = packagePath;
-        m_downloadedSha256 = sha256;
+            [this](const VerifiedUpdate &verified) {
+        m_verified = verified;
         setState(State::ReadyToInstall);
     });
     connect(m_downloader, &UpdateDownloader::cancelled, this, [this] {
@@ -174,8 +173,7 @@ void UpdateService::onSucceeded(const ReleaseInfo &release, const QString &etag)
             applyRelease(release);
             return;
         }
-        Q_EMIT installApproved(release.version, m_downloadedPackagePath,
-                               m_downloadedSha256);
+        Q_EMIT installApproved(m_verified);
         return;
     }
     if (incomplete) {

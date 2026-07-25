@@ -45,15 +45,27 @@ FetchContent_Declare(monocypher
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(monocypher)
 
+# Until the production key is activated (t48) the only trusted key is the
+# public RFC 8032 test vector, so a build made with it can verify nothing real.
+# packaging/validate-release.ps1 refuses to publish a signed/Stable artifact
+# while this is ON.
+option(GAMEHQ_RELEASE_TRUST_TEST_KEYS
+    "Compile the TEST-ONLY release signing key into the trust table" ON)
+
 add_library(gamehq_release_trust STATIC
     src/security/ReleaseTrust.cpp
     src/security/ReleaseTrust.h
+    src/security/ReleaseManifest.cpp
+    src/security/ReleaseManifest.h
     "${monocypher_SOURCE_DIR}/src/monocypher.c"
     "${monocypher_SOURCE_DIR}/src/optional/monocypher-ed25519.c")
 target_include_directories(gamehq_release_trust PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     PRIVATE "${monocypher_SOURCE_DIR}/src" "${monocypher_SOURCE_DIR}/src/optional")
 target_link_libraries(gamehq_release_trust PUBLIC bcrypt)
+if(GAMEHQ_RELEASE_TRUST_TEST_KEYS)
+    target_compile_definitions(gamehq_release_trust PUBLIC GAMEHQ_RELEASE_TRUST_TEST_KEYS)
+endif()
 
 # Brand.qml is the single source of truth for the visible product name. It is
 # read at configure time so C++ and QML always expose the same branding.

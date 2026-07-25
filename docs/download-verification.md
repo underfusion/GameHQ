@@ -41,6 +41,12 @@ release. A mismatch means the file must not be run. A hash protects against
 corruption only when the expected value comes from a trusted source; it is not
 publisher identity by itself.
 
+The `.sha256` file exists for this manual check. GameHQ's own updater does not
+trust it: in-app updates are authorised by `gamehq-release.json` and its
+Ed25519 signature `gamehq-release.sig`, verified against a key compiled into
+the application, so an attacker who could replace both the archive and its
+checksum still cannot produce an installable update.
+
 ## Check Authenticode
 
 For signed releases:

@@ -16,6 +16,11 @@ namespace
 constexpr int kTransferTimeoutMs = 15000;
 constexpr int kMaxAttempts = 2; // one retry on a transient network error
 
+// Fixed asset names emitted by tools/release-manifest. They are version-free
+// on purpose: the version lives inside the signed bytes.
+constexpr QLatin1StringView kManifestAssetName("gamehq-release.json");
+constexpr QLatin1StringView kSignatureAssetName("gamehq-release.sig");
+
 QString updateZipName(const QString &normalizedVersion)
 {
     return QStringLiteral("GameHQ-%1-win64-update.zip").arg(normalizedVersion);
@@ -126,12 +131,18 @@ void GitHubReleaseSource::handleReply(QNetworkReply *reply, const QString &ifNon
     // and any other non-matching tag outright), and that carry the exact
     // update assets this app knows how to install. Among those, pick the
     // highest version.
+    //
+    // Nothing here establishes trust: this only locates candidate URLs. A
+    // release without both manifest assets is skipped because there would be
+    // nothing to verify it with.
     std::optional<VersionNumber> bestVersion;
     QJsonObject bestObj;
     QString bestZipName;
     QString bestZipUrl;
     qint64 bestZipSize = 0;
     QString bestChecksumUrl;
+    QString bestManifestUrl;
+    QString bestSignatureUrl;
 
     const QJsonArray releases = doc.array();
     for (const QJsonValue &releaseValue : releases) {
@@ -150,6 +161,8 @@ void GitHubReleaseSource::handleReply(QNetworkReply *reply, const QString &ifNon
         QString zipUrl;
         qint64 zipSize = 0;
         QString checksumUrl;
+        QString manifestUrl;
+        QString signatureUrl;
         const QJsonArray assets = obj.value(QStringLiteral("assets")).toArray();
         for (const QJsonValue &assetValue : assets) {
             const QJsonObject asset = assetValue.toObject();
@@ -159,9 +172,13 @@ void GitHubReleaseSource::handleReply(QNetworkReply *reply, const QString &ifNon
                 zipSize = static_cast<qint64>(asset.value(QStringLiteral("size")).toDouble());
             } else if (name == expectedChecksum) {
                 checksumUrl = asset.value(QStringLiteral("browser_download_url")).toString();
+            } else if (name == kManifestAssetName) {
+                manifestUrl = asset.value(QStringLiteral("browser_download_url")).toString();
+            } else if (name == kSignatureAssetName) {
+                signatureUrl = asset.value(QStringLiteral("browser_download_url")).toString();
             }
         }
-        if (zipUrl.isEmpty() || checksumUrl.isEmpty())
+        if (zipUrl.isEmpty() || manifestUrl.isEmpty() || signatureUrl.isEmpty())
             continue; // not an installable app release (or assets still uploading)
 
         if (bestVersion.has_value() && *version <= *bestVersion)
@@ -173,6 +190,8 @@ void GitHubReleaseSource::handleReply(QNetworkReply *reply, const QString &ifNon
         bestZipUrl = zipUrl;
         bestZipSize = zipSize;
         bestChecksumUrl = checksumUrl;
+        bestManifestUrl = manifestUrl;
+        bestSignatureUrl = signatureUrl;
     }
 
     if (!bestVersion.has_value()) {
@@ -193,6 +212,8 @@ void GitHubReleaseSource::handleReply(QNetworkReply *reply, const QString &ifNon
     info.zipUrl = bestZipUrl;
     info.zipSize = bestZipSize;
     info.checksumUrl = bestChecksumUrl;
+    info.manifestUrl = bestManifestUrl;
+    info.signatureUrl = bestSignatureUrl;
 
     const QString etag = QString::fromUtf8(reply->rawHeader("ETag"));
     Q_EMIT succeeded(info, etag);

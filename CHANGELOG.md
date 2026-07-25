@@ -4,6 +4,25 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.29] - 2026-07-25
+
+### Security
+
+- The updater now installs only releases authorised by an Ed25519-signed
+  release manifest. GameHQ downloads `gamehq-release.json` and
+  `gamehq-release.sig` before the package, verifies the signature over the
+  exact downloaded bytes with a key compiled into the binary, and accepts the
+  archive only when its name, length and SHA-256 match the signed record.
+- A manifest can no longer choose its own signing key, and release sequence,
+  key activation, rollback and same-sequence equivocation are all enforced,
+  with the accepted sequence stored atomically in the user data root.
+- The `.sha256` asset is now a manual-verification convenience only. Replacing
+  the update archive and its checksum together no longer produces an
+  installable update.
+- The updater helper repeats the whole verification from the manifest on disk
+  before extraction, so a package swapped after the transaction was written is
+  rejected before any file is touched.
+
 ## [0.6.28] - 2026-07-22
 
 ### Changed

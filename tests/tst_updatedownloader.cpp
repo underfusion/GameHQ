@@ -25,10 +25,18 @@ void UpdateDownloaderTest::detectsIncompleteReleaseAssets()
     release.zipName = QStringLiteral("GameHQ-1.2.3-win64-update.zip");
     release.zipUrl = QStringLiteral("https://example.invalid/update.zip");
     release.zipSize = 1024;
-    QVERIFY(!release.hasCompleteUpdateAssets()); // checksum still uploading
+    // The sibling checksum is a human convenience and cannot make a release
+    // installable on its own; the signed manifest pair is what counts.
     release.checksumUrl = QStringLiteral("https://example.invalid/update.zip.sha256");
+    QVERIFY(!release.hasCompleteUpdateAssets());
+    release.manifestUrl = QStringLiteral("https://example.invalid/gamehq-release.json");
+    QVERIFY(!release.hasCompleteUpdateAssets()); // signature still uploading
+    release.signatureUrl = QStringLiteral("https://example.invalid/gamehq-release.sig");
     QVERIFY(release.hasCompleteUpdateAssets());
     release.zipSize = 0;
+    QVERIFY(!release.hasCompleteUpdateAssets());
+    release.zipSize = 1024;
+    release.manifestUrl.clear();
     QVERIFY(!release.hasCompleteUpdateAssets());
 }
 

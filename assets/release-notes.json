@@ -1,18 +1,19 @@
 {
-  "version": "0.6.28",
+  "version": "0.6.29",
   "sections": [
     {
-      "title": "Added",
+      "title": "Security",
       "items": [
-        "Dependency, contribution, privacy, and official-branding boundaries are documented.",
-        "Release checks now detect license drift, unclassified assets, private data, and secret files."
+        "Updates now install only when a signed release manifest authorises them.",
+        "An update archive is accepted only if its name, size, and checksum match that signature.",
+        "The updater re-checks the signature itself before it replaces a single file."
       ]
     },
     {
       "title": "Changed",
       "items": [
-        "GameHQ remains under MIT across the core, Playnite integration, and public protocol.",
-        "Optional source archives can be generated and validated for release convenience."
+        "The published .sha256 file is now only for checking a download by hand.",
+        "A release without its signature file is no longer offered for one-click install."
       ]
     }
   ]

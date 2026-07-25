@@ -56,7 +56,10 @@ public:
 
     // owner/repo select the GitHub repo to poll; installedVersion should be
     // the running app's VERSION-file string (e.g. "0.6.7").
+    // trustStatePath holds the anti-rollback release sequence and must live in
+    // the user data root, not inside the replaceable program files.
     UpdateService(QString owner, QString repo, QString installedVersion, QString stagingRoot,
+                  QString trustStatePath,
                   QObject *parent = nullptr);
 
     State state() const { return m_state; }
@@ -101,8 +104,7 @@ Q_SIGNALS:
     void etagUpdated(const QString &etag);
     void prepareForUpdateRequested();
     void quiescenceReached();
-    void installApproved(const QString &version, const QString &packagePath,
-                         const QByteArray &sha256);
+    void installApproved(const VerifiedUpdate &verified);
 
 private:
     void setState(State state);
@@ -125,8 +127,7 @@ private:
     QString m_errorText;
     QDateTime m_lastChecked;
     QString m_etag;
-    QString m_downloadedPackagePath;
-    QByteArray m_downloadedSha256;
+    VerifiedUpdate m_verified;
     QString m_packageRoot;
     QElapsedTimer m_lastCheckRequest;
     bool m_revalidatingInstall = false;

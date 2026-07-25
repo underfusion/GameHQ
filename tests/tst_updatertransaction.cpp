@@ -3,6 +3,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include "TestReleaseSigner.h"
 #include <QProcess>
 #include <QSqlDatabase>
 #include <QSqlError>
@@ -44,6 +45,9 @@ private Q_SLOTS:
 
 private:
     static QString writeFixture(const QString &root, const QString &backupDir);
+    // Re-signs the staged package so the transaction still carries evidence a
+    // real release manifest would have produced.
+    static bool refreshEvidence(const QString &packagePath, QJsonObject &object);
     static bool writeZip(const QString &path, const QList<QPair<QByteArray, QByteArray>> &entries);
     static bool syncTransactionHash(const QString &transaction, const QString &package);
     static QProcess *runHelper(const QString &mode, const QString &transaction, QObject *parent);
@@ -62,12 +66,10 @@ QString UpdaterTransactionTest::writeFixture(const QString &root, const QString 
         return {};
     package.close();
 
-    const QByteArray sha = QCryptographicHash::hash("verified package", QCryptographicHash::Sha256).toHex();
-    const QJsonObject object {
+    QJsonObject object {
         { QStringLiteral("schemaVersion"), 1 },
         { QStringLiteral("productId"), QStringLiteral("underfusion.gamehq") },
         { QStringLiteral("expectedVersion"), QStringLiteral("9.8.7") },
-        { QStringLiteral("expectedSha256"), QString::fromLatin1(sha) },
         { QStringLiteral("packageRoot"), QDir::toNativeSeparators(root) },
         { QStringLiteral("packagePath"), QDir::toNativeSeparators(packagePath) },
         { QStringLiteral("stagingDir"), QDir::toNativeSeparators(QDir(updateDir).filePath(QStringLiteral("staging"))) },
@@ -79,6 +81,8 @@ QString UpdaterTransactionTest::writeFixture(const QString &root, const QString 
         { QStringLiteral("callerPid"), static_cast<qint64>(QCoreApplication::applicationPid()) },
         { QStringLiteral("phase"), QStringLiteral("download_verified") }
     };
+    if (!refreshEvidence(packagePath, object))
+        return {};
     const QString transactionPath = QDir(updateDir).filePath(QStringLiteral("transaction.json"));
     QFile transaction(transactionPath);
     if (!transaction.open(QIODevice::WriteOnly)
@@ -116,20 +120,64 @@ QProcess *UpdaterTransactionTest::runHelper(const QString &mode, const QString &
     return process;
 }
 
-bool UpdaterTransactionTest::syncTransactionHash(const QString &transaction, const QString &package)
+bool UpdaterTransactionTest::refreshEvidence(const QString &packagePath, QJsonObject &object)
 {
-    QFile packageFile(package);
+    QFile packageFile(packagePath);
     if (!packageFile.open(QIODevice::ReadOnly))
         return false;
-    QCryptographicHash hash(QCryptographicHash::Sha256);
-    if (!hash.addData(&packageFile))
+    const QByteArray bytes = packageFile.readAll();
+    packageFile.close();
+    const QString packageHash = QString::fromLatin1(
+        QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex());
+    const QString version = object.value(QStringLiteral("expectedVersion")).toString();
+    const QString assetName = QFileInfo(packagePath).fileName();
+    const auto manifest = test_release_signer::buildManifest(
+        version.toStdString(), 3,
+        {{"update", assetName.toStdString(), static_cast<std::uint64_t>(bytes.size()),
+          packageHash.toStdString()}});
+    const QByteArray manifestBytes(reinterpret_cast<const char *>(manifest.data()),
+                                   static_cast<qsizetype>(manifest.size()));
+    const QString signature = QString::fromStdString(test_release_signer::sign(manifest));
+
+    const QString downloads = QFileInfo(packagePath).absolutePath();
+    const QString manifestPath = QDir(downloads).filePath(QStringLiteral("gamehq-release.json"));
+    const QString signaturePath = QDir(downloads).filePath(QStringLiteral("gamehq-release.sig"));
+    QFile manifestFile(manifestPath);
+    if (!manifestFile.open(QIODevice::WriteOnly | QIODevice::Truncate)
+        || manifestFile.write(manifestBytes) != manifestBytes.size())
         return false;
+    manifestFile.close();
+    QFile signatureFile(signaturePath);
+    const QByteArray signatureBytes = signature.toLatin1() + QByteArrayLiteral("\n");
+    if (!signatureFile.open(QIODevice::WriteOnly | QIODevice::Truncate)
+        || signatureFile.write(signatureBytes) != signatureBytes.size())
+        return false;
+    signatureFile.close();
+
+    object.insert(QStringLiteral("expectedSha256"), packageHash);
+    object.insert(QStringLiteral("manifestPath"), QDir::toNativeSeparators(manifestPath));
+    object.insert(QStringLiteral("signaturePath"), QDir::toNativeSeparators(signaturePath));
+    object.insert(QStringLiteral("manifestSha256"), QString::fromLatin1(
+        QCryptographicHash::hash(manifestBytes, QCryptographicHash::Sha256).toHex()));
+    object.insert(QStringLiteral("releaseSignature"), signature);
+    object.insert(QStringLiteral("releaseKeyId"),
+                  QString::fromLatin1(test_release_signer::kTestKeyId));
+    object.insert(QStringLiteral("releaseSequence"), 3);
+    object.insert(QStringLiteral("artifactName"), assetName);
+    object.insert(QStringLiteral("artifactSize"), static_cast<qint64>(bytes.size()));
+    object.insert(QStringLiteral("artifactSha256"), packageHash);
+    return true;
+}
+
+bool UpdaterTransactionTest::syncTransactionHash(const QString &transaction, const QString &package)
+{
     QFile transactionFile(transaction);
     if (!transactionFile.open(QIODevice::ReadOnly))
         return false;
     QJsonObject object = QJsonDocument::fromJson(transactionFile.readAll()).object();
     transactionFile.close();
-    object.insert(QStringLiteral("expectedSha256"), QString::fromLatin1(hash.result().toHex()));
+    if (!refreshEvidence(package, object))
+        return false;
     if (!transactionFile.open(QIODevice::WriteOnly | QIODevice::Truncate))
         return false;
     return transactionFile.write(QJsonDocument(object).toJson(QJsonDocument::Compact)) > 0;
@@ -253,11 +301,31 @@ void UpdaterTransactionTest::rejectsPackageChangedAfterVerification()
     const QByteArray manifest = R"({"schemaVersion":1,"productId":"underfusion.gamehq","appVersion":"9.8.7","layoutVersion":1,"minimumUpdaterVersion":"0.6.10"})";
     QVERIFY(writeZip(package, {{"GameHQ.exe", "launcher"}, {"app/GameHQ.exe", "application"},
                                {"update-package.json", manifest}}));
-    // Deliberately keep the transaction's hash of the earlier placeholder.
+    // Deliberately keep the transaction's hash of the earlier placeholder. The
+    // signed manifest now catches the swap before staging even begins, because
+    // the replacement has a different length than the authorised artifact.
     QScopedPointer<QProcess> process(runHelper(QStringLiteral("--stage"), transaction, this));
     QVERIFY(process->waitForFinished(10000));
     QVERIFY(process->exitCode() != 0);
-    QVERIFY(process->readAllStandardError().contains("SHA-256 changed"));
+    QVERIFY(process->readAllStandardError().contains("signed manifest"));
+    QVERIFY(!QFileInfo::exists(QDir(dir.path()).filePath(QStringLiteral(".update/staging"))));
+
+    // A same-length swap passes the manifest length check and must still be
+    // stopped by the package hash comparison during staging.
+    QFile staged(package);
+    QVERIFY(staged.open(QIODevice::ReadOnly));
+    const qint64 authorisedSize = staged.size();
+    staged.close();
+    QVERIFY(syncTransactionHash(transaction, package));
+    QVERIFY(staged.open(QIODevice::ReadWrite));
+    QVERIFY(staged.seek(authorisedSize - 1));
+    QVERIFY(staged.write(QByteArrayLiteral("!")) == 1);
+    staged.close();
+    QCOMPARE(QFileInfo(package).size(), authorisedSize);
+    QScopedPointer<QProcess> sameLength(runHelper(QStringLiteral("--stage"), transaction, this));
+    QVERIFY(sameLength->waitForFinished(10000));
+    QVERIFY(sameLength->exitCode() != 0);
+    QVERIFY(sameLength->readAllStandardError().contains("SHA-256 changed"));
     QVERIFY(!QFileInfo::exists(QDir(dir.path()).filePath(QStringLiteral(".update/staging"))));
 }
 

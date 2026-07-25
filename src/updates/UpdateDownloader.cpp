@@ -1,5 +1,7 @@
 #include "updates/UpdateDownloader.h"
 
+#include "security/ReleaseManifest.h"
+
 #include <QCryptographicHash>
 #include <QDir>
 #include <QDirIterator>
@@ -11,22 +13,41 @@
 #include <QUrl>
 #include <QtLogging>
 
+#include <cstdint>
+#include <filesystem>
+#include <string>
+#include <vector>
+
 namespace
 {
 constexpr qint64 kMaximumPackageBytes = 2LL * 1024 * 1024 * 1024;
-constexpr qint64 kMaximumChecksumBytes = 4096;
 constexpr int kTransferTimeoutMs = 60000;
 
 bool isHttps(const QUrl &url)
 {
     return url.isValid() && url.scheme().compare(QStringLiteral("https"), Qt::CaseInsensitive) == 0;
 }
+
+std::vector<std::uint8_t> readAllBytes(const QString &path, qint64 maximumBytes, bool &okOut)
+{
+    okOut = false;
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly) || file.size() > maximumBytes)
+        return {};
+    const QByteArray data = file.readAll();
+    if (data.size() != file.size())
+        return {};
+    okOut = true;
+    return {reinterpret_cast<const std::uint8_t *>(data.constData()),
+            reinterpret_cast<const std::uint8_t *>(data.constData() + data.size())};
+}
 } // namespace
 
-UpdateDownloader::UpdateDownloader(QString stagingRoot, QObject *parent)
+UpdateDownloader::UpdateDownloader(QString stagingRoot, QString trustStatePath, QObject *parent)
     : QObject(parent)
     , m_network(new QNetworkAccessManager(this))
     , m_stagingRoot(QDir::cleanPath(std::move(stagingRoot)))
+    , m_trustStatePath(QDir::cleanPath(std::move(trustStatePath)))
 {
     removeStalePartials(m_stagingRoot);
 }
@@ -38,14 +59,21 @@ void UpdateDownloader::start(const ReleaseInfo &release)
 
     m_cancelRequested = false;
     m_release = release;
+    m_verified = {};
     m_packagePath.clear();
-    m_checksumPath.clear();
+    m_manifestPath.clear();
+    m_signaturePath.clear();
     if (release.zipName.isEmpty() || QFileInfo(release.zipName).fileName() != release.zipName) {
         fail(QStringLiteral("The update package name is invalid."));
         return;
     }
-    if (!isHttps(QUrl(release.zipUrl)) || !isHttps(QUrl(release.checksumUrl))) {
+    if (!isHttps(QUrl(release.zipUrl)) || !isHttps(QUrl(release.manifestUrl))
+        || !isHttps(QUrl(release.signatureUrl))) {
         fail(QStringLiteral("The update download must use HTTPS."));
+        return;
+    }
+    if (release.manifestUrl.isEmpty() || release.signatureUrl.isEmpty()) {
+        fail(QStringLiteral("This release has no signed manifest, so it cannot be installed."));
         return;
     }
     if (release.zipSize <= 0 || release.zipSize > kMaximumPackageBytes) {
@@ -58,12 +86,15 @@ void UpdateDownloader::start(const ReleaseInfo &release)
     }
 
     m_packagePath = QDir(m_stagingRoot).filePath(release.zipName);
-    m_checksumPath = m_packagePath + QStringLiteral(".sha256");
+    m_manifestPath = QDir(m_stagingRoot).filePath(QStringLiteral("gamehq-release.json"));
+    m_signaturePath = QDir(m_stagingRoot).filePath(QStringLiteral("gamehq-release.sig"));
     removeAttemptFiles();
     qInfo() << "Update download starting: version" << release.version
-            << "asset" << release.zipName << "expected bytes" << release.zipSize;
-    beginTransfer(Transfer::Package, QUrl(release.zipUrl), m_packagePath,
-                  kMaximumPackageBytes, release.zipSize);
+            << "asset" << release.zipName << "advertised bytes" << release.zipSize;
+    // Fetch the authorisation before the payload: a release whose manifest does
+    // not verify must never cost the user a multi-megabyte download.
+    beginTransfer(Transfer::Manifest, QUrl(release.manifestUrl), m_manifestPath,
+                  static_cast<qint64>(release_manifest::kMaximumManifestBytes));
 }
 
 void UpdateDownloader::cancel()
@@ -187,37 +218,138 @@ void UpdateDownloader::finishTransfer()
     if (!publishPartial())
         return;
 
-    if (completed == Transfer::Package) {
-        qInfo() << "Update package downloaded: version" << m_release.version
-                << "asset" << m_release.zipName << "bytes" << completedBytes;
-        beginTransfer(Transfer::Checksum, QUrl(m_release.checksumUrl), m_checksumPath,
-                      kMaximumChecksumBytes);
+    if (completed == Transfer::Manifest) {
+        beginTransfer(Transfer::Signature, QUrl(m_release.signatureUrl), m_signaturePath,
+                      static_cast<qint64>(release_manifest::kMaximumSignatureBytes));
         return;
     }
 
-    QFile checksumFile(m_checksumPath);
-    if (!checksumFile.open(QIODevice::ReadOnly)) {
-        fail(QStringLiteral("GameHQ could not read the downloaded checksum."));
+    if (completed == Transfer::Signature) {
+        if (!acceptVerifiedManifest())
+            return;
+        // Size and destination now come from the signed record, not from the
+        // GitHub asset listing.
+        beginTransfer(Transfer::Package, QUrl(m_release.zipUrl), m_packagePath,
+                      m_verified.artifactSize, m_verified.artifactSize);
         return;
     }
-    QByteArray expectedDigest;
+
     QString error;
-    if (!parseChecksum(checksumFile.readAll(), m_release.zipName, expectedDigest, error)) {
-        fail(error);
+    const QByteArray expectedDigest = QByteArray::fromHex(m_verified.artifactSha256.toLatin1());
+    QByteArray actualDigest;
+    if (expectedDigest.size() != QCryptographicHash::hashLength(QCryptographicHash::Sha256)) {
+        fail(QStringLiteral("The signed manifest artifact hash is malformed."));
         return;
     }
-    QByteArray actualDigest;
     if (!verifyFile(m_packagePath, expectedDigest, actualDigest, error)) {
         fail(error);
+        return;
+    }
+    if (completedBytes != m_verified.artifactSize) {
+        fail(QStringLiteral("The update package length did not match the signed manifest."));
+        return;
+    }
+
+    m_verified.packagePath = m_packagePath;
+    m_verified.packageSha256 = actualDigest;
+    if (!m_verified.isValid()) {
+        fail(QStringLiteral("The verified update evidence is incomplete."));
         return;
     }
 
     m_transfer = Transfer::None;
     Q_EMIT progressChanged(100);
-    qInfo() << "Update package verified: version" << m_release.version
-            << "asset" << m_release.zipName << "bytes" << QFileInfo(m_packagePath).size()
-            << "sha256" << actualDigest.toHex();
-    Q_EMIT ready(m_packagePath, actualDigest);
+    qInfo() << "Update package verified against signed manifest: version" << m_verified.version
+            << "asset" << m_verified.artifactName << "bytes" << completedBytes
+            << "keyId" << m_verified.keyId << "sequence" << m_verified.releaseSequence;
+    Q_EMIT ready(m_verified);
+}
+
+bool UpdateDownloader::acceptVerifiedManifest()
+{
+    bool ok = false;
+    const std::vector<std::uint8_t> manifestBytes = readAllBytes(
+        m_manifestPath, static_cast<qint64>(release_manifest::kMaximumManifestBytes), ok);
+    if (!ok) {
+        fail(QStringLiteral("GameHQ could not read the downloaded release manifest."));
+        return false;
+    }
+    bool signatureOk = false;
+    const std::vector<std::uint8_t> signatureBytes = readAllBytes(
+        m_signaturePath, static_cast<qint64>(release_manifest::kMaximumSignatureBytes), signatureOk);
+    if (!signatureOk) {
+        fail(QStringLiteral("GameHQ could not read the downloaded release signature."));
+        return false;
+    }
+    const std::string signatureText(reinterpret_cast<const char *>(signatureBytes.data()),
+                                    signatureBytes.size());
+
+    // Anti-rollback state lives in the user data root so replacing the program
+    // files can never lower it.
+    release_trust::SequenceState previous;
+    std::string stateError;
+    if (!release_trust::loadSequenceState(std::filesystem::path(m_trustStatePath.toStdWString()),
+                                          previous, stateError)) {
+        // Corrupt state fails closed and needs an explicit recovery rather than
+        // a silent reset to zero.
+        fail(QStringLiteral("GameHQ could not read its release trust state: %1")
+                 .arg(QString::fromStdString(stateError)));
+        return false;
+    }
+
+    release_manifest::AcceptedRelease accepted;
+    std::string error;
+    if (!release_manifest::verifyAndParse(manifestBytes, signatureText, &previous, accepted, error)) {
+        fail(QStringLiteral("This release is not authorised by a trusted signature: %1")
+                 .arg(QString::fromStdString(error)));
+        return false;
+    }
+    if (QString::fromStdString(accepted.manifest.version) != m_release.version) {
+        fail(QStringLiteral("The signed manifest describes a different version than the release."));
+        return false;
+    }
+    const release_manifest::Artifact *update = accepted.manifest.artifactOfKind("update");
+    if (!update) {
+        fail(QStringLiteral("The signed manifest does not authorise an update package."));
+        return false;
+    }
+    // Bind the GitHub asset to the signed record by exact name. A release that
+    // renamed or swapped the archive can no longer be installed.
+    if (QString::fromStdString(update->fileName) != m_release.zipName) {
+        fail(QStringLiteral("The signed manifest names a different update package."));
+        return false;
+    }
+    if (update->size == 0 || update->size > static_cast<std::uint64_t>(kMaximumPackageBytes)) {
+        fail(QStringLiteral("The signed update package size is out of range."));
+        return false;
+    }
+
+    if (!release_trust::storeSequenceStateAtomically(
+            std::filesystem::path(m_trustStatePath.toStdWString()),
+            {accepted.manifest.releaseSequence, accepted.manifestSha256}, stateError)) {
+        fail(QStringLiteral("GameHQ could not record the release trust state: %1")
+                 .arg(QString::fromStdString(stateError)));
+        return false;
+    }
+
+    m_verified.version = QString::fromStdString(accepted.manifest.version);
+    m_verified.manifestPath = m_manifestPath;
+    m_verified.signaturePath = m_signaturePath;
+    m_verified.manifestSha256 = QString::fromStdString(accepted.manifestSha256);
+    m_verified.keyId = QString::fromStdString(accepted.keyId);
+    m_verified.releaseSequence = accepted.manifest.releaseSequence;
+    m_verified.artifactName = QString::fromStdString(update->fileName);
+    m_verified.artifactSize = static_cast<qint64>(update->size);
+    m_verified.artifactSha256 = QString::fromStdString(update->sha256);
+    std::string canonicalSignature;
+    if (!release_manifest::normalizeSignatureText(signatureText, canonicalSignature)) {
+        fail(QStringLiteral("The release signature is not in its canonical form."));
+        return false;
+    }
+    m_verified.signature = QString::fromStdString(canonicalSignature);
+    qInfo() << "Release manifest verified: version" << m_verified.version
+            << "keyId" << m_verified.keyId << "sequence" << m_verified.releaseSequence;
+    return true;
 }
 
 bool UpdateDownloader::parseChecksum(const QByteArray &contents, const QString &expectedFileName,
@@ -299,7 +431,8 @@ void UpdateDownloader::clearReply()
 void UpdateDownloader::removeAttemptFiles()
 {
     const QStringList paths = { m_packagePath, m_packagePath + QStringLiteral(".partial"),
-                                m_checksumPath, m_checksumPath + QStringLiteral(".partial") };
+                                m_manifestPath, m_manifestPath + QStringLiteral(".partial"),
+                                m_signaturePath, m_signaturePath + QStringLiteral(".partial") };
     for (const QString &path : paths) {
         if (!path.isEmpty())
             QFile::remove(path);

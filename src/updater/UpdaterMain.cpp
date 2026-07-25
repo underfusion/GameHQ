@@ -6,6 +6,7 @@
 #include "updater/UpdaterRecovery.h"
 #include "core/UpdaterHandshake.h"
 #include "security/ReleaseTrust.h"
+#include "security/ReleaseManifest.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -174,6 +175,17 @@ int wmain(int argc, wchar_t **argv)
             std::cerr << "ERROR: release trust self-test failed: " << error << '\n';
             return 13;
         }
+        // Report the compiled trust table so release evidence records exactly
+        // which keys this binary would accept (t48 flips this to production).
+        const auto &keys = release_manifest::trustedKeys();
+        if (keys.empty()) {
+            std::cerr << "ERROR: this build trusts no release signing key\n";
+            return 13;
+        }
+        for (const auto &key : keys)
+            std::cout << "TRUSTED KEY " << key.keyId << '\n';
+        std::cout << "TRUST TABLE "
+                  << (release_manifest::trustTableIsTestOnly() ? "test-only" : "production") << '\n';
         std::cout << "GameHQUpdater release trust self-test passed\n";
         return 0;
     }

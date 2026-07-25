@@ -205,6 +205,7 @@ bool App::init()
     m_updates = std::make_unique<UpdateService>(QStringLiteral("underfusion"), QStringLiteral("GameHQ"),
                                                  QStringLiteral(GAMEHQ_VERSION),
                                                  Paths::packageRoot() + QStringLiteral("/.update/downloads"),
+                                                 Paths::dataDir() + QStringLiteral("/release-trust-state.json"),
                                                  nullptr);
     // Update-check policy (docs/updater.md "Discovery"): prime the cached ETag
     // and skip flag from config, persist whatever the service later reports,
@@ -255,12 +256,11 @@ bool App::init()
         m_framePump->prepareForUpdate();
     });
     connect(m_updates.get(), &UpdateService::installApproved, this,
-            [this](const QString &version, const QString &packagePath, const QByteArray &sha256) {
+            [this](const VerifiedUpdate &verified) {
         QString transactionPath;
         QString error;
         if (!UpdateInstaller::prepareTransaction(Paths::packageRoot(), Paths::dataDir(),
-                                                  packagePath, version, sha256,
-                                                  transactionPath, error)) {
+                                                  verified, transactionPath, error)) {
             m_screenshots->cancelUpdatePreparation();
             m_framePump->cancelUpdatePreparation();
             m_updates->cancelPreparation(error);
@@ -287,7 +287,7 @@ bool App::init()
             return;
         }
         m_updates->markInstalling();
-        qInfo() << "Updater helper launched for" << version << "; exiting application";
+        qInfo() << "Updater helper launched for" << verified.version << "; exiting application";
         QTimer::singleShot(0, qApp, &QCoreApplication::quit);
     });
     connect(m_updatePreparationTimer, &QTimer::timeout, this, [this] {

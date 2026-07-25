@@ -92,23 +92,42 @@ identical after any update, successful or rolled back.
    running game or the pad overlay. The compact About / What's New modal exposes
    the same state and primary action without duplicating the detailed controls
    on Settings -> About.
-2. **Download** — the update zip and its `.sha256` are streamed to a
-   `.partial` file in a staging directory, then atomically published and
-   verified against the checksum. Downloads accept HTTPS only (including
-   redirects), enforce the release asset size and a 2 GiB package ceiling,
-   and remove incomplete files on cancellation or the next startup. The
-   checksum file must contain one SHA-256 entry naming the expected package;
-   any malformed, mismatched or corrupted download is deleted before it can
-   become installable. A package downloaded earlier must be hashed again and
-   its release revalidated immediately before installation. See Stage 2 below.
+   Discovery only locates candidate URLs; it never establishes trust. A release
+   that does not publish both `gamehq-release.json` and `gamehq-release.sig`
+   is skipped, because nothing could authorise it.
+2. **Download** — the signed manifest and its detached signature are fetched
+   *first* and verified with Ed25519 over their exact downloaded bytes
+   (`src/security/ReleaseManifest.cpp`). The manifest's own `keyId` never
+   selects a key: GameHQ tries the keys compiled into the binary, and only
+   after a signature verifies does it parse the JSON and confirm the manifest
+   names the same key. Product, schema, version, release sequence, key
+   activation window, rollback and same-sequence equivocation are all enforced,
+   and the accepted sequence is stored atomically in the user data root
+   (`release-trust-state.json`), outside the replaceable program files.
+   Only then is the archive the manifest authorises streamed to a `.partial`
+   file, published atomically, and accepted solely when its length and SHA-256
+   equal the signed artifact record. Downloads accept HTTPS only (including
+   redirects), enforce a 2 GiB package ceiling, and remove incomplete files on
+   cancellation or the next startup. The sibling `.sha256` asset is a human
+   convenience for manual verification and is never a trust root: replacing the
+   archive and the checksum together no longer produces an installable update.
+   A package downloaded earlier must be hashed again and its release
+   revalidated immediately before installation. See Stage 2 below.
 3. **Quiescence** — the app confirms no game is currently being recorded and
    no export is finalizing before entering maintenance mode. See Stage 3.
 4. **Handoff** — the app writes a transaction file (including its own process
-   id as `callerPid`), launches `GameHQUpdater.exe` from the install root, and
+   id as `callerPid`, plus the manifest path, manifest hash, signature, key id,
+   release sequence and authorised artifact name/size/hash), launches
+   `GameHQUpdater.exe` from the install root, and
    waits on a named READY event the helper signals once it has validated the
    transaction. Only then does the app exit; if the helper never becomes ready
    or exits early, the app cancels the update and stays running.
-5. **Swap** — the helper waits for the `callerPid` process to actually exit
+5. **Swap** — the helper independently re-verifies the signed manifest on disk
+   before it touches the archive (`updater::verifyReleaseAuthorisation`): the
+   signature must still verify with a compiled key, the manifest and signature
+   must match the transaction, and the manifest must authorise exactly this
+   version, artifact name, size and hash. It then waits for the `callerPid`
+   process to actually exit
    (bounded wait; a timeout aborts before any file is touched), extracts and
    validates the package in staging, backs up the current program-owned files,
    installs the new ones, and restarts the app in post-update validation mode.

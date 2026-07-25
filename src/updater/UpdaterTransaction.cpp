@@ -1,7 +1,10 @@
 #include "updater/UpdaterTransaction.h"
 
+#include "security/ReleaseManifest.h"
+
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <fstream>
 #include <map>
 #include <regex>
@@ -311,8 +314,29 @@ bool loadAndValidateTransaction(const std::filesystem::path &transactionPath,
         || !getPath(values, "healthTokenPath", out.healthTokenPath, error)
         || !getPath(values, "dataDir", out.dataDir, error)
         || !getPath(values, "dataSnapshotDir", out.dataSnapshotDir, error)
+        || !getPath(values, "manifestPath", out.manifestPath, error)
+        || !getPath(values, "signaturePath", out.signaturePath, error)
+        || !getString(values, "manifestSha256", out.manifestSha256, error)
+        || !getString(values, "releaseSignature", out.releaseSignature, error)
+        || !getString(values, "releaseKeyId", out.releaseKeyId, error)
+        || !getString(values, "artifactName", out.artifactName, error)
+        || !getString(values, "artifactSha256", out.artifactSha256, error)
         || !getString(values, "phase", out.phase, error))
         return false;
+    const auto releaseSequence = values.find("releaseSequence");
+    if (releaseSequence == values.end() || !std::holds_alternative<long long>(releaseSequence->second)
+        || std::get<long long>(releaseSequence->second) <= 0) {
+        error = "missing or invalid transaction field: releaseSequence";
+        return false;
+    }
+    out.releaseSequence = static_cast<unsigned long long>(std::get<long long>(releaseSequence->second));
+    const auto artifactSize = values.find("artifactSize");
+    if (artifactSize == values.end() || !std::holds_alternative<long long>(artifactSize->second)
+        || std::get<long long>(artifactSize->second) <= 0) {
+        error = "missing or invalid transaction field: artifactSize";
+        return false;
+    }
+    out.artifactSize = std::get<long long>(artifactSize->second);
     const auto callerPid = values.find("callerPid");
     if (callerPid == values.end() || !std::holds_alternative<long long>(callerPid->second)
         || std::get<long long>(callerPid->second) <= 0) {
@@ -373,6 +397,103 @@ bool loadAndValidateTransaction(const std::filesystem::path &transactionPath,
     }
     if (!std::filesystem::is_regular_file(out.packagePath)) {
         error = "verified update package is missing";
+        return false;
+    }
+    if (!std::regex_match(out.manifestSha256, std::regex(R"([0-9a-f]{64})"))
+        || !std::regex_match(out.artifactSha256, std::regex(R"([0-9a-f]{64})"))) {
+        error = "transaction contains an invalid release manifest digest";
+        return false;
+    }
+    if (out.artifactName != expectedName) {
+        error = "transaction artifact name does not match the target version";
+        return false;
+    }
+    for (const auto &candidate : { out.manifestPath, out.signaturePath }) {
+        if (!pathWithin(out.packageRoot, candidate, false)) {
+            error = "release manifest path escapes the package root: " + pathToUtf8(candidate);
+            return false;
+        }
+        if (!std::filesystem::is_regular_file(candidate)) {
+            error = "release manifest evidence is missing: " + pathToUtf8(candidate);
+            return false;
+        }
+    }
+    // The decisive check: the manifest on disk must still verify and must still
+    // authorise exactly this package.
+    if (!verifyReleaseAuthorisation(out, error))
+        return false;
+    return true;
+}
+
+bool verifyReleaseAuthorisation(const Transaction &tx, std::string &error)
+{
+    const auto readFile = [](const std::filesystem::path &path, std::size_t limit,
+                             std::vector<std::uint8_t> &out) {
+        std::error_code ec;
+        const auto size = std::filesystem::file_size(path, ec);
+        if (ec || size == 0 || size > limit)
+            return false;
+        std::ifstream input(path, std::ios::binary);
+        if (!input)
+            return false;
+        out.resize(static_cast<std::size_t>(size));
+        input.read(reinterpret_cast<char *>(out.data()), static_cast<std::streamsize>(size));
+        return static_cast<std::size_t>(input.gcount()) == out.size();
+    };
+
+    std::vector<std::uint8_t> manifestBytes;
+    if (!readFile(tx.manifestPath, release_manifest::kMaximumManifestBytes, manifestBytes)) {
+        error = "could not read the release manifest";
+        return false;
+    }
+    std::vector<std::uint8_t> signatureBytes;
+    if (!readFile(tx.signaturePath, release_manifest::kMaximumSignatureBytes, signatureBytes)) {
+        error = "could not read the release signature";
+        return false;
+    }
+    // The transaction's own copy of the signature must agree with the file, so
+    // neither can be swapped on its own.
+    const std::string signatureText(reinterpret_cast<const char *>(signatureBytes.data()),
+                                    signatureBytes.size());
+    std::string canonicalFromFile;
+    if (!release_manifest::normalizeSignatureText(signatureText, canonicalFromFile)
+        || canonicalFromFile != tx.releaseSignature) {
+        error = "the release signature does not match the transaction";
+        return false;
+    }
+    if (release_trust::sha256Hex(manifestBytes.data(), manifestBytes.size()) != tx.manifestSha256) {
+        error = "the release manifest does not match the transaction";
+        return false;
+    }
+
+    // Stateless: the helper must never advance the anti-rollback counter, only
+    // the app that actually accepted the release does that.
+    release_manifest::AcceptedRelease accepted;
+    if (!release_manifest::verifyAndParse(manifestBytes, signatureText, nullptr, accepted, error))
+        return false;
+    if (accepted.keyId != tx.releaseKeyId || accepted.manifest.releaseSequence != tx.releaseSequence) {
+        error = "the release manifest was signed by a different key or sequence";
+        return false;
+    }
+    if (accepted.manifest.version != tx.expectedVersion) {
+        error = "the release manifest authorises a different version";
+        return false;
+    }
+    const release_manifest::Artifact *update = accepted.manifest.artifactOfKind("update");
+    if (!update) {
+        error = "the release manifest authorises no update package";
+        return false;
+    }
+    if (update->fileName != tx.artifactName
+        || static_cast<long long>(update->size) != tx.artifactSize
+        || update->sha256 != tx.artifactSha256 || update->sha256 != tx.expectedSha256) {
+        error = "the release manifest does not authorise this package";
+        return false;
+    }
+    std::error_code ec;
+    const auto actualSize = std::filesystem::file_size(tx.packagePath, ec);
+    if (ec || static_cast<long long>(actualSize) != tx.artifactSize) {
+        error = "the staged package length does not match the signed manifest";
         return false;
     }
     return true;

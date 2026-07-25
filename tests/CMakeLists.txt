@@ -64,6 +64,19 @@ target_compile_definitions(tst_releasetrust PRIVATE
     GAMEHQ_RELEASE_VECTOR="${CMAKE_SOURCE_DIR}/tests/fixtures/release-trust/gamehq-test-vector.json")
 add_dependencies(tst_releasetrust GameHQUpdater)
 
+# TEST ONLY signing helper. Kept out of gamehq_release_trust so no shipped
+# binary can ever produce a release signature.
+add_library(gamehq_test_release_signer STATIC support/TestReleaseSigner.cpp)
+target_include_directories(gamehq_test_release_signer
+    PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/support"
+    PRIVATE "${monocypher_SOURCE_DIR}/src" "${monocypher_SOURCE_DIR}/src/optional")
+target_link_libraries(gamehq_test_release_signer PUBLIC gamehq_release_trust)
+
+gamehq_add_test(tst_releasemanifest tst_releasemanifest.cpp)
+target_link_libraries(tst_releasemanifest PRIVATE gamehq_release_trust)
+target_compile_definitions(tst_releasemanifest PRIVATE
+    GAMEHQ_RELEASE_VECTOR="${CMAKE_SOURCE_DIR}/tests/fixtures/release-trust/gamehq-test-vector.json")
+
 gamehq_add_test(tst_updatemaintenance
     tst_updatemaintenance.cpp
     "${CMAKE_SOURCE_DIR}/src/core/UpdateMaintenance.cpp")
@@ -160,7 +173,7 @@ target_link_libraries(tst_bindingeditor PRIVATE Qt6::Sql Qt6::Gui Qt6::Widgets)
 gamehq_add_test(tst_updatedownloader
     tst_updatedownloader.cpp
     "${CMAKE_SOURCE_DIR}/src/updates/UpdateDownloader.cpp")
-target_link_libraries(tst_updatedownloader PRIVATE Qt6::Network)
+target_link_libraries(tst_updatedownloader PRIVATE Qt6::Network gamehq_test_release_signer)
 
 gamehq_add_test(tst_updatepreflight
     tst_updatepreflight.cpp
@@ -191,7 +204,7 @@ gamehq_add_test(tst_updateinstaller
     "${CMAKE_SOURCE_DIR}/src/updates/UpdateDownloader.cpp"
     "${CMAKE_SOURCE_DIR}/src/updater/UpdaterTransaction.cpp"
     "${CMAKE_SOURCE_DIR}/src/core/UpdaterHandshake.cpp")
-target_link_libraries(tst_updateinstaller PRIVATE Qt6::Network)
+target_link_libraries(tst_updateinstaller PRIVATE Qt6::Network gamehq_test_release_signer)
 
 gamehq_add_test(tst_updatertransaction
     tst_updatertransaction.cpp
@@ -210,4 +223,4 @@ target_compile_definitions(tst_updatertransaction PRIVATE
     HEALTH_FIXTURE_EXE="$<TARGET_FILE:updater_health_fixture>"
     GAMEHQ_UPDATER_VERSION="${GAMEHQ_VERSION_FULL}")
 add_dependencies(tst_updatertransaction GameHQUpdater updater_health_fixture)
-target_link_libraries(tst_updatertransaction PRIVATE miniz bcrypt Qt6::Sql)
+target_link_libraries(tst_updatertransaction PRIVATE miniz bcrypt Qt6::Sql gamehq_test_release_signer)

@@ -17,22 +17,41 @@
 namespace UpdateInstaller
 {
 bool prepareTransaction(const QString &packageRoot, const QString &dataDir,
-                        const QString &packagePath, const QString &version,
-                        const QByteArray &sha256, QString &transactionPath,
+                        const VerifiedUpdate &verified, QString &transactionPath,
                         QString &error)
 {
     error.clear();
+    if (!verified.isValid()) {
+        error = QStringLiteral("The verified update metadata is incomplete.");
+        return false;
+    }
+    const QString version = verified.version;
+    const QByteArray sha256 = verified.packageSha256;
     const QString root = QDir::cleanPath(QFileInfo(packageRoot).absoluteFilePath());
-    const QString package = QDir::cleanPath(QFileInfo(packagePath).absoluteFilePath());
+    const QString package = QDir::cleanPath(QFileInfo(verified.packagePath).absoluteFilePath());
     const QString downloads = QDir(root).filePath(QStringLiteral(".update/downloads"));
-    const QString relative = QDir(downloads).relativeFilePath(package);
-    if (relative == QStringLiteral("..") || relative.startsWith(QStringLiteral("../"))) {
+    const auto insideDownloads = [&downloads](const QString &candidate) {
+        const QString relative = QDir(downloads).relativeFilePath(
+            QDir::cleanPath(QFileInfo(candidate).absoluteFilePath()));
+        return relative != QStringLiteral("..") && !relative.startsWith(QStringLiteral("../"));
+    };
+    // The manifest and signature travel with the package so the helper can
+    // repeat the whole verification without trusting anything this process
+    // wrote into the transaction.
+    const QString manifest = QDir::cleanPath(QFileInfo(verified.manifestPath).absoluteFilePath());
+    const QString signature = QDir::cleanPath(QFileInfo(verified.signaturePath).absoluteFilePath());
+    if (!insideDownloads(package) || !insideDownloads(manifest) || !insideDownloads(signature)) {
         error = QStringLiteral("The verified update package is outside GameHQ's staging directory.");
         return false;
     }
     if (!QRegularExpression(QStringLiteral(R"(^\d+\.\d+\.\d+$)")).match(version).hasMatch()
         || sha256.size() != QCryptographicHash::hashLength(QCryptographicHash::Sha256)) {
         error = QStringLiteral("The verified update metadata is invalid.");
+        return false;
+    }
+    if (QFileInfo(package).fileName() != verified.artifactName
+        || QFileInfo(package).size() != verified.artifactSize) {
+        error = QStringLiteral("The staged package no longer matches the signed manifest.");
         return false;
     }
     QByteArray actual;
@@ -61,6 +80,15 @@ bool prepareTransaction(const QString &packageRoot, const QString &dataDir,
         { QStringLiteral("dataDir"), QDir::toNativeSeparators(QFileInfo(dataDir).absoluteFilePath()) },
         { QStringLiteral("dataSnapshotDir"), QDir::toNativeSeparators(QDir(update).filePath(QStringLiteral("data-snapshot"))) },
         { QStringLiteral("callerPid"), static_cast<qint64>(QCoreApplication::applicationPid()) },
+        { QStringLiteral("manifestPath"), QDir::toNativeSeparators(manifest) },
+        { QStringLiteral("signaturePath"), QDir::toNativeSeparators(signature) },
+        { QStringLiteral("manifestSha256"), verified.manifestSha256 },
+        { QStringLiteral("releaseSignature"), verified.signature },
+        { QStringLiteral("releaseKeyId"), verified.keyId },
+        { QStringLiteral("releaseSequence"), static_cast<qint64>(verified.releaseSequence) },
+        { QStringLiteral("artifactName"), verified.artifactName },
+        { QStringLiteral("artifactSize"), verified.artifactSize },
+        { QStringLiteral("artifactSha256"), verified.artifactSha256 },
         { QStringLiteral("phase"), QStringLiteral("download_verified") }
     };
     QSaveFile output(transactionPath);
