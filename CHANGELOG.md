@@ -4,6 +4,27 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.30] - 2026-07-25
+
+### Security
+
+- The updater now waits on the exact application process that authorised the
+  update, identified by process id *and* process creation time. Windows reuses
+  process ids, so a id-only wait could return immediately for an unrelated
+  process while GameHQ was still running and holding files.
+- The helper opens and verifies that process before it signals READY, so the
+  app only exits once a meaningful handle is already held.
+- Only an observed clean exit allows the helper to touch files. A timeout, an
+  access failure, a reused process id, an abandoned wait or a failed wait all
+  abort before any snapshot, extraction or swap.
+- A handoff failure now releases maintenance mode, so a failure that changed no
+  file can no longer leave Setup and the next launch blocked.
+
+### Fixed
+
+- Update transaction validation no longer reports a stale error message from a
+  previous validation attempt.
+
 ## [0.6.29] - 2026-07-25
 
 ### Security

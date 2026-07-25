@@ -276,6 +276,10 @@ std::string pathToUtf8(const std::filesystem::path &path)
 bool loadAndValidateTransaction(const std::filesystem::path &transactionPath,
                                 Transaction &out, std::string &error)
 {
+    // Several later checks only fill in a default reason when error is still
+    // empty, so a message left over from a previous call would be reported as
+    // this call's failure.
+    error.clear();
     std::ifstream input(transactionPath, std::ios::binary);
     if (!input) {
         error = "could not open update transaction";
@@ -298,11 +302,11 @@ bool loadAndValidateTransaction(const std::filesystem::path &transactionPath,
         return false;
     const auto schema = values.find("schemaVersion");
     if (schema == values.end() || !std::holds_alternative<long long>(schema->second)
-        || std::get<long long>(schema->second) != 1) {
+        || (std::get<long long>(schema->second) != 1 && std::get<long long>(schema->second) != 2)) {
         error = "unsupported update transaction schema";
         return false;
     }
-    out.schemaVersion = 1;
+    out.schemaVersion = static_cast<int>(std::get<long long>(schema->second));
     if (!getString(values, "productId", out.productId, error)
         || !getString(values, "expectedVersion", out.expectedVersion, error)
         || !getString(values, "expectedSha256", out.expectedSha256, error)
@@ -344,6 +348,21 @@ bool loadAndValidateTransaction(const std::filesystem::path &transactionPath,
         return false;
     }
     out.callerPid = std::get<long long>(callerPid->second);
+    // Schema 2 pins the handle to one exact process. Schema 1 predates that and
+    // is refused by every mutating mode in UpdaterMain.
+    const auto creationTime = values.find("callerCreationTime");
+    if (out.schemaVersion >= 2) {
+        if (creationTime == values.end() || !std::holds_alternative<long long>(creationTime->second)
+            || std::get<long long>(creationTime->second) <= 0) {
+            error = "missing or invalid transaction field: callerCreationTime";
+            return false;
+        }
+        out.callerCreationTime =
+            static_cast<unsigned long long>(std::get<long long>(creationTime->second));
+    } else if (creationTime != values.end()) {
+        error = "schema 1 transaction must not carry a caller creation time";
+        return false;
+    }
 
     if (out.productId != "underfusion.gamehq") {
         error = "transaction product does not match GameHQ";
@@ -423,6 +442,55 @@ bool loadAndValidateTransaction(const std::filesystem::path &transactionPath,
     if (!verifyReleaseAuthorisation(out, error))
         return false;
     return true;
+}
+
+void *openAuthorisingCaller(const Transaction &tx, bool &alreadyExited, std::string &error)
+{
+    alreadyExited = false;
+    if (tx.schemaVersion < 2 || tx.callerCreationTime == 0) {
+        error = "this transaction does not identify its caller precisely enough";
+        return nullptr;
+    }
+    if (tx.callerPid <= 0 || tx.callerPid > 0xffffffffLL) {
+        error = "transaction caller process id is out of range";
+        return nullptr;
+    }
+    // QUERY_LIMITED_INFORMATION is what GetProcessTimes needs and is the least
+    // privilege that still proves identity.
+    HANDLE process = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE,
+                                 static_cast<DWORD>(tx.callerPid));
+    if (!process) {
+        const DWORD lastError = GetLastError();
+        if (lastError == ERROR_INVALID_PARAMETER) {
+            // No process with that id exists any more. The caller cannot still
+            // be holding files, so this is a normal early-exit, not a failure.
+            alreadyExited = true;
+            return nullptr;
+        }
+        error = "could not open the application that authorised this update (error "
+            + std::to_string(lastError) + ")";
+        return nullptr;
+    }
+
+    FILETIME created{};
+    FILETIME exited{};
+    FILETIME kernel{};
+    FILETIME user{};
+    if (!GetProcessTimes(process, &created, &exited, &kernel, &user)) {
+        CloseHandle(process);
+        error = "could not read the authorising process creation time";
+        return nullptr;
+    }
+    const unsigned long long actual = (static_cast<unsigned long long>(created.dwHighDateTime) << 32)
+        | created.dwLowDateTime;
+    if (actual != tx.callerCreationTime) {
+        // The id was reused by an unrelated process; waiting on it would be
+        // meaningless and could let the real caller keep running.
+        CloseHandle(process);
+        error = "the authorising application is gone and its process id was reused";
+        return nullptr;
+    }
+    return process;
 }
 
 bool verifyReleaseAuthorisation(const Transaction &tx, std::string &error)

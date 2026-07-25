@@ -12,6 +12,7 @@
 #include <QtTest>
 #include <QUuid>
 #include <miniz.h>
+#include "updater/UpdaterTransaction.h"
 #include "updater/UpdaterDataSnapshot.h"
 #include "updater/UpdaterSwap.h"
 #include "updater/UpdaterHealth.h"
@@ -42,6 +43,7 @@ private Q_SLOTS:
     void rejectsPackageRequiringNewerUpdater();
     void promotesOnlySelfTestingPendingHelper();
     void completeApplyCleansStaleStagingAndPreservesUserData();
+    void bindsHandoffToTheExactAuthorisingProcess();
 
 private:
     static QString writeFixture(const QString &root, const QString &backupDir);
@@ -52,6 +54,22 @@ private:
     static bool syncTransactionHash(const QString &transaction, const QString &package);
     static QProcess *runHelper(const QString &mode, const QString &transaction, QObject *parent);
 };
+
+namespace
+{
+// The helper now pins its wait to one exact process, so fixtures must carry a
+// creation time that really belongs to the process id they name.
+quint64 currentProcessCreationTime()
+{
+    FILETIME created{};
+    FILETIME exited{};
+    FILETIME kernel{};
+    FILETIME user{};
+    if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user))
+        return 0;
+    return (static_cast<quint64>(created.dwHighDateTime) << 32) | created.dwLowDateTime;
+}
+} // namespace
 
 QString UpdaterTransactionTest::writeFixture(const QString &root, const QString &backupDir)
 {
@@ -67,7 +85,7 @@ QString UpdaterTransactionTest::writeFixture(const QString &root, const QString 
     package.close();
 
     QJsonObject object {
-        { QStringLiteral("schemaVersion"), 1 },
+        { QStringLiteral("schemaVersion"), 2 },
         { QStringLiteral("productId"), QStringLiteral("underfusion.gamehq") },
         { QStringLiteral("expectedVersion"), QStringLiteral("9.8.7") },
         { QStringLiteral("packageRoot"), QDir::toNativeSeparators(root) },
@@ -79,6 +97,7 @@ QString UpdaterTransactionTest::writeFixture(const QString &root, const QString 
         { QStringLiteral("dataDir"), QDir::toNativeSeparators(QDir(root).filePath(QStringLiteral("gamehq-data"))) },
         { QStringLiteral("dataSnapshotDir"), QDir::toNativeSeparators(QDir(updateDir).filePath(QStringLiteral("data-snapshot"))) },
         { QStringLiteral("callerPid"), static_cast<qint64>(QCoreApplication::applicationPid()) },
+        { QStringLiteral("callerCreationTime"), static_cast<qint64>(currentProcessCreationTime()) },
         { QStringLiteral("phase"), QStringLiteral("download_verified") }
     };
     if (!refreshEvidence(packagePath, object))
@@ -730,6 +749,94 @@ void UpdaterTransactionTest::completeApplyCleansStaleStagingAndPreservesUserData
     QCOMPARE(read(QDir(update).filePath(QStringLiteral("transaction.phase"))).trimmed(), QByteArray("healthy"));
     QVERIFY(!QFileInfo::exists(QDir(update).filePath(QStringLiteral("maintenance.lock"))));
     QCOMPARE(read(QDir(backup).filePath(QStringLiteral("GameHQ.exe"))), QByteArray("old root"));
+}
+
+
+void UpdaterTransactionTest::bindsHandoffToTheExactAuthorisingProcess()
+{
+    QTemporaryDir dir(QDir::current().filePath(QStringLiteral("tst-updater-handoff-XXXXXX")));
+    QVERIFY(dir.isValid());
+    const QString update = QDir(dir.path()).filePath(QStringLiteral(".update"));
+    const QString transactionPath = writeFixture(
+        dir.path(), QDir(update).filePath(QStringLiteral("backup")));
+    QVERIFY(!transactionPath.isEmpty());
+
+    const auto rewrite = [&transactionPath](auto mutate) {
+        QFile file(transactionPath);
+        if (!file.open(QIODevice::ReadOnly))
+            return false;
+        QJsonObject object = QJsonDocument::fromJson(file.readAll()).object();
+        file.close();
+        mutate(object);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            return false;
+        return file.write(QJsonDocument(object).toJson(QJsonDocument::Compact)) > 0;
+    };
+    const auto load = [&transactionPath](updater::Transaction &tx, std::string &error) {
+        return updater::loadAndValidateTransaction(transactionPath.toStdWString(), tx, error);
+    };
+
+    // The fixture names this process with its real creation time, so the helper
+    // can open exactly it.
+    updater::Transaction tx;
+    std::string error;
+    QVERIFY2(load(tx, error), error.c_str());
+    QCOMPARE(tx.schemaVersion, 2);
+    QVERIFY(tx.callerCreationTime != 0);
+    bool alreadyExited = false;
+    void *handle = updater::openAuthorisingCaller(tx, alreadyExited, error);
+    QVERIFY2(handle != nullptr, error.c_str());
+    QVERIFY(!alreadyExited);
+    // The handle must be the live caller, so waiting on it times out.
+    QCOMPARE(WaitForSingleObject(handle, 0), static_cast<DWORD>(WAIT_TIMEOUT));
+    CloseHandle(handle);
+
+    // Same process id, wrong creation time: this is the PID-reuse case, and it
+    // must never resolve to a handle.
+    QVERIFY(rewrite([&](QJsonObject &object) {
+        object.insert(QStringLiteral("callerCreationTime"),
+                      static_cast<qint64>(tx.callerCreationTime - 1));
+    }));
+    updater::Transaction reused;
+    QVERIFY(load(reused, error));
+    QVERIFY(updater::openAuthorisingCaller(reused, alreadyExited, error) == nullptr);
+    QVERIFY(!alreadyExited);
+    QVERIFY(!error.empty());
+
+    // A process id that cannot exist is reported as an exited caller, not as a
+    // failure: there is nothing left that could hold files open.
+    QVERIFY(rewrite([&](QJsonObject &object) {
+        object.insert(QStringLiteral("callerCreationTime"),
+                      static_cast<qint64>(tx.callerCreationTime));
+        object.insert(QStringLiteral("callerPid"), static_cast<qint64>(0x7ffffff0));
+    }));
+    updater::Transaction gone;
+    error.clear();
+    QVERIFY2(load(gone, error), error.c_str());
+    QVERIFY(updater::openAuthorisingCaller(gone, alreadyExited, error) == nullptr);
+    QVERIFY(alreadyExited);
+
+    // A missing or zero creation time is refused outright at schema 2.
+    QVERIFY(rewrite([](QJsonObject &object) {
+        object.remove(QStringLiteral("callerCreationTime"));
+    }));
+    updater::Transaction missing;
+    QVERIFY(!load(missing, error));
+
+    // Schema 1 still loads, but no mutating mode may run it.
+    QVERIFY(rewrite([](QJsonObject &object) {
+        object.remove(QStringLiteral("callerCreationTime"));
+        object.insert(QStringLiteral("schemaVersion"), 1);
+    }));
+    updater::Transaction legacy;
+    QVERIFY2(load(legacy, error), error.c_str());
+    QCOMPARE(legacy.schemaVersion, 1);
+    QVERIFY(updater::openAuthorisingCaller(legacy, alreadyExited, error) == nullptr);
+    QScopedPointer<QProcess> staged(runHelper(QStringLiteral("--stage"), transactionPath, this));
+    QVERIFY(staged->waitForFinished(10000));
+    QVERIFY(staged->exitCode() != 0);
+    QVERIFY(staged->readAllStandardError().contains("run the update again"));
+    QVERIFY(!QFileInfo::exists(QDir(update).filePath(QStringLiteral("staging"))));
 }
 
 QTEST_GUILESS_MAIN(UpdaterTransactionTest)

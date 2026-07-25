@@ -115,20 +115,28 @@ identical after any update, successful or rolled back.
    revalidated immediately before installation. See Stage 2 below.
 3. **Quiescence** — the app confirms no game is currently being recorded and
    no export is finalizing before entering maintenance mode. See Stage 3.
-4. **Handoff** — the app writes a transaction file (including its own process
-   id as `callerPid`, plus the manifest path, manifest hash, signature, key id,
-   release sequence and authorised artifact name/size/hash), launches
-   `GameHQUpdater.exe` from the install root, and
-   waits on a named READY event the helper signals once it has validated the
-   transaction. Only then does the app exit; if the helper never becomes ready
-   or exits early, the app cancels the update and stays running.
+4. **Handoff** — the app writes a schema 2 transaction file identifying itself
+   by `callerPid` *and* `callerCreationTime`, plus the manifest path, manifest
+   hash, signature, key id, release sequence and authorised artifact
+   name/size/hash. A process id alone is not an identity: Windows reuses ids,
+   so an id-only wait can return instantly for an unrelated process while
+   GameHQ is still running and holding files. The app then launches
+   `GameHQUpdater.exe` from the install root and waits on a named READY event.
+   The helper validates the transaction *and opens the exact authorising
+   process*, comparing its creation time, before it signals READY, so the app
+   only exits once the helper already holds a handle worth waiting on. If the
+   helper never becomes ready or exits early, the app cancels the update and
+   stays running. Any handoff failure releases maintenance mode, because no
+   file has been touched at that point.
 5. **Swap** — the helper independently re-verifies the signed manifest on disk
    before it touches the archive (`updater::verifyReleaseAuthorisation`): the
    signature must still verify with a compiled key, the manifest and signature
    must match the transaction, and the manifest must authorise exactly this
-   version, artifact name, size and hash. It then waits for the `callerPid`
-   process to actually exit
-   (bounded wait; a timeout aborts before any file is touched), extracts and
+   version, artifact name, size and hash. It then waits on the retained handle
+   for that exact process. Only `WAIT_OBJECT_0` — an observed clean exit —
+   permits mutation; a timeout, an access failure, a reused process id, an
+   abandoned wait and a failed wait all abort before any file is touched. It
+   then extracts and
    validates the package in staging, backs up the current program-owned files,
    installs the new ones, and restarts the app in post-update validation mode.
 6. **Health check** — the new process must reach a running, initialized state

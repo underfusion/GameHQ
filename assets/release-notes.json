@@ -1,12 +1,14 @@
 {
-  "version": "0.6.29",
+  "version": "0.6.30",
   "sections": [
     {
       "title": "Security",
       "items": [
         "Updates now install only when a signed release manifest authorises them.",
+        "The updater waits for the exact GameHQ process that started the update, never a lookalike.",
         "An update archive is accepted only if its name, size, and checksum match that signature.",
-        "The updater re-checks the signature itself before it replaces a single file."
+        "The updater re-checks the signature itself before it replaces a single file.",
+        "A failed handoff now changes nothing and leaves GameHQ ready to try again."
       ]
     },
     {

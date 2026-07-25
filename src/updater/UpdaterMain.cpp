@@ -5,6 +5,7 @@
 #include "updater/UpdaterHealth.h"
 #include "updater/UpdaterRecovery.h"
 #include "core/UpdaterHandshake.h"
+#include "core/UpdateMaintenance.h"
 #include "security/ReleaseTrust.h"
 #include "security/ReleaseManifest.h"
 
@@ -92,6 +93,11 @@ int runTransaction(const std::filesystem::path &transactionPath, const std::wstr
     std::string error;
     if (!updater::loadAndValidateTransaction(transactionPath, transaction, error))
         return failWith(error, 2);
+    // Schema 1 identified the caller by process id alone. Recovery only
+    // restores what is already on disk and needs no caller identity, but every
+    // mode that installs or moves files does.
+    if (transaction.schemaVersion < 2 && mode != L"--dry-run" && mode != L"--recover")
+        return failWith("this update was prepared by an older GameHQ; run the update again", 2);
     if (mode != L"--dry-run")
         note("GameHQUpdater " GAMEHQ_UPDATER_VERSION " starting mode "
              + std::string(mode.begin(), mode.end()) + " for version "
@@ -130,19 +136,42 @@ int runTransaction(const std::filesystem::path &transactionPath, const std::wstr
         return 0;
     }
     if (mode == L"--apply") {
-        // Handshake with the caller (docs/updater.md): confirm the transaction
-        // validated so the app may exit, then wait for that process to be gone
-        // before any file is touched. No mutation has happened yet, so a
-        // timeout aborts without needing recovery.
+        // Handshake with the caller (docs/updater.md). Order matters: the exact
+        // authorising process is opened and its identity confirmed BEFORE READY
+        // is signalled, so the app only exits once the helper is already
+        // holding a handle it can meaningfully wait on. Nothing has been
+        // mutated yet, so every failure below aborts without needing recovery
+        // and must release maintenance: leaving the marker behind would block
+        // Setup and the next launch over a failure that changed no file.
+        const auto failHandoff = [&](const std::string &reason) {
+            maintenance::finish(transaction.packageRoot);
+            return failWith(reason + " (no files were changed)", 12);
+        };
+
+        bool callerAlreadyExited = false;
+        UniqueHandle caller(updater::openAuthorisingCaller(transaction, callerAlreadyExited, error));
+        if (!caller && !callerAlreadyExited)
+            return failHandoff(error);
+
         UniqueHandle ready(CreateEventW(nullptr, TRUE, FALSE,
                                         handshake::readyEventNameFor(transactionPath).c_str()));
-        if (ready)
-            SetEvent(ready.get());
-        if (transaction.callerPid > 0) {
-            UniqueHandle caller(OpenProcess(SYNCHRONIZE, FALSE,
-                                            static_cast<DWORD>(transaction.callerPid)));
-            if (caller && WaitForSingleObject(caller.get(), 60000) == WAIT_TIMEOUT)
-                return failWith("the running application did not exit before the update", 12);
+        if (!ready)
+            return failHandoff("could not open the updater handshake event");
+        if (!SetEvent(ready.get()))
+            return failHandoff("could not signal the updater handshake event");
+
+        if (caller) {
+            // Only a clean, observed exit permits mutation. A timeout, an
+            // abandoned wait or a failed wait all leave the old process
+            // possibly alive and holding files.
+            const DWORD waited = WaitForSingleObject(caller.get(), 60000);
+            if (waited != WAIT_OBJECT_0) {
+                return failHandoff(waited == WAIT_TIMEOUT
+                    ? "the running application did not exit before the update"
+                    : waited == WAIT_ABANDONED
+                        ? "the wait for the running application was abandoned"
+                        : "the wait for the running application failed");
+            }
         }
         if (!updater::applyUpdate(transaction, 30000, error))
             return failWith(error, 10);

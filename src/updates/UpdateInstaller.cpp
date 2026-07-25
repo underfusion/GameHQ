@@ -12,6 +12,8 @@
 #include <QSaveFile>
 #include <QRegularExpression>
 
+#include <limits>
+
 #include <windows.h>
 
 namespace UpdateInstaller
@@ -65,9 +67,27 @@ bool prepareTransaction(const QString &packageRoot, const QString &dataDir,
         error = QStringLiteral("GameHQ could not create the update transaction directory.");
         return false;
     }
+    // Pin the transaction to this exact process, not just to its id: Windows
+    // reuses process ids, so the helper needs the creation time to prove it is
+    // waiting on the application that actually authorised the update.
+    FILETIME created{};
+    FILETIME exited{};
+    FILETIME kernel{};
+    FILETIME user{};
+    if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user)) {
+        error = QStringLiteral("GameHQ could not identify its own process for the update.");
+        return false;
+    }
+    const quint64 creationTime = (static_cast<quint64>(created.dwHighDateTime) << 32)
+        | created.dwLowDateTime;
+    if (creationTime == 0 || creationTime > static_cast<quint64>(std::numeric_limits<qint64>::max())) {
+        error = QStringLiteral("GameHQ could not identify its own process for the update.");
+        return false;
+    }
+
     transactionPath = QDir(update).filePath(QStringLiteral("transaction.json"));
     const QJsonObject object {
-        { QStringLiteral("schemaVersion"), 1 },
+        { QStringLiteral("schemaVersion"), 2 },
         { QStringLiteral("productId"), QStringLiteral("underfusion.gamehq") },
         { QStringLiteral("expectedVersion"), version },
         { QStringLiteral("expectedSha256"), QString::fromLatin1(sha256.toHex()) },
@@ -80,6 +100,7 @@ bool prepareTransaction(const QString &packageRoot, const QString &dataDir,
         { QStringLiteral("dataDir"), QDir::toNativeSeparators(QFileInfo(dataDir).absoluteFilePath()) },
         { QStringLiteral("dataSnapshotDir"), QDir::toNativeSeparators(QDir(update).filePath(QStringLiteral("data-snapshot"))) },
         { QStringLiteral("callerPid"), static_cast<qint64>(QCoreApplication::applicationPid()) },
+        { QStringLiteral("callerCreationTime"), static_cast<qint64>(creationTime) },
         { QStringLiteral("manifestPath"), QDir::toNativeSeparators(manifest) },
         { QStringLiteral("signaturePath"), QDir::toNativeSeparators(signature) },
         { QStringLiteral("manifestSha256"), verified.manifestSha256 },
