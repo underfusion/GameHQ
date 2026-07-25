@@ -23,6 +23,11 @@ Windows Credential Manager for controlled local release work and in the
 review-protected GitHub `production-release` environment. Only its public key,
 fingerprint, key ID, and minimum release sequence are versioned.
 
+This key is persistent release infrastructure, not a per-release secret.
+Releases reuse it until a planned rotation or a compromise requires replacement.
+Missing private-key access stops the release; it never triggers automatic
+regeneration or a fallback to test signing.
+
 Current project roles:
 
 - Author, committer, and reviewer: [underfusion](https://github.com/underfusion)

@@ -178,6 +178,30 @@ from the protected `production-release` GitHub environment, and emits only the
 detached manifest signature. The checked-in `packaging/release-trust.json`
 contains the corresponding public key and key ID only.
 
+### Production release-manifest signing
+
+Every public GameHQ release must use the existing production key and production
+manifest mode:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File packaging/make-dist.ps1 `
+    -BuildDirectory out-production `
+    -TrustMode unsigned-beta `
+    -ManifestMode production
+```
+
+This produces `gamehq-release.json` and `gamehq-release.sig`, verifies them
+against the checked-in public key, and records the key ID and public-key
+fingerprint in `release-evidence.json`. The command must stop if the protected
+credential is unavailable; it must never fall back to a test key or silently
+create a replacement.
+
+`gamehq-prod-2026-01` is reused for each release. Do **not** generate a new key
+for each version. Provision another key only during an explicitly reviewed
+rotation or compromise-recovery operation, then ship its public trust record
+before using it to sign releases. The provisioning command refuses to
+overwrite either existing protected copy.
+
 The `Unsigned Beta release gate` workflow repeats that exact path on a clean
 Windows runner for pull requests and pushes to `dev` or `main`. Before upload,
 `assert-beta-artifact-set.ps1` requires the exact seven-file CI artifact set and
