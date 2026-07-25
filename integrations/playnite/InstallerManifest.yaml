@@ -1,7 +1,6 @@
-# Consumed by Playnite's add-on installer and add-on database (see plan
-# items p6-1/p6-2). Kept in sync with extension.yaml + VERSION by
-# packaging/verify.ps1. PackageUrl is populated once the first playnite-v*
-# GitHub release exists (p6-1) — left blank until then.
+# Stable manifest consumed by Playnite's add-on database.
+# Prepend every published plugin version to Packages.
+# Package URLs must be immutable playnite-v* GitHub release assets.
 AddonId: GameHQ_Integration
 Packages:
   - Version: 0.4.12
@@ -9,7 +8,7 @@ Packages:
     ReleaseDate: 2026-07-22
     PackageUrl: "https://github.com/underfusion/GameHQ/releases/download/v0.7.0/GameHQ_Playnite_Integration_0_4_12.pext"
     Changelog:
-      - Connects Playnite to GameHQ over the local v1 protocol.
-      - Forwards game lifecycle state and launches GameHQ when needed.
-      - Adds connection, version, path and privacy diagnostics.
-      - Adds the pinned test-key-only Ed25519 verifier and shared trust vectors.
+      - Connects Playnite to GameHQ over a private local connection.
+      - Starts GameHQ automatically when needed.
+      - Synchronizes game start, stop and reconnect state.
+      - Adds connection, version and path diagnostics.

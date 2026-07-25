@@ -4,34 +4,17 @@
 
 # GameHQ
 
-**Save the moments that already happened — screenshots, recent-gameplay video clips, and an in-game capture gallery for Windows.**
+**Save screenshots and recent gameplay with controller-first controls.**
 
-[![Release](https://img.shields.io/badge/release-v0.7.0%20Latest-8b6bff?style=flat-square)](https://github.com/underfusion/GameHQ/releases/latest)
-[![Windows](https://img.shields.io/badge/Windows-10%201903%2B-3578e5?style=flat-square)](#requirements)
-[![License](https://img.shields.io/github/license/underfusion/GameHQ?style=flat-square)](LICENSE)
-
-<h3>Download GameHQ 0.7.0</h3>
-
-<table>
-<tr>
-<td align="center" width="240">
-<strong>Recommended</strong><br>
-<a href="https://github.com/underfusion/GameHQ/releases/latest/download/GameHQ-0.7.0-win64-setup.exe"><img src="https://img.shields.io/badge/Download-Setup%20(.exe)-8b6bff?style=for-the-badge&logo=windows11&logoColor=white" height="34" alt="Download GameHQ Setup"></a><br>
-<sub>Per-user Windows installer</sub>
-</td>
-<td align="center" width="240">
-<strong>Portable</strong><br>
-<a href="https://github.com/underfusion/GameHQ/releases/latest/download/GameHQ-0.7.0-win64-portable.zip"><img src="https://img.shields.io/badge/Download-Portable%20(.zip)-3fa9ff?style=for-the-badge&logo=windows11&logoColor=white" height="34" alt="Download GameHQ Portable"></a><br>
-<sub>Extract and run from any folder</sub>
-</td>
-</tr>
-<tr>
-<td align="center" colspan="2">
-<strong>Use GameHQ with Playnite</strong><br>
-<a href="https://github.com/underfusion/GameHQ/releases/latest/download/GameHQ_Playnite_Integration_0_4_12.pext"><img src="https://img.shields.io/badge/Download-Playnite%20plugin%200.4.12-5865f2?style=flat-square" height="24" alt="Download GameHQ Playnite Integration"></a>
-</td>
-</tr>
-</table>
+<!-- public-downloads:start -->
+<p align="center">
+  <a href="https://github.com/underfusion/GameHQ/releases/download/v0.7.0/GameHQ-0.7.0-win64-setup.exe"><img src="docs/assets/download-windows.svg" width="230" alt="Download GameHQ for Windows"></a>
+  &nbsp;
+  <a href="https://github.com/underfusion/GameHQ/releases/download/v0.7.0/GameHQ-0.7.0-win64-portable.zip"><img src="docs/assets/download-portable.svg" width="230" alt="Download GameHQ Portable ZIP"></a>
+</p>
+<p align="center"><sub>Windows 10+ &middot; MIT licensed &middot; No telemetry</sub></p>
+<p align="center"><sub>Using Playnite? <a href="https://github.com/underfusion/GameHQ/releases/download/v0.7.0/GameHQ_Playnite_Integration_0_4_12.pext">Get the GameHQ Integration &rarr;</a></sub></p>
+<!-- public-downloads:end -->
 
 </div>
 
@@ -80,10 +63,12 @@ the `-portable.zip` package to keep data beside the app.
 
 ### Playnite integration
 
-[Download GameHQ Playnite Integration 0.4.12](https://github.com/underfusion/GameHQ/releases/download/v0.7.0/GameHQ_Playnite_Integration_0_4_12.pext)
-from the same release and open the `.pext` with Playnite. The plugin discovers
+[Manually install GameHQ Playnite Integration 0.4.12](https://github.com/underfusion/GameHQ/releases/download/v0.7.0/GameHQ_Playnite_Integration_0_4_12.pext)
+by opening the `.pext` with Playnite. The plugin discovers
 GameHQ, launches it with games, forwards game lifecycle events, and restores
-state after reconnects.
+state after reconnects. Once the integration is accepted into Playnite's
+official add-on database, this section will link to its stable add-on page and
+Playnite will surface future updates automatically.
 
 **Open-source Beta · Not yet code-signed; Windows may show an Unknown publisher
 warning.** Verify the official source and published release hash before running

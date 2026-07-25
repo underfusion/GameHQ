@@ -22,9 +22,15 @@
   .hero pre { font-family:Consolas,monospace; font-size:15px; line-height:1.9; color:#c7cde0; overflow-x:auto; }
   .hero pre b { color:var(--text); }
   .hero pre em { color:var(--accent2); font-style:normal; }
-  .download { margin:-18px 0 40px; color:var(--muted); text-align:center; font-size:14px; }
-  .download a { display:inline-block; padding:10px 18px; margin-right:8px; border-radius:10px; color:#fff; text-decoration:none; font-weight:600; background:linear-gradient(90deg,var(--accent1),var(--accent2)); }
-  .download a.secondary { background:transparent; border:1px solid rgba(139,107,255,.65); }
+  .download { margin:-18px auto 40px; color:var(--muted); text-align:center; font-size:14px; max-width:560px; }
+  .download-actions { display:flex; justify-content:center; gap:12px; flex-wrap:wrap; }
+  .download-button { display:flex; flex-direction:column; justify-content:center; width:224px; min-height:64px; padding:10px 18px; border-radius:14px; color:#fff; text-decoration:none; text-align:left; font-weight:700; background:linear-gradient(105deg,#7253ec,#3f94ee); border:1px solid rgba(255,255,255,.22); box-shadow:0 9px 24px rgba(32,47,105,.34); transition:transform .15s ease,box-shadow .15s ease; }
+  .download-button:hover { transform:translateY(-2px); box-shadow:0 13px 30px rgba(63,169,255,.28); }
+  .download-button.secondary { background:#11182f; border-color:rgba(139,107,255,.58); box-shadow:0 9px 22px rgba(3,7,20,.3); }
+  .download-button small { color:rgba(255,255,255,.72); font-size:11px; font-weight:500; margin-top:3px; }
+  .download-meta { margin-top:12px; }
+  .playnite-link { margin-top:7px; }
+  .playnite-link a { color:#a99aff; font-weight:600; text-decoration:none; }
   h2 { font-size:22px; margin:40px 0 16px; }
   .about p { color:#c7cde0; font-size:15px; line-height:1.75; margin-bottom:14px; max-width:70ch; }
   .about b { color:var(--text); }
@@ -78,11 +84,16 @@
 </pre>
   </div>
 
-  <p class="download">
-    <a href="https://github.com/underfusion/GameHQ/releases/latest">Download GameHQ 0.7.0</a>
-    <a class="secondary" href="https://github.com/underfusion/GameHQ/releases/download/v0.7.0/GameHQ_Playnite_Integration_0_4_12.pext">Download Playnite plugin 0.4.12</a>
-    Windows 10 1903+ · x64 Setup and portable ZIP
-  </p>
+  <!-- public-downloads:start -->
+  <section class="download" aria-label="Downloads">
+    <div class="download-actions">
+      <a class="download-button" href="https://github.com/underfusion/GameHQ/releases/download/v0.7.0/GameHQ-0.7.0-win64-setup.exe"><span>Download for Windows</span><small>GameHQ 0.7.0 Setup</small></a>
+      <a class="download-button secondary" href="https://github.com/underfusion/GameHQ/releases/download/v0.7.0/GameHQ-0.7.0-win64-portable.zip"><span>Portable ZIP</span><small>GameHQ 0.7.0 &middot; no installation</small></a>
+    </div>
+    <p class="download-meta">Windows 10+ &middot; MIT licensed &middot; No telemetry</p>
+    <p class="playnite-link">Using Playnite? <a href="https://github.com/underfusion/GameHQ/releases/download/v0.7.0/GameHQ_Playnite_Integration_0_4_12.pext">Get the GameHQ Integration &rarr;</a></p>
+  </section>
+  <!-- public-downloads:end -->
 
   <h2>What is GameHQ?</h2>
   <div class="about">

@@ -27,6 +27,13 @@ jobs:
       - name: Check out source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
+      - name: Verify public download and Playnite release metadata
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & packaging/update-public-downloads.ps1 -Check
+          & integrations/playnite/packaging/verify.ps1
+
       - name: Install pinned Qt and MinGW toolchain
         shell: pwsh
         run: |

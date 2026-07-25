@@ -11,10 +11,10 @@ same repository.
 
 ### Added
 
-- Added the pinned Bouncy Castle Ed25519 verifier, strict Base64 handling,
-  trusted/revoked key states and atomic anti-rollback persistence.
-- The plugin now passes the same RFC 8032 and GameHQ-specific test vectors as
-  the native application and static updater; production keys remain disabled.
+- Connects Playnite to GameHQ over a private local connection.
+- Starts GameHQ automatically when needed.
+- Synchronizes game start, stop and reconnect state.
+- Adds connection, version and path diagnostics.
 
 ## [0.4.11] - 2026-07-21
 
