@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
-    [string]$ReleaseDirectory = 'dist\releases'
+    [string]$ReleaseDirectory = 'dist\releases',
+    [ValidateSet('test', 'production')]
+    [string]$ManifestMode = 'test'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -35,8 +37,14 @@ if (($expectedFiles -join "`n") -ne ($actualFiles -join "`n")) {
 
 $evidence = Get-Content -LiteralPath $evidencePath -Raw | ConvertFrom-Json
 if ($evidence.schemaVersion -ne 1 -or $evidence.version -ne $version -or
-    $evidence.trustMode -ne 'unsigned-beta' -or $evidence.manifestMode -ne 'test') {
-    throw 'Release evidence does not describe the expected unsigned-Beta/test-key build.'
+    $evidence.trustMode -ne 'unsigned-beta' -or
+    $evidence.manifestMode -ne $ManifestMode) {
+    throw "Release evidence does not describe the expected unsigned-Beta/$ManifestMode build."
+}
+if ($ManifestMode -eq 'production' -and
+    ([string]::IsNullOrWhiteSpace([string]$evidence.releaseTrust.keyId) -or
+     [string]::IsNullOrWhiteSpace([string]$evidence.releaseTrust.publicKeySha256))) {
+    throw 'Production evidence is missing the release key ID or public-key fingerprint.'
 }
 if ($evidence.compliance.license -ne 'passed' -or
     $evidence.compliance.privacy -ne 'passed') {
@@ -59,4 +67,4 @@ if ($unexpectedSignature.Count -ne 0) {
     throw 'Unsigned-Beta evidence contains an unexpectedly signed GameHQ artifact.'
 }
 
-Write-Host "[artifact-set] unsigned Beta $version is complete and matches release evidence"
+Write-Host "[artifact-set] unsigned Beta $version ($ManifestMode manifest) is complete and matches release evidence"
