@@ -2,6 +2,7 @@
 
 #include "input/ControllerArbitration.h"
 #include "input/HidCloakMonitor.h"
+#include "input/SonyReportLayout.h"
 #include "input/StickNav.h"
 
 #include <QByteArray>
@@ -514,7 +515,10 @@ quint32 DualSenseDevice::decodeStickNav(const DeviceState& st, const unsigned ch
 {
     constexpr StickNav::AxisConfig kNav{ 128, 60, 30, false };
 
-    const int axisBase = base >= 8 ? base - 7 : 1;
+    const auto family = st.layout == LayoutDs4
+        ? SonyReportLayout::Family::Ds4
+        : SonyReportLayout::Family::DualSense;
+    const int axisBase = SonyReportLayout::stickAxisBase(family, base);
     if (axisBase < 1 || len <= axisBase + 1)
         return 0;
 

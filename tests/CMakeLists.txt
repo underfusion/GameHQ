@@ -39,6 +39,9 @@ gamehq_add_test(tst_gameidentity
 gamehq_add_test(tst_controllerarbitration
     tst_controllerarbitration.cpp)
 
+gamehq_add_test(tst_sonyreportlayout
+    tst_sonyreportlayout.cpp)
+
 gamehq_add_test(tst_configmanager
     tst_configmanager.cpp
     "${CMAKE_SOURCE_DIR}/src/config/ConfigManager.cpp")

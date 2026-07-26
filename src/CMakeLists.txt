@@ -28,6 +28,7 @@ qt_add_executable(GameHQ
     input/HotkeyManager.cpp input/HotkeyManager.h
     input/Gamepad.h
     input/StickNav.h
+    input/SonyReportLayout.h
     input/ActionCatalog.cpp input/ActionCatalog.h
     input/BindingResolver.cpp input/BindingResolver.h
     input/BindingRuntime.cpp input/BindingRuntime.h

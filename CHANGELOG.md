@@ -6,19 +6,40 @@ All notable public releases of GameHQ are documented here. The format follows
 
 ## [0.7.1] - 2026-07-26
 
+### Added
+
+- GameHQ can now check for updates, download and install them, restart
+  automatically, and roll back safely when an update fails.
+- HDR-aware capture uses GPU tone mapping so screenshots and SDR replay videos
+  no longer appear washed out or overexposed on HDR displays.
+- A standard per-user Windows Setup package is now available alongside the
+  Portable package.
+- The new Playnite integration discovers GameHQ, launches it with games,
+  forwards game state, and restores that state after reconnects.
+- Settings and About have been redesigned with clearer diagnostics, update
+  controls, offline release notes, and a What's New view.
+
 ### Changed
 
-- GameHQ core releases now use GPL-3.0-only while the separately packaged
-  Playnite integration and public integration protocol remain under MIT.
-- The Playnite integration now has an independent `playnite-v0.4.12` release,
-  so plugin updates cannot replace the app's Latest release.
-- Setup, Portable, and updater packages now carry a revision-bound source
-  notice, and every release includes the exact source ZIP and checksum.
+- Setup now uses restrained GameHQ artwork and a shorter welcome message while
+  keeping the standard Windows wizard layout and per-user installation.
+- The GameHQ logo is cleaner without the former red recording indicator, and
+  Setup uses the normal rounded app logo on later wizard pages.
+- Release manifests now use the production Ed25519 trust key, while private
+  signing material remains outside the repository and ordinary CI.
 
 ### Fixed
 
-- Release validation now fails if source artifacts, source bindings, license
-  boundaries, or corresponding-source evidence drift from the tagged build.
+- When the gallery is empty, controller focus now stays in the sidebar instead
+  of moving into a thumbnail area with nothing to select.
+- Controller shortcuts now follow the input backend and device producing real
+  button activity, so stale virtual controllers cannot block input in games.
+- Screenshots and replay thumbnails are published atomically, and unreadable
+  cached thumbnails are regenerated from the working video.
+- Portable imports preserve existing data, failed database or configuration
+  recovery rolls back safely, and invalid storage paths are reported.
+- Long-path handling, IPC reconnects, update discovery, log rotation, and
+  Setup/update conflict prevention are more reliable.
 
 ## [0.7.0] - 2026-07-25
 
