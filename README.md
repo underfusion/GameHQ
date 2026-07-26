@@ -9,7 +9,7 @@ instant screenshot, hold it after something memorable happens to save the
 previous configurable minutes as a video clip, and press PS or Guide to browse
 everything in a controller-friendly overlay.</p>
 
-<p><img src="docs/assets/readme-separator.svg" width="1000" height="1" alt=""></p>
+<img src="docs/assets/readme-separator.svg" width="1000" height="1" alt="">
 
 <!-- public-downloads:start -->
 <p align="center">
