@@ -1,10 +1,8 @@
 <div align="center">
 
-<p><img src="docs/assets/gamehq-wordmark.svg" width="190" alt="GameHQ"></p>
+<img src="docs/assets/gamehq-wordmark.svg" width="190" alt="GameHQ">
 
 <h2>Capture moments after they happen</h2>
-
-<p><img src="docs/assets/readme-separator.svg" width="1000" height="1" alt=""></p>
 
 <p>GameHQ brings console-style capture controls to Windows. Tap Share for an
 instant screenshot, hold it after something memorable happens to save the
