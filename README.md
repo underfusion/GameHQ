@@ -21,13 +21,11 @@ everything in a controller-friendly overlay.</p>
 <p align="center"><sub>Using Playnite? <a href="https://github.com/underfusion/GameHQ/releases/download/playnite-v0.4.12/GameHQ_Playnite_Integration_0_4_12.pext">Get the GameHQ Integration &rarr;</a></sub></p>
 <!-- public-downloads:end -->
 
+<p>⭐ Enjoying GameHQ? Star the repository — it helps more players discover the project.</p>
+
 </div>
 
 ![GameHQ gallery](docs/assets/gamehq-gallery.png)
-
-<p align="center">
-  ⭐ Enjoying GameHQ? Star the repository — it helps more players discover the project.
-</p>
 
 ## Highlights
 
