@@ -20,16 +20,16 @@
 
 ![GameHQ gallery](docs/assets/gamehq-gallery.png)
 
+<p align="center">
+  ⭐ Enjoying GameHQ? Star the repository — it helps more players discover the project.
+</p>
+
 ## Capture moments after they happen
 
 GameHQ brings console-style capture controls to Windows. Tap Share for an
 instant screenshot, hold it after something memorable happens to save the
 previous configurable minutes as a video clip, and press PS or Guide to browse
 everything in a controller-friendly overlay.
-
-<p align="center">
-  <sub>⭐ Enjoying GameHQ? Star the repository — it helps more players discover the project.</sub>
-</p>
 
 ## Highlights
 
@@ -45,10 +45,6 @@ everything in a controller-friendly overlay.
   NVIDIA, and OBS folders.
 - **Private and portable** — no account, telemetry, background service, or
   game-process injection.
-
-<details>
-<summary><strong>More features</strong></summary>
-
 - Configurable replay duration, quality, frame rate, and resolution.
 - Primary and secondary bindings with tap, hold, double-tap, conflict handling,
   per-controller profiles, and restore controls.
@@ -58,8 +54,6 @@ everything in a controller-friendly overlay.
   overlay dimming.
 - Thumbnail zoom and controller-friendly bulk selection in the capture library.
 - Immediate gallery refresh after new captures and clean overlay focus handling.
-
-</details>
 
 ## Quick controls
 
