@@ -1,0 +1,18 @@
+{
+    "classes": [
+        {
+            "className": "App",
+            "lineNumber": 27,
+            "object": true,
+            "qualifiedClassName": "App",
+            "superClasses": [
+                {
+                    "access": "public",
+                    "name": "QObject"
+                }
+            ]
+        }
+    ],
+    "inputFile": "App.h",
+    "outputRevision": 68
+}

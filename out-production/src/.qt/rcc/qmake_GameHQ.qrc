@@ -1,0 +1,6 @@
+<RCC>
+  <qresource prefix="/qt/qml/GameHQ">
+    <file alias="qmldir">I:/PROJECTS/Apps/GameHQ/out-production/src/GameHQ/qmldir</file>
+  </qresource>
+</RCC>
+

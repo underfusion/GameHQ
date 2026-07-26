@@ -1,0 +1,18 @@
+{
+    "classes": [
+        {
+            "className": "CaptureDatabase",
+            "lineNumber": 64,
+            "object": true,
+            "qualifiedClassName": "CaptureDatabase",
+            "superClasses": [
+                {
+                    "access": "public",
+                    "name": "QObject"
+                }
+            ]
+        }
+    ],
+    "inputFile": "CaptureDatabase.h",
+    "outputRevision": 68
+}
