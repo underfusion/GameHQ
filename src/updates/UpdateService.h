@@ -6,6 +6,7 @@
 #include <QElapsedTimer>
 #include <QObject>
 #include <QString>
+#include <QVariantList>
 #include <optional>
 
 class GitHubReleaseSource;
@@ -27,6 +28,7 @@ class UpdateService : public QObject
     Q_PROPERTY(QString latestVersion READ latestVersion NOTIFY releaseChanged)
     Q_PROPERTY(QString releaseName READ releaseName NOTIFY releaseChanged)
     Q_PROPERTY(QString notes READ notes NOTIFY releaseChanged)
+    Q_PROPERTY(QVariantList noteBlocks READ noteBlocks NOTIFY releaseChanged)
     Q_PROPERTY(QString releaseUrl READ releaseUrl NOTIFY releaseChanged)
     Q_PROPERTY(qint64 size READ size NOTIFY releaseChanged)
     Q_PROPERTY(QDateTime publishedAt READ publishedAt NOTIFY releaseChanged)
@@ -68,6 +70,7 @@ public:
     QString latestVersion() const { return m_release ? m_release->version : QString(); }
     QString releaseName() const { return m_release ? m_release->name : QString(); }
     QString notes() const { return m_release ? m_release->notes : QString(); }
+    QVariantList noteBlocks() const;
     QString releaseUrl() const { return m_release ? m_release->webUrl : QString(); }
     qint64 size() const { return m_release ? m_release->zipSize : 0; }
     QDateTime publishedAt() const { return m_release ? m_release->publishedAt : QDateTime(); }

@@ -92,13 +92,11 @@ FocusScope {
 
     function summaryItems() {
         const result = []
-        if (hasUpdateRelease() && updates.notes !== "") {
-            const lines = updates.notes.split(/\r?\n/)
-            for (let line of lines) {
-                line = line.trim().replace(/^#+\s*/, "").replace(/^[-*•]\s*/, "")
-                if (line === "" || /^(added|changed|fixed|removed)$/i.test(line))
+        if (hasUpdateRelease() && updates.noteBlocks.length > 0) {
+            for (const block of updates.noteBlocks) {
+                if (block.kind === "heading")
                     continue
-                result.push(line)
+                result.push(block.text)
                 if (result.length === 3)
                     break
             }
@@ -114,6 +112,23 @@ FocusScope {
             }
         }
         return result
+    }
+
+    function escapedStyledText(value) {
+        return String(value || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;")
+    }
+
+    function releaseBlockText(block) {
+        if (block.lead === "")
+            return escapedStyledText(block.text)
+        const separator = block.body === "" || /^\s/.test(block.body) ? "" : " "
+        return "<b>" + escapedStyledText(block.lead) + "</b>"
+            + separator + escapedStyledText(block.body)
     }
 
     function focusableControls() {
@@ -636,15 +651,58 @@ FocusScope {
                             }
                         }
 
-                        Text {
-                            visible: root.hasUpdateRelease() && updates.notes !== ""
-                            Layout.fillWidth: true
-                            text: updates.notes
-                            textFormat: Text.PlainText
-                            color: Theme.textMuted
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontBody
-                            wrapMode: Text.WordWrap
+                        Repeater {
+                            model: root.hasUpdateRelease() ? updates.noteBlocks : []
+                            delegate: ColumnLayout {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                spacing: 0
+
+                                Text {
+                                    visible: modelData.kind === "heading"
+                                    Layout.fillWidth: true
+                                    text: modelData.text.toUpperCase()
+                                    textFormat: Text.PlainText
+                                    color: Theme.textFaint
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontCaption
+                                    font.letterSpacing: Theme.letterSpacingWide
+                                }
+
+                                RowLayout {
+                                    visible: modelData.kind === "bullet"
+                                    Layout.fillWidth: true
+                                    spacing: Theme.s8
+
+                                    Text {
+                                        Layout.alignment: Qt.AlignTop
+                                        text: "\u2022"
+                                        color: Theme.accent
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: Theme.fontBody
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: root.releaseBlockText(modelData)
+                                        textFormat: Text.StyledText
+                                        color: Theme.textMuted
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: Theme.fontBody
+                                        wrapMode: Text.WordWrap
+                                    }
+                                }
+
+                                Text {
+                                    visible: modelData.kind === "paragraph"
+                                    Layout.fillWidth: true
+                                    text: root.releaseBlockText(modelData)
+                                    textFormat: Text.StyledText
+                                    color: Theme.textMuted
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontBody
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
                         }
 
                         Repeater {
