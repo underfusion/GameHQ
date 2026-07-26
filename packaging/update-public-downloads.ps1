@@ -53,6 +53,7 @@ $publicLicenseLabel = if ([version]$publicAppVersion -lt [version]'0.7.1') {
 } else {
     'GPL-3.0 licensed'
 }
+$readmeLicenseLabel = $publicLicenseLabel -replace ' licensed$', ''
 $newline = [Environment]::NewLine
 
 $readmeBlock = @(
@@ -62,7 +63,7 @@ $readmeBlock = @(
     "  &nbsp;",
     "  <a href=""$portableUrl""><img src=""docs/assets/download-portable.svg"" width=""230"" alt=""Download GameHQ Portable ZIP""></a>",
     "</p>",
-    "<p align=""center""><sub>Windows 10+ &middot; GameHQ $publicAppVersion Beta &middot; $publicLicenseLabel &middot; No telemetry</sub></p>",
+    "<p align=""center""><sub>Windows 10+ &middot; v$publicAppVersion Beta &middot; $readmeLicenseLabel &middot; No telemetry</sub></p>",
     "<p align=""center""><sub>Using Playnite? <a href=""$pluginPrimaryUrl"">Get the GameHQ Integration &rarr;</a></sub></p>",
     "<!-- public-downloads:end -->"
 ) -join $newline
