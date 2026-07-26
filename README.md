@@ -2,14 +2,9 @@
 
 <p><img src="docs/assets/gamehq-wordmark.svg" width="190" alt="GameHQ"></p>
 
-<h2>Capture moments after they happen</h2>
-
-<p>GameHQ brings console-style capture controls to Windows. Tap Share for an
-instant screenshot, hold it after something memorable happens to save the
-previous configurable minutes as a video clip, and press PS or Guide to browse
-everything in a controller-friendly overlay.</p>
-
 <p><img src="docs/assets/readme-separator.svg" width="1000" height="1" alt=""></p>
+
+**Save screenshots and recent gameplay with controller-first controls.**
 
 <!-- public-downloads:start -->
 <p align="center">
@@ -25,9 +20,16 @@ everything in a controller-friendly overlay.</p>
 
 ![GameHQ gallery](docs/assets/gamehq-gallery.png)
 
-## ⭐ Enjoying GameHQ?
+<p align="center">
+  ⭐ Enjoying GameHQ? Star the repository — it helps more players discover the project.
+</p>
 
-Star the repository — it helps more players discover the project.
+## Capture moments after they happen
+
+GameHQ brings console-style capture controls to Windows. Tap Share for an
+instant screenshot, hold it after something memorable happens to save the
+previous configurable minutes as a video clip, and press PS or Guide to browse
+everything in a controller-friendly overlay.
 
 ## Highlights
 
