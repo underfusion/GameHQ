@@ -1,0 +1,577 @@
+#include <QtTest>
+
+#include <atomic>
+#include <cstdlib>
+#include <new>
+
+#include "input/ControlId.h"
+#include "input/DualSenseDevice.h"
+#include "input/InputDiagnostics.h"
+#include "input/RawInputApi.h"
+
+// Allocation counter. Replacing the global operator new is the only way to
+// answer "did this path allocate?" for code compiled into this executable.
+// Qt's own allocations happen inside Qt6Core.dll and are therefore invisible
+// here — which is exactly why the seam's payload-read counter, not this
+// number, is the primary evidence in the flood test. Both must be zero.
+namespace
+{
+std::atomic<qint64> g_allocations{ 0 };
+std::atomic<bool> g_countAllocations{ false };
+} // namespace
+
+void* operator new(std::size_t size)
+{
+    if (g_countAllocations.load(std::memory_order_relaxed))
+        g_allocations.fetch_add(1, std::memory_order_relaxed);
+    void* p = std::malloc(size ? size : 1);
+    if (!p)
+        throw std::bad_alloc();
+    return p;
+}
+
+void* operator new[](std::size_t size)
+{
+    return ::operator new(size);
+}
+
+void operator delete(void* p) noexcept { std::free(p); }
+void operator delete[](void* p) noexcept { std::free(p); }
+void operator delete(void* p, std::size_t) noexcept { std::free(p); }
+void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
+
+namespace
+{
+constexpr quint16 kUsagePageGeneric = 0x01;
+constexpr quint16 kUsageGamepad     = 0x05;
+constexpr quint16 kUsageVendor      = 0x00;
+constexpr quint32 kSonyVid          = 0x054C;
+constexpr quint32 kDualSensePid     = 0x0CE6;
+constexpr quint32 kGameSirVid       = 0x3537;
+constexpr quint32 kGameSirPid       = 0x1004;
+
+void* handle(quintptr id)
+{
+    return reinterpret_cast<void*>(id);
+}
+
+// A DualSense USB input report (id 0x01): left stick centred, D-pad hat
+// neutral (0x8) and Cross held. Offsets per docs/controller-input.md.
+QByteArray dualSenseReport(bool crossHeld)
+{
+    QByteArray report(16, '\0');
+    report[0] = 0x01;
+    report[1] = char(128);   // LX centre
+    report[2] = char(128);   // LY centre
+    report[8] = char(crossHeld ? 0x28 : 0x08);
+    return report;
+}
+
+// Stands in for the whole Win32 Raw Input surface and counts every call.
+//
+// In this fake the WM_INPUT handle IS the device handle. Real HRAWINPUT values
+// are minted by the OS and cannot be fabricated, and the backend never
+// inspects one — it only hands it back to the API — so the substitution is
+// faithful for everything under test.
+class FakeRawInputApi final : public RawInputApi
+{
+public:
+    struct Device {
+        DeviceInfo info;
+        DevicePath path;
+        QByteArray report;
+        DeviceType type = DeviceType::Hid;
+        bool present = true;            // listed by enumerateDevices()
+        int describeFailures = 0;       // transient RIDI_DEVICEINFO failures to serve first
+        int pathFailures = 0;           // transient RIDI_DEVICENAME failures to serve first
+    };
+
+    QHash<void*, Device> devices;
+    int headerReads = 0;
+    int payloadReads = 0;
+    int describeCalls = 0;
+    int pathCalls = 0;
+    int enumerations = 0;
+
+    static Device hidDevice(quint32 vid, quint32 pid, quint16 usage,
+                            const QString& path = QStringLiteral("\\\\?\\HID#VID"))
+    {
+        Device d;
+        d.info.queried   = true;
+        d.info.isHid     = true;
+        d.info.vendorId  = vid;
+        d.info.productId = pid;
+        d.info.usagePage = kUsagePageGeneric;
+        d.info.usage     = usage;
+        d.path.queried   = true;
+        d.path.value     = path;
+        return d;
+    }
+
+    void resetCounters()
+    {
+        headerReads = payloadReads = describeCalls = pathCalls = enumerations = 0;
+    }
+
+    bool readHeader(void* rawInputHandle, Header& out) override
+    {
+        ++headerReads;
+        auto it = devices.constFind(rawInputHandle);
+        if (it == devices.cend())
+            return false;
+        out.device = rawInputHandle;
+        out.type = it->type;
+        return true;
+    }
+
+    bool readPayload(void* rawInputHandle, Payload& out) override
+    {
+        ++payloadReads;
+        auto it = devices.constFind(rawInputHandle);
+        if (it == devices.cend() || it->report.isEmpty())
+            return false;
+        out.reports = reinterpret_cast<const unsigned char*>(it->report.constData());
+        out.reportCount = 1;
+        out.reportSize = static_cast<int>(it->report.size());
+        return true;
+    }
+
+    DeviceInfo describeDevice(void* deviceHandle) override
+    {
+        ++describeCalls;
+        auto it = devices.find(deviceHandle);
+        if (it == devices.end())
+            return {};
+        if (it->describeFailures > 0) {
+            --it->describeFailures;
+            return {};   // queried == false: the OS refused to answer
+        }
+        return it->info;
+    }
+
+    DevicePath devicePath(void* deviceHandle) override
+    {
+        ++pathCalls;
+        auto it = devices.find(deviceHandle);
+        if (it == devices.end())
+            return {};
+        if (it->pathFailures > 0) {
+            --it->pathFailures;
+            return {};
+        }
+        return it->path;
+    }
+
+    QList<EnumeratedDevice> enumerateDevices() override
+    {
+        ++enumerations;
+        QList<EnumeratedDevice> out;
+        for (auto it = devices.cbegin(); it != devices.cend(); ++it) {
+            if (it->present)
+                out.append({ it.key(), it->type });
+        }
+        return out;
+    }
+
+    CloakScan scanHiddenPads(const QSet<QString>&) override { return {}; }
+};
+} // namespace
+
+class RawInputFloodTest : public QObject
+{
+    Q_OBJECT
+
+private slots:
+    // The GameSir report that started this: a pad GameHQ does not drive,
+    // polling at up to 8000 Hz, on the GUI thread.
+    void ignoredDeviceCostsOneHeaderReadPerEvent_data()
+    {
+        QTest::addColumn<int>("events");
+        QTest::newRow("1000 Hz") << 1000;
+        QTest::newRow("4000 Hz") << 4000;
+        QTest::newRow("8000 Hz") << 8000;
+    }
+
+    void ignoredDeviceCostsOneHeaderReadPerEvent()
+    {
+        QFETCH(int, events);
+
+        auto* api = new FakeRawInputApi;
+        DualSenseDevice pad(api);   // takes ownership
+        void* flood = handle(0x8001);
+        api->devices.insert(flood,
+                            FakeRawInputApi::hidDevice(kGameSirVid, kGameSirPid, kUsageGamepad));
+
+        // First event classifies: one RIDI_DEVICEINFO query, and not even a
+        // path query because an unsupported VID/PID settles it.
+        pad.onRawInput(flood);
+        QCOMPARE(api->describeCalls, 1);
+        QCOMPARE(api->pathCalls, 0);
+        QCOMPARE(api->payloadReads, 0);
+
+        api->resetCounters();
+        g_allocations.store(0, std::memory_order_relaxed);
+        g_countAllocations.store(true, std::memory_order_relaxed);
+        QElapsedTimer timer;
+        timer.start();
+        for (int i = 0; i < events; ++i)
+            pad.onRawInput(flood);
+        const qint64 elapsedNs = timer.nsecsElapsed();
+        g_countAllocations.store(false, std::memory_order_relaxed);
+
+        QCOMPARE(api->headerReads, events);
+        QCOMPARE(api->payloadReads, 0);     // the payload is never fetched again
+        QCOMPARE(api->describeCalls, 0);    // nor is the device re-classified
+        QCOMPARE(api->pathCalls, 0);
+        QCOMPARE(g_allocations.load(std::memory_order_relaxed), 0ll);
+
+        // Reported, not asserted tightly: this number is the input to the
+        // plan's decision on whether the backend needs its own thread.
+        qInfo("%s: %d events in %.2f ms (%.0f ns/event)", QTest::currentDataTag(), events,
+              elapsedNs / 1e6, double(elapsedNs) / events);
+        QVERIFY(elapsedNs / events < 50000);   // 50 us/event = something is very wrong
+    }
+
+    void nonHidEventsNeverReachClassification()
+    {
+        auto* api = new FakeRawInputApi;
+        DualSenseDevice pad(api);
+        void* mouse = handle(0x8002);
+        FakeRawInputApi::Device device;
+        device.type = RawInputApi::DeviceType::Other;
+        api->devices.insert(mouse, device);
+
+        for (int i = 0; i < 100; ++i)
+            pad.onRawInput(mouse);
+
+        QCOMPARE(api->headerReads, 100);
+        QCOMPARE(api->describeCalls, 0);
+        QCOMPARE(api->payloadReads, 0);
+    }
+
+    void supportedPadStillParsesItsReports()
+    {
+        auto* api = new FakeRawInputApi;
+        DualSenseDevice pad(api);
+        void* dualSense = handle(0x8003);
+        auto device = FakeRawInputApi::hidDevice(kSonyVid, kDualSensePid, kUsageGamepad);
+        device.report = dualSenseReport(false);
+        api->devices.insert(dualSense, device);
+
+        QSignalSpy pressed(&pad, &Gamepad::controlPressed);
+        QSignalSpy released(&pad, &Gamepad::controlReleased);
+        QSignalSpy connected(&pad, &Gamepad::connected);
+
+        pad.onRawInput(dualSense);
+        QCOMPARE(api->describeCalls, 1);
+        QCOMPARE(api->pathCalls, 1);        // IG_ check, once
+        QCOMPARE(api->payloadReads, 1);
+        QCOMPARE(connected.size(), 1);
+        QCOMPARE(connected.first().first().toBool(), true);
+
+        api->devices[dualSense].report = dualSenseReport(true);
+        pad.onRawInput(dualSense);
+        QCOMPARE(pressed.size(), 1);
+        QCOMPARE(pressed.first().first().toString(), ControlId::FaceSouth);
+
+        api->devices[dualSense].report = dualSenseReport(false);
+        pad.onRawInput(dualSense);
+        QCOMPARE(released.size(), 1);
+        QCOMPARE(released.first().first().toString(), ControlId::FaceSouth);
+
+        // Still exactly one classification after all that traffic.
+        QCOMPARE(api->describeCalls, 1);
+        QCOMPARE(api->pathCalls, 1);
+    }
+
+    void xinputCollectionIsRejectedAndRemembered()
+    {
+        auto* api = new FakeRawInputApi;
+        DualSenseDevice pad(api);
+        void* xbox = handle(0x8004);
+        api->devices.insert(xbox,
+                            FakeRawInputApi::hidDevice(kSonyVid, kDualSensePid, kUsageGamepad,
+                                                       QStringLiteral("\\\\?\\HID#VID_045E&IG_00")));
+
+        for (int i = 0; i < 500; ++i)
+            pad.onRawInput(xbox);
+
+        QCOMPARE(api->describeCalls, 1);
+        QCOMPARE(api->pathCalls, 1);
+        QCOMPARE(api->payloadReads, 0);
+    }
+
+    void vendorCollectionOnSupportedHardwareIsRejectedAndRemembered()
+    {
+        auto* api = new FakeRawInputApi;
+        DualSenseDevice pad(api);
+        void* link = handle(0x8005);
+        api->devices.insert(link,
+                            FakeRawInputApi::hidDevice(kSonyVid, 0x0ECC, kUsageVendor));
+
+        for (int i = 0; i < 500; ++i)
+            pad.onRawInput(link);
+
+        QCOMPARE(api->describeCalls, 1);
+        QCOMPARE(api->payloadReads, 0);
+    }
+
+    // A query that failed is not a verdict. Caching it as "ignored" would make
+    // a pad that was merely mid-enumeration invisible until the next replug.
+    void transientQueryFailureIsNeverCachedAsIgnored()
+    {
+        auto* api = new FakeRawInputApi;
+        DualSenseDevice pad(api);
+        void* dualSense = handle(0x8006);
+        auto device = FakeRawInputApi::hidDevice(kSonyVid, kDualSensePid, kUsageGamepad);
+        device.report = dualSenseReport(false);
+        device.describeFailures = 2;
+        device.pathFailures = 1;
+        api->devices.insert(dualSense, device);
+
+        pad.onRawInput(dualSense);   // RIDI_DEVICEINFO fails
+        pad.onRawInput(dualSense);   // fails again
+        QCOMPARE(api->payloadReads, 0);
+
+        pad.onRawInput(dualSense);   // info succeeds, RIDI_DEVICENAME fails
+        QCOMPARE(api->pathCalls, 1);
+        QCOMPARE(api->payloadReads, 0);
+
+        pad.onRawInput(dualSense);   // both succeed — the pad is tracked
+        QCOMPARE(api->describeCalls, 4);
+        QCOMPARE(api->payloadReads, 1);
+        QCOMPARE(pad.profile().family, ControlId::ControllerFamily::PlayStation);
+    }
+
+    // Windows reuses handle values. A device change on a handle must therefore
+    // void whatever was cached about it, or the pad that arrives on a recycled
+    // value inherits the previous device's rejection and stays dead.
+    void arrivalInvalidatesTheCachedVerdict()
+    {
+        auto* api = new FakeRawInputApi;
+        DualSenseDevice pad(api);
+        void* recycled = handle(0x8007);
+        api->devices.insert(recycled,
+                            FakeRawInputApi::hidDevice(kGameSirVid, kGameSirPid, kUsageGamepad));
+
+        pad.onRawInput(recycled);
+        QCOMPARE(api->payloadReads, 0);
+
+        pad.onDeviceChange(false, recycled);
+        auto dualSense = FakeRawInputApi::hidDevice(kSonyVid, kDualSensePid, kUsageGamepad);
+        dualSense.report = dualSenseReport(false);
+        api->devices.insert(recycled, dualSense);
+        pad.onDeviceChange(true, recycled);
+
+        api->resetCounters();
+        pad.onRawInput(recycled);
+        QCOMPARE(api->payloadReads, 1);
+        QCOMPARE(pad.profile().family, ControlId::ControllerFamily::PlayStation);
+    }
+
+    // The reconciliation pass is the safety net for the removal message that
+    // never arrived: anything Windows no longer lists loses its cached verdict.
+    void reconcileDropsVerdictsForHandlesWindowsNoLongerLists()
+    {
+        auto* api = new FakeRawInputApi;
+        DualSenseDevice pad(api);
+        void* recycled = handle(0x8008);
+        api->devices.insert(recycled,
+                            FakeRawInputApi::hidDevice(kGameSirVid, kGameSirPid, kUsageGamepad));
+
+        pad.onRawInput(recycled);
+        QCOMPARE(api->payloadReads, 0);
+
+        api->devices[recycled].present = false;   // vanished without a message
+        pad.rescan();
+        QTRY_VERIFY_WITH_TIMEOUT(api->enumerations > 0, 3000);
+
+        auto dualSense = FakeRawInputApi::hidDevice(kSonyVid, kDualSensePid, kUsageGamepad);
+        dualSense.report = dualSenseReport(false);
+        api->devices.insert(recycled, dualSense);
+
+        api->resetCounters();
+        pad.onRawInput(recycled);
+        QCOMPARE(api->describeCalls, 1);   // re-classified from scratch
+        QCOMPARE(api->payloadReads, 1);
+    }
+
+    // The diagnostics probe may look past an ignored verdict — but only for
+    // gamepad-usage devices, only inside the window, and the fast path must
+    // come back exactly as it was once the window closes.
+    void probeReadsIgnoredGamepadPayloadsOnlyDuringWindow()
+    {
+        auto* api = new FakeRawInputApi;
+        DualSenseDevice pad(api);
+        void* gamesir = handle(0x8009);
+        auto device = FakeRawInputApi::hidDevice(kGameSirVid, kGameSirPid, kUsageGamepad);
+        device.report = QByteArray(8, '\0');
+        api->devices.insert(gamesir, device);
+
+        pad.onRawInput(gamesir);            // classify -> ignored
+        api->resetCounters();
+        InputDiagnostics::instance().clear();
+
+        pad.onRawInput(gamesir);            // no probe: fast path only
+        QCOMPARE(api->payloadReads, 0);
+
+        InputDiagnostics::instance().startProbe(400);
+        pad.beginButtonProbe();
+        pad.onRawInput(gamesir);            // baseline payload for the diff
+        QCOMPARE(api->describeCalls, 1);    // one eligibility query per handle
+        QCOMPARE(api->payloadReads, 1);
+
+        api->devices[gamesir].report[3] = 0x40;   // a button GameHQ knows nothing about
+        pad.onRawInput(gamesir);
+        QCOMPARE(api->payloadReads, 2);
+        QCOMPARE(api->describeCalls, 1);    // eligibility is not re-queried
+        const QString summary = InputDiagnostics::instance().probeSummary();
+        QVERIFY(summary.contains(QStringLiteral("3537:1004")));
+        QVERIFY(summary.contains(QStringLiteral("byte 3")));
+
+        QTRY_VERIFY_WITH_TIMEOUT(!InputDiagnostics::instance().probeActive(), 2000);
+        api->resetCounters();
+        pad.onRawInput(gamesir);            // first event after expiry tears down
+        pad.onRawInput(gamesir);
+        QCOMPARE(api->payloadReads, 0);
+        QCOMPARE(api->describeCalls, 0);
+    }
+
+    // The probe's whole job is to catch one button change the user makes by
+    // hand, so 1–8 kHz must be read report for report — no sampling, no blind
+    // interval, nothing to explain away. Deterministic and timestamp-driven: a
+    // real 3-second wall-clock sweep would be slow and flaky.
+    void probeReadsEveryReportUpToEightKilohertz()
+    {
+        for (const int hz : { 1000, 4000, 8000 }) {
+            ProbeReadBudget budget;
+            const qint64 windowMs = InputDiagnostics::kProbeDurationMs;
+            const int events = int(hz * windowMs / 1000);
+            int reads = 0;
+            for (int i = 0; i < events; ++i) {
+                if (budget.allow(qint64(i) * windowMs / events))
+                    ++reads;
+            }
+            QVERIFY2(reads == events, QByteArray::number(hz).constData());
+            QVERIFY(!budget.sampled());   // never claims to have sampled
+        }
+    }
+
+    // The regression this replaces: a greedy per-slice cap spent its whole
+    // allowance in the first few milliseconds of each slice and went blind for
+    // the rest, so a tap in the wrong phase vanished. Walk a 20 ms press
+    // through EVERY phase of a 100 ms slice, at 8 kHz and at a flooded rate
+    // that forces sampling, and require a read inside the press each time.
+    void probeSeesAShortPressInEveryPhaseOfASlice()
+    {
+        const qint64 windowMs = InputDiagnostics::kProbeDurationMs;
+        const int pressMs = 20;
+        for (const int hz : { 8000, 40000 }) {   // 40 kHz = several flooding devices
+            for (int phase = 0; phase <= int(ProbeReadBudget::kSliceMs) - pressMs; phase += 5) {
+                // Put the press in the last slice of the window: the budget is
+                // most likely to be exhausted there, and the "press it right at
+                // the end" case is the one users actually hit.
+                const qint64 pressStart = windowMs - ProbeReadBudget::kSliceMs + phase;
+                ProbeReadBudget budget;
+                const int events = int(qint64(hz) * windowMs / 1000);
+                int readsInsidePress = 0;
+                for (int i = 0; i < events; ++i) {
+                    const qint64 nowMs = qint64(i) * windowMs / events;
+                    if (budget.allow(nowMs) && nowMs >= pressStart
+                        && nowMs < pressStart + pressMs)
+                        ++readsInsidePress;
+                }
+                QVERIFY2(readsInsidePress > 0,
+                         QByteArray::number(hz) + " Hz, phase +"
+                             + QByteArray::number(phase) + "ms");
+            }
+        }
+    }
+
+    // The bound that keeps a pathological flood affordable — 10 000 reads per
+    // second of window, so 30 000 for the standard probe — and the honesty flag
+    // that goes with it.
+    void probeBudgetStaysBoundedUnderAFlood()
+    {
+        ProbeReadBudget budget;
+        const qint64 windowMs = InputDiagnostics::kProbeDurationMs;
+        const int events = int(40000 * windowMs / 1000);   // 120 000 reports
+        int reads = 0;
+        for (int i = 0; i < events; ++i) {
+            if (budget.allow(qint64(i) * windowMs / events))
+                ++reads;
+        }
+        const int slices = int(windowMs / ProbeReadBudget::kSliceMs);
+        QVERIFY(reads <= slices * ProbeReadBudget::kReadsPerSlice);   // 30 000 for 3 s
+        QCOMPARE(reads, budget.reads());
+        QVERIFY(budget.sampled());   // says so instead of implying full coverage
+    }
+
+    // The sampling notice reaches the pasteable summary — the honesty half of
+    // the budget. (Driving a real backend past 10 000 reports/s from a test
+    // loop would be timing-dependent; the budget's own maths is pinned above.)
+    void probeSummaryReportsSampling()
+    {
+        InputDiagnostics::instance().clear();
+        InputDiagnostics::instance().startProbe(400);
+        InputDiagnostics::instance().noteProbeSampled();
+        QVERIFY(InputDiagnostics::instance().probeSummary().contains(
+            QStringLiteral("sampled")));
+        InputDiagnostics::instance().clear();
+    }
+
+    // End to end through the backend: an 8 kHz-class burst is read report for
+    // report, and the summary makes no sampling excuse.
+    void probeReadsAHighRateBurstInFull()
+    {
+        auto* api = new FakeRawInputApi;
+        DualSenseDevice pad(api);
+        void* gamesir = handle(0x800B);
+        auto device = FakeRawInputApi::hidDevice(kGameSirVid, kGameSirPid, kUsageGamepad);
+        device.report = QByteArray(8, '\0');
+        api->devices.insert(gamesir, device);
+
+        pad.onRawInput(gamesir);            // classify -> ignored
+        InputDiagnostics::instance().clear();
+        InputDiagnostics::instance().startProbe(400);
+        pad.beginButtonProbe();
+        api->resetCounters();
+
+        // One 100 ms slice's worth of an 8 kHz pad. However the loop lands
+        // across slice boundaries, no slice exceeds the full-coverage ceiling,
+        // so every report must be read.
+        const int burst = 800;
+        for (int i = 0; i < burst; ++i)
+            pad.onRawInput(gamesir);
+
+        QCOMPARE(api->payloadReads, burst);
+        QVERIFY(!InputDiagnostics::instance().probeSummary().contains(
+            QStringLiteral("sampled")));
+        InputDiagnostics::instance().clear();
+    }
+
+    void probeNeverReadsNonGamepadCollections()
+    {
+        auto* api = new FakeRawInputApi;
+        DualSenseDevice pad(api);
+        void* link = handle(0x800A);
+        auto device = FakeRawInputApi::hidDevice(kSonyVid, 0x0ECC, kUsageVendor);
+        device.report = QByteArray(8, '\1');
+        api->devices.insert(link, device);
+
+        pad.onRawInput(link);               // classify -> ignored (vendor collection)
+        api->resetCounters();
+        InputDiagnostics::instance().clear();
+        InputDiagnostics::instance().startProbe(400);
+        pad.beginButtonProbe();
+
+        pad.onRawInput(link);
+        pad.onRawInput(link);
+        QCOMPARE(api->payloadReads, 0);     // its reports are never captured
+        QCOMPARE(api->describeCalls, 1);    // eligibility settled once
+        InputDiagnostics::instance().clear();
+    }
+};
+
+QTEST_GUILESS_MAIN(RawInputFloodTest)
+#include "tst_rawinputflood.moc"

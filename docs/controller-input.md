@@ -12,12 +12,64 @@ Raw Input / HID for Sony pads (vendor 0x054C): DualSense `0x0CE6`, DualSense Edg
 
 - **Per-device state, keyed by Raw Input handle.** Every supported Sony/DS4 pad is tracked with its own layout, button bitmask, stick hysteresis, and last-report timestamp. Handles change on every reconnect, so a fresh handle is simply a new tracked device. This prevents two pads reporting at once (real DualSense + DSX virtual DS4) from corrupting each other's edge detection.
 - **One active device per backend, selected by real control activity.** Physical Sony hardware outranks virtual DualSense and virtual DS4 devices immediately. Otherwise a non-active device takes over only after the previous device has stopped producing button/stick changes for >1 s. Continuous idle reports cannot pin a virtual device forever. If the active pad is removed, the best recent candidate takes over immediately; only when no candidate exists does the 1.5 s debounce run.
-- **Arrivals probe one device, not the world.** `WM_INPUT_DEVICE_CHANGE` (via `RIDEV_DEVNOTIFY`) carries the device handle; only that handle is queried. A debounced (400 ms) reconciliation pass syncs against `GetRawInputDeviceList` to prune handles Windows no longer lists — removal messages can be lost during heavy re-enumeration (DSX re-creating its virtual pad).
+- **Arrivals probe one device, not the world.** `WM_INPUT_DEVICE_CHANGE` (via `RIDEV_DEVNOTIFY`) carries the device handle; only that handle is queried. A debounced (400 ms) reconciliation pass syncs against the enumerated device list to prune handles Windows no longer lists — removal messages can be lost during heavy re-enumeration (DSX re-creating its virtual pad).
+- **Every WM_INPUT is read header-first, and each device is classified once.** See [Flood hardening](#flood-hardening-high-polling-rate-pads) below.
 - **Xbox-type pads belong to XInput only.** HID collections whose interface path contains `IG_` are XInput devices; Raw Input ignores them so one physical pad can never drive two backends.
 - **Empty XInput slots are never hot-polled** (documented pitfall: `XInputGetState` on an empty slot can stall for milliseconds). Connected slots poll at 33 ms; empty slots are probed only on the Raw Input backend's debounced device-topology hint plus a 3 s safety-net timer. WinMM works the same way: 50 ms polling while connected, arrival scans only on topology hints plus a 2 s safety net.
-- **Exactly one backend routes input, with activity-based failover.** Sony HID > XInput > WinMM chooses only the initial or disconnect fallback. The first backend that produces a real control edge becomes active; a matching edge from another API within 100 ms is treated as the same mirrored press, while later activity can take over from a stale backend. This lets GameHQ follow the input path a game actually uses without double-firing presses. Switching or losing the active backend cancels held navigation repeat and Share tap/hold state, and XInput/WinMM synthesize release events before disconnect.
+- **Exactly one backend routes input, governed by a takeover contract** (`ControllerArbitration::backendMayTakeOver`, unit-tested in `tst_controllerarbitration`). Sony HID > XInput > WinMM chooses only the initial or disconnect fallback; after that the active backend keeps the role while it is connected and has produced a control within `BackendTakeoverSilenceMs` (1 s). Any cross-backend event within `BackendDuplicateWindowMs` (100 ms) of the active backend's last control is a suspect mirror and never takes over — **regardless of whether the canonical control id matches**, because remappers translate ids between APIs (letting different ids through double-acted one physical press). Between the two thresholds a real event is not promoted — but it is not thrown away either, because that would lose real input. The backend becomes a **pending candidate** and its first press is **held, not dropped** (`ControllerArbitration::heldPressSurvives` / `candidateMayConfirm`, `InputEngine::holdCandidatePress` / `resolvePendingCandidate`). This matters because XInput and WinMM report state *changes*: a user who presses once and lets go produces exactly one event, so a scheme that waited for a second one would lose that press for good. After `BackendCandidateConfirmMs` (250 ms) the held press is either delivered — the active backend never spoke, so this was a real switch — or discarded, because the active backend answered and the press was its mirror. A release arriving while the press is held is remembered rather than forwarded and replayed immediately behind it, so a **tap stays a tap and never becomes a hold** (`tst_bindingeditor::replayedPressAndReleasePairStaysATap`). A second candidate control before the window closes promotes immediately, delivering the held press first, in the order pressed. Without this, toggling DSX between Sony and Xbox mode cost close to a second of dropped presses. Two further exceptions move the role sooner: the active backend disconnecting (`updateActiveBackend()` re-picks by priority), and a higher-priority backend whose device fingerprint equals the active one's (the same physical pad over a better path — Sony Raw Input and WinMM both report `VID:PID`; XInput's slot fingerprint deliberately never matches). Every takeover lands in the diagnostics ring with its reason. Switching or losing the active backend cancels held navigation repeat and Share tap/hold state, and XInput/WinMM synthesize release events before disconnect.
 - **Settings shows live status**: `input.controllerStatus` (green/grey dot row in the input-test card) reports the active backend independently of the last-input line.
 - **The left stick doubles as the D-pad, and the rule lives in one place.** `input/StickNav.h` maps a stick's raw x/y onto `Dpad*` bits for every backend; each one only supplies an `AxisConfig`. Deadzone values stay per-backend on purpose — they are tuned against each pad's raw range and are not interchangeable: DualSense `center 128, deadzone 60, return 30`, XInput `center 0, deadzone 12000`, WinMM `center 32767, deadzone 16000`. What is shared is the structure, and it encodes the three traps: **Y polarity is not universal** (DualSense/WinMM report positive = down, XInput positive = up), the two directions on an axis are **mutually exclusive**, and **hysteresis is opt-in** (`returnZone < deadzone` keeps an axis active until the stick returns well inside center; set `returnZone == deadzone` and the rule collapses to a plain threshold). Only the DualSense backend runs hysteresis today — XInput and WinMM never had it and still don't.
+
+### Flood hardening (high-polling-rate pads)
+
+Raw Input is registered with `RIDEV_INPUTSINK`, so **every** report from every
+joystick/gamepad/multi-axis device on the machine arrives as a `WM_INPUT` on
+the GUI thread — including pads GameHQ does not drive. Controllers advertising
+8000 Hz polling are sold today, and each one produces 8000 messages a second.
+The backend therefore spends as little as possible on a message before it knows
+whose it is:
+
+1. **Header first.** `RID_HEADER` copies a fixed 24-byte struct onto the stack
+   and names the device. No size probe, no buffer, no allocation.
+2. **Cached verdict.** A per-handle negative cache (`KnownIgnored`) answers in
+   one hash lookup. Nothing else happens on that path: no OS query, no
+   allocation, no log line.
+3. **Classification, at most twice per handle.** `RIDI_DEVICEINFO` decides on
+   VID/PID and usage alone; the interface path (`RIDI_DEVICENAME`, the `IG_`
+   XInput check) is only queried for hardware that already looks like a
+   supported pad.
+4. **Payload last.** `RID_INPUT` is read only for a tracked pad, into a buffer
+   the backend reuses, so even a supported pad does not allocate per report.
+
+Cache rules, in order of how much damage getting them wrong would do:
+
+- **A failed query is not a verdict.** `RIDI_DEVICEINFO`/`RIDI_DEVICENAME` can
+  fail transiently (a device mid-enumeration). That is never cached as ignored;
+  the handle stays unclassified and is retried on the next report.
+- **Handle values are reused.** Windows hands out the same `HANDLE` value to a
+  different device after a replug, so cached verdicts are keyed strictly by live
+  handle and dropped on **every** `WM_INPUT_DEVICE_CHANGE` (arrival *and*
+  removal) and on every reconciliation pass that no longer lists the handle.
+  Tracked pads are deliberately *not* dropped on arrival — that would reset a
+  live pad's active role.
+- **The negative cache never holds a supported pad.** Only a definite answer
+  from the OS puts a handle in it.
+
+`WM_INPUT` also follows the documented cleanup contract: a foreground event
+(`RIM_INPUT`) is passed to `DefWindowProc` after processing, while a sink event
+(`RIM_INPUTSINK`) returns 0.
+
+**Rates are counted, never logged per event.** `InputRateMonitor` aggregates
+events per handle; the backend samples every 5 s and logs a line only when a
+device starts streaming, changes rate materially, or stops. An 8 kHz pad shows
+up as one line, not 8000 a second.
+
+All of this is testable because every OS call goes through the injectable
+`RawInputApi` seam (`readHeader` / `readPayload` / `describeDevice` /
+`devicePath` / `enumerateDevices` / `scanHiddenPads`). Production uses
+`RawInputApi::createSystem()`; `tests/tst_rawinputflood.cpp` substitutes a fake
+that counts calls and drives the real `DualSenseDevice` at 1000/4000/8000 Hz —
+real `HRAWINPUT` values cannot be fabricated, which is why the seam exists.
 
 ## Tap vs Hold (Share)
 
@@ -30,7 +82,51 @@ release after consumed      → nothing
 
 Threshold options: 1.0 / 1.5 / 2.0 / 3.0 s / custom. Implemented in the binding runtime's gesture handling (`BindingRuntime`).
 
-**Frame grab while a clip is focused.** In the Playback scope (a clip focused in the overlay or the desktop lightbox), a **Share tap** is bound to `playback.frame_grab` instead of the global screenshot. It grabs the exact frame currently shown on the video surface — paused or mid-playback — and saves it as a screenshot for the clip's game through the normal screenshot pipeline. Because it is a Playback-scope binding, it overrides the global screenshot only while a clip is focused; everywhere else Share tap stays the global screenshot. Keyboard equivalent: **S** (Playback scope only, so it never collides with the global `Ctrl+Shift+S`). Share **hold** is unbound in Playback scope, so it still falls through to the global save-replay action.
+**Frame grab while a clip is focused.** In the Playback scope (a clip focused in the overlay or the desktop lightbox), a **Share tap** is bound to `playback.frame_grab` instead of the global screenshot. It grabs the exact frame currently shown on the video surface — paused or mid-playback — and saves it as a screenshot for the clip's game through the normal screenshot pipeline. Keyboard equivalent: **S** (Playback scope only, so it never collides with the global `Ctrl+Shift+S`). Share **hold** is unbound in Playback scope, so it still falls through to the global save-replay action.
+
+The substitution is **declared, not inferred**. `ContextOverrideCatalog` (`src/input/ContextOverrideCatalog.h`) holds the explicit list of contextual actions that replace a Global one, and it currently contains exactly one entry: `playback.frame_grab` shadows `global.screenshot` on the **tap** activation. `BindingResolver::matching()` unions Global bindings with the active contextual ones and drops only the pairs this catalog names. There is deliberately **no** generic "a contextual scope shadows Global" rule — that would silently swallow overlaps the user created themselves, which the binding editor is supposed to surface and classify. Because the entry is scoped to `tap`, Share **hold** (save replay) and Share **double-tap** (overlay toggle) stay live during playback, and Guide keeps toggling the overlay in every scope.
+
+## Binding relations (conflict policy)
+
+`BindingRelation` (`src/input/BindingRelation.h`) is the single source of truth for how any two bindings relate. The binding editor and the runtime both read it, so a warning in Settings can never disagree with what the buttons actually do. It replaced `BindingEditorModel::scopesConflict()`, which was literally `left == right`: that flagged legitimate same-scope tap/hold sharing as fatal and stayed silent on real Global-vs-context collisions.
+
+`classify()` walks a **frozen decision order** and returns on the first match. Reordering it changes user-visible verdicts.
+
+1. Different device group, different trigger, or an unbound row → `None`.
+2. Scopes that are never active together → `None`.
+3. A pair declared in `ContextOverrideCatalog` → `ContextOverride`.
+4. Same action + trigger + activation + device group + profile → `Redundant`.
+5. Overlapping scopes with compatible gestures → `SharedGesture`.
+6. Overlapping scopes with a `press` gesture involved, or the same gesture on different actions → `HardConflict`.
+7. Otherwise → `None`.
+
+**Scope overlap.** Global is always live, so it overlaps everything. Two *different* contextual scopes never overlap: `matching()` takes the primary scope's matches and consults the fallback only when primary produced none, so Playback-over-Desktop and Playback-over-Overlay are priority chains, not collisions. This is why D-pad Left can ship as both `playback.seek_back` and `desktop.navigate_left`.
+
+**Gesture compatibility.** `tap`/`hold`, `tap`/`double_tap` and `hold`/`double_tap` coexist on one button because the runtime separates them in time. Anything involving `press` does not: press resolves on the down edge, before a timed gesture is known.
+
+**Redundant requires an identical trigger.** The same action reached from both `Ctrl+Shift+S` and `F12` is a deliberate second slot, not redundancy.
+
+`BindingRuntime::relations(group, profile)` precompiles every non-`None` pair and caches it until the next `reload()`. Nothing on the per-event path calls it — gesture dispatch works off the resolver, which already applies the override catalog.
+
+### Editor notices
+
+Only `HardConflict` blocks. It opens `BindingConflictDialog.qml`, a dedicated three-action modal (Replace / Choose another / Cancel) rather than an extra button bolted onto the app-wide `ConfirmDialog`. The other tiers save the binding and explain it through `bindingEditor.relationKind` / `relationNotice` / `validationError`.
+
+These notices have their own property channel on purpose. `input.controllerWarning` is reserved for HidHide/cloaked-pad state; routing a routine key conflict through it would let a binding notice overwrite the one warning a user cannot diagnose on their own.
+
+Three further kinds cover the ways a binding can fail, and they are deliberately **not** the same kind — conflating them would let a hotkey refusal masquerade as evidence that the controller path works:
+
+- `unsupported_input` — the controller/backend cannot expose this control ("Button not reported"). This is the GameSir case, raised through `BindingEditorModel::reportUnsupportedInput()`. It is implemented and covered by a controlled test fixture, but **no production backend emits it yet**; only a GameInput-class backend will know a control exists and cannot be delivered.
+- `hotkey_unavailable` — Windows or another application owns the chord ("Shortcut already taken"), raised when the `RegisterHotKey` claim is refused. Nothing is written and the previous shortcut stays live.
+- `persistence_error` — the write itself failed ("Could not save this binding"); the OS registration and the displaced rows are rolled back first.
+
+All three populate `validationError` so QML can style them as errors without parsing the message.
+
+When a new binding relates to several existing ones at once, the notice shown is ranked `ContextOverride` > `Redundant` > `SharedGesture`, not taken from whichever hash bucket came first.
+
+### Slot gesture inheritance
+
+A slot's gesture (activation + hold time) belongs to the slot, not to the trigger sitting in it. Capturing into an empty slot and clearing a bound one both resolve the gesture through `BindingResolver::inheritedGesture()`, in a fixed order: the slot's own override row (unbound rows included), the shipped default for that exact slot, another live slot of the same action, any default of the same action, and only then plain `press`. Clearing writes the resolved gesture onto the unbound row, so tap/hold/double-tap survive a clear-and-rebind round trip. The controller capture prompt appends the gesture being assigned ("… · Tap"), and keyboard/mouse captures remain plain presses. Before this, an empty-slot capture defaulted to `press`, which the decision order above rightly treats as clashing with every timed gesture on the same trigger — so valid assignments (a second Screenshot button on a pad that multiplexes Share) were blocked by conflicts that only existed because of the guess. Pre-0.7.3 cleared rows carry a `press`/`0` sentinel; that combination on an unbound row is treated as "no information" and falls through to the defaults.
 
 ## Default mapping
 
@@ -44,6 +140,18 @@ Built-in defaults are merged with sparse rows from `binding_overrides`. `Binding
 
 `InputEngine` owns the routing gates. Overlay open ⇒ events go to QML navigation and are *not* forwarded anywhere else. Overlay closed ⇒ global triggers (Share tap/hold, PS/toggle) remain available, while desktop-gallery navigation is allowed only when the main GameHQ window is focused **and** the real Win32 foreground window belongs to the GameHQ process. This second foreground-process check is required because RawInput uses `RIDEV_INPUTSINK`, so pad reports still arrive while a game has focus. GameHQ never blocks the pad for the game itself — isolation relies on the game losing focus (see [overlay.md](overlay.md)).
 
+## Stable XInput identity
+
+Device-specific binding profiles need to follow the *pad*, but XInput only exposes slot numbers, so historical device rows were fingerprinted `xinput.slotN` — two different pads that ever share a slot silently inherit each other's overrides. `ControllerIdentity::resolveXInputFingerprint` (`src/input/ControllerIdentity.h`, unit-tested) fixes this where it can be done honestly: the Sony Raw Input backend tracks the VID/PID of every XInput-class (`IG_`) HID collection it ignores, and when exactly **one** distinct device and exactly **one** connected slot exist, `InputEngine::updateXInputIdentity()` keys the XInput profile on the real hardware identity (`vvvv:pppp`). Any ambiguity — no `IG_` device visible (HidHide), several devices, several slots — keeps the legacy slot fingerprint, and the profile name says so: "per-slot profile — model cannot be identified". Never guess.
+
+Migration is explicit, never silent: existing `xinput.slotN` rows stay live for the correlated pad through a resolver **profile alias** (precedence: group-wide < aliased slot rows < device-specific rows), so upgrades change nothing; Settings → Input offers "Adopt per-slot bindings", which *copies* slot rows to the stable identity without touching the originals and never clobbers a row already saved for that pad. Slot rows are never broadened to all controllers. The GameInput `APP_LOCAL_DEVICE_ID` (see `docs/design/gameinput-spike.md`) is the designed future replacement for the correlation heuristic.
+
+## Diagnostics
+
+`InputDiagnostics` (`src/input/InputDiagnostics.h`) is the process-wide sink behind the input section of the copied diagnostic summary (Settings → Advanced). It records: the active backend and a timestamped ring of backend switches, every device classification (`tracked`/`ignored` + reason), aggregated event rates, the last logical controls with their source backend, overlay foreground acquisition results, HidHide cloak status, and a "previous session ended unexpectedly" flag backed by a `session.marker` file only an orderly shutdown removes. Everything is bounded (fixed rings), and device paths are reduced to VID/PID plus a short hash — no serials, instance ids, usernames, or local paths leave the machine.
+
+**Button probe.** "Identify a controller button" (Settings → Input) opens a 3-second window in which raw button changes are summarized — including inputs GameHQ normally ignores. During the window the Raw Input backend payload-reads *ignored* handles too, but only ones presenting a Joystick/Gamepad/MultiAxis collection (keyboards, mice and vendor collections are never captured), with one eligibility query per handle and a read budget (`ProbeReadBudget`); XInput reports raw `wButtons` diffs. The budget reads **every** report up to 10 000 a second, so 1, 4 and 8 kHz pads are covered report for report and a 20 ms tap cannot land in a gap — the probe is explicitly requested, lasts three seconds and stores only changed-bit summaries, so completeness is worth its cost (≤30 000 reads for the standard window). Above 10 000 reports a second — several flooding devices at once — it switches to *evenly strided* sampling, every Nth report with N recomputed each 100 ms slice from the previous slice's rate. What it never does is spend an allowance at the start of a slice and go blind for the rest: that is precisely how a short press disappears. Any skipped report is reported in the summary, so a probe that sampled never reads as one that saw everything. `tst_rawinputflood` walks a 20 ms press through every phase of a slice, at 8 kHz and at a 40 kHz flood, and requires a read inside the press each time. Only changed byte positions and XOR bits are recorded, never full reports. When the window closes, the ignored-device fast path returns to exactly one header read + one hash lookup per event (`tst_rawinputflood` pins this). This is the GameSir probe: it ships to every user instead of a side tool.
+
 ## Main App Select Mode
 
 In the main app gallery, Select mode uses the standard batch-action mapping: **Cross** toggles the focused capture, **Triangle** selects/deselects all visible captures, **Square** opens the delete confirmation, and **Circle** exits Select mode or cancels the confirmation. The destructive delete is always confirmed through `ConfirmDialog`.
@@ -51,6 +159,18 @@ In the main app gallery, Select mode uses the standard batch-action mapping: **C
 ## Keyboard fallback (global hotkeys, `RegisterHotKey`)
 
 `Ctrl+Shift+S` screenshot · `Ctrl+Shift+E` save replay · `Ctrl+Shift+G` overlay toggle. The replay buffer itself has no hotkey — it auto-arms while a game is focused (`replay.auto`, Settings → Replay).
+
+**Rebinding is transactional.** OS registration and the database write commit together or both roll back:
+
+1. Remember the chord currently registered for the action/slot.
+2. `RegisterHotKey` the new chord **first**. On refusal, show *"This shortcut is already used by Windows or another application."* and abort — the old chord stays live and nothing is written.
+3. Persist the displaced rows, then the new row.
+4. If any write fails, undo the rows that landed, hand the OS registration back to the previous chord, and show an error.
+5. Only a fully committed change refreshes the editor.
+
+Previously the row was written first and `InputEngine` reconciled the hotkey layer afterwards with its return value discarded, so a chord Windows had refused was still saved and displayed as a working shortcut. `HotkeyManager::applyBindingSlot()` already kept the old registration on failure; the missing halves were the write-failure rollback and surfacing the result. Both seams — `BindingEditorModel::setHotkeyApply()` and `setPersistRow()` — are injectable, so `tst_bindingeditor` can force either half to fail without touching a real database or the real keyboard.
+
+Only **keyboard** bindings on **Global**-scope actions with a `press` activation own a Win32 hotkey; controller and mouse edits skip the OS step entirely.
 
 ## Hidden pads (HidHide cloak detection, 0.6.3)
 
@@ -65,7 +185,8 @@ enumeration strategy can bypass it, so GameHQ detects and explains it instead:
   `HID\VID_xxxx&PID_xxxx` devnodes from the PnP tree (`CM_Get_Device_ID_ListW`)
   against the interfaces `GetRawInputDeviceList` returns. A supported Sony/DS4
   ID present in PnP but absent from Raw Input means a filter driver is cloaking
-  it (`HidCloakMonitor::scan`, called from `DualSenseDevice::reconcileDevices`).
+  it (`HidCloakMonitor::scan`, reached from `DualSenseDevice::reconcileDevices`
+  through `RawInputApi::scanHiddenPads`).
   054C:0ECC is excluded — on PlayStation Link hardware that PID carries only
   vendor-defined collections and cannot be cross-checked meaningfully.
 - **Surfacing.** `input.controllerWarning` (Settings → Input, "Controller

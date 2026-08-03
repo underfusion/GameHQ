@@ -8,6 +8,7 @@
 #include "config/ConfigManager.h"
 #include "diagnostics/Logger.h"
 #include "input/HotkeyManager.h"
+#include "input/InputDiagnostics.h"
 #include "input/InputEngine.h"
 #include "integration/IntegrationService.h"
 #include "games/GameDetector.h"
@@ -26,6 +27,7 @@
 #include "Brand.h"
 
 #include <QDateTime>
+#include <QFile>
 #include <QGuiApplication>
 #include <QQmlContext>
 #include <QQuickWindow>
@@ -39,6 +41,8 @@ App::App(QObject* parent)
 App::~App()
 {
     GameDetector::setExternalContext(nullptr);
+    // Orderly teardown reached: the next launch should not report a crash.
+    QFile::remove(Paths::dataDir() + QStringLiteral("/session.marker"));
 }
 
 void App::setPostUpdateValidation(bool enabled)
@@ -67,6 +71,20 @@ bool App::init()
     if (!directories.failedOptional.isEmpty()) {
         qWarning() << "Storage: continuing without some cache or log locations:"
                    << directories.failedOptional.join(QStringLiteral(", "));
+    }
+
+    // Crash triage without telemetry: a marker that only an orderly shutdown
+    // removes. Finding it at startup means the previous session died, which
+    // the input diagnostics export reports alongside the backend history.
+    {
+        const QString marker = Paths::dataDir() + QStringLiteral("/session.marker");
+        const bool crashed = QFile::exists(marker);
+        if (crashed)
+            qWarning() << "App: previous session ended unexpectedly (marker found)";
+        InputDiagnostics::instance().setPreviousSessionCrashed(crashed);
+        QFile file(marker);
+        if (file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            file.write("running");
     }
 
     m_integration = std::make_unique<IntegrationService>(QStringLiteral(GAMEHQ_VERSION));

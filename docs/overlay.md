@@ -8,7 +8,7 @@
 - On open: the first sidebar tab is `Game`, filtered to screenshots and clips for the game that had focus before the overlay appeared. When a current game is available, `Game Favourites` appears directly below it and shows only favourite captures from that same game.
 - Circle: back in submenus/viewer; close from main gallery.
 - On close: hide → restore focus to remembered game HWND → controller input returns to game.
-- Overlay open ⇒ GameHQ consumes all controller input (game must not react).
+- Overlay open ⇒ GameHQ takes the OS foreground focus, and its own input routing sends pad events to the overlay UI instead of GameHQ actions. **This is not input isolation from the game's point of view**: games that pause or ignore input on focus loss stop reacting, but games that keep reading XInput/DirectInput/Raw Input in the background (e.g. Rise of the Ronin) still receive the pad while the overlay is open. Universal blocking requires the separately designed, unimplemented Exclusive Controller Mode (`docs/design/exclusive-controller-mode.md`). Product copy: "GameHQ takes foreground focus while the overlay is open; some games that accept background controller input may still respond."
 - Any OS-level focus change away from the overlay (Windows key, Alt-Tab, task
   switcher, clicking another window) auto-hides the overlay the same way
   Circle/click-outside does, **except** it does not force focus back onto the
@@ -20,8 +20,8 @@
 ## Window technique (MVP, no injection)
 
 - Qt `QQuickWindow` with `Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint`, no taskbar entry (`Qt::Tool`).
-- On show: remember `GetForegroundWindow()` (the game), then `SetForegroundWindow` on the overlay; keep topmost with `SetWindowPos(HWND_TOPMOST)`. The plain `SetForegroundWindow` was rejected by foreground-lock when the game owned focus; the show path now goes through `OverlayManager`'s `forceForeground()` helper, which uses the `AttachThreadInput` trick to bypass the lock (verified by HWND-before/after logging in `gamehq.log`).
-- On hide: focus is restored to the remembered game HWND via the same `forceForeground()` path — `AttachThreadInput` is now actually implemented on both sides (was a documented "may require" TODO).
+- On show: remember `GetForegroundWindow()` (the game), then move the OS foreground to the overlay. The `AttachThreadInput` foreground-lock bypass lives behind the `ForegroundApi` seam (`overlay/ForegroundApi.cpp`); `ForegroundAcquirer` wraps it with **verification and a bounded retry** — the result of `SetForegroundWindow` is not trusted, the actual foreground window is re-read, and on mismatch it retries at most twice (50 ms, 150 ms) with no busy loop. The final outcome is logged, recorded in the input diagnostics ring, and exposed as `overlay.foregroundAcquired`; on failure the overlay still opens but shows a non-blocking "the game still has focus" notice and never claims input isolation. Tested with a deterministic denial fake in `tst_foregroundacquirer`.
+- On hide: focus is restored to the remembered game HWND via the same acquire-verify-retry path.
 - Supported: borderless fullscreen, windowed fullscreen, windowed. **Exclusive fullscreen not guaranteed** — detect (window covers monitor + `IsIconic` false + swap-chain heuristics unavailable without injection) and advise switching to borderless.
 - **Never** inject into game processes (anti-cheat).
 

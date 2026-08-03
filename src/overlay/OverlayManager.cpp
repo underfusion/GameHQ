@@ -1,5 +1,7 @@
 #include "overlay/OverlayManager.h"
 
+#include "overlay/ForegroundAcquirer.h"
+
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQuickWindow>
@@ -8,42 +10,11 @@
 
 #include <windows.h>
 
-// Force-foreground helper. Qt's requestActivate() ends in SetForegroundWindow,
-// which Win32 routinely rejects with a foreground-lock denial when our thread
-// isn't the active input one (e.g. the game owns focus). AttachThreadInput
-// briefly marries our input queue to the current foreground's and the target's,
-// which makes SetForegroundWindow behave as if the user clicked the target —
-// bypassing the lock. Symmetric: used both when stealing focus for the overlay
-// (show) and when handing focus back to the game (hide).
+// The AttachThreadInput force-foreground dance lives behind the ForegroundApi
+// seam (overlay/ForegroundApi.cpp); ForegroundAcquirer adds the verify +
+// bounded-retry policy and reports the honest result. This file only decides
+// WHEN to acquire and what the result means for overlay state.
 namespace {
-bool forceForeground(HWND target) noexcept
-{
-    if (!target)
-        return false;
-    if (GetForegroundWindow() == target)
-        return true;
-
-    const DWORD myThread  = GetCurrentThreadId();
-    const HWND  currentFg = GetForegroundWindow();
-    const DWORD fgThread  = currentFg ? GetWindowThreadProcessId(currentFg, nullptr) : 0;
-    const DWORD tgtThread = GetWindowThreadProcessId(target, nullptr);
-
-    const bool a1 = (fgThread && fgThread != myThread)
-                    ? AttachThreadInput(myThread, fgThread, TRUE) : false;
-    const bool a2 = (tgtThread != myThread && tgtThread != fgThread)
-                    ? AttachThreadInput(myThread, tgtThread, TRUE) : false;
-
-    bool ok = SetForegroundWindow(target) != 0;
-    BringWindowToTop(target);
-    SetWindowPos(target, HWND_TOP, 0, 0, 0, 0,
-                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-
-    if (a2) AttachThreadInput(myThread, tgtThread, FALSE);
-    if (a1) AttachThreadInput(myThread, fgThread, FALSE);
-
-    return ok;
-}
-
 // Only one OverlayManager exists per process; the WinEvent callback is a
 // free function (Win32 API requirement) so it reaches the instance here.
 OverlayManager* g_overlayManagerInstance = nullptr;
@@ -75,6 +46,22 @@ OverlayManager::OverlayManager(QQmlApplicationEngine* engine, QObject* parent)
                                    nullptr, onForegroundEvent, 0, 0, WINEVENT_OUTOFCONTEXT);
     if (!m_focusHook)
         qWarning() << "Overlay: SetWinEventHook failed — auto-hide on focus loss disabled";
+
+    m_acquirer = new ForegroundAcquirer(this);
+    connect(m_acquirer, &ForegroundAcquirer::finished, this,
+            [this](const QString& phase, void*, bool acquired, int) {
+        // Only the show phase feeds the isolation state; a failed focus
+        // hand-back on hide is the shell's business, not an overlay claim.
+        if (phase != QLatin1String("overlay show"))
+            return;
+        if (!acquired)
+            qWarning() << "Overlay: open WITHOUT foreground — the game may still"
+                          " receive controller input";
+        if (m_foregroundAcquired != acquired) {
+            m_foregroundAcquired = acquired;
+            emit foregroundAcquiredChanged();
+        }
+    });
 }
 
 OverlayManager::~OverlayManager()
@@ -148,20 +135,16 @@ void OverlayManager::show()
     m_window->raise();
     m_window->requestActivate();
 
-    // Stage-1 input isolation: aggressively take the OS foreground so the
-    // game underneath stops being the foreground window. Many games then
-    // stop polling the pad (esp. borderless/windowed ones); those that
-    // keep reading XInput/RawInput in the background still react — that
-    // path needs the future HidHide integration (see docs/overlay.md).
+    // Stage-1 input isolation: take the OS foreground so the game underneath
+    // stops being the foreground window. Many games then stop polling the pad
+    // (esp. borderless/windowed ones); those that keep reading XInput/RawInput
+    // in the background still react — that path needs the future Exclusive
+    // Controller Mode (see docs/overlay.md). The acquirer verifies the result,
+    // retries at most twice, and reports the truth into foregroundAcquired.
     const HWND overlayHwnd = reinterpret_cast<HWND>(m_window->winId());
-    const HWND fgBefore = GetForegroundWindow();
-    const bool grabbed = forceForeground(overlayHwnd);
-    const HWND fgAfter = GetForegroundWindow();
     qInfo() << "Overlay: shown over" << m_previousForeground
-            << "| fgBefore=" << fgBefore
-            << "| forceForeground=" << (grabbed ? "ok" : "FAILED")
-            << "| fgAfter=" << fgAfter
-            << "(fgAfter==overlay:" << (fgAfter == overlayHwnd) << ")";
+            << "| overlay hwnd=" << overlayHwnd;
+    m_acquirer->acquire(overlayHwnd, QStringLiteral("overlay show"));
     emit visibleChanged();
 }
 
@@ -186,17 +169,16 @@ void OverlayManager::hideInternal(bool restoreFocus)
         qInfo() << "Overlay: auto-hidden on focus loss, not restoring focus to the game";
     } else if (m_previousForeground) {
         const HWND prev = static_cast<HWND>(m_previousForeground);
-        const HWND fgBefore = GetForegroundWindow();
-        const bool ok = forceForeground(prev);
-        const HWND fgAfter = GetForegroundWindow();
-        qInfo() << "Overlay: focus restore | prev=" << prev
-                << "| fgBefore=" << fgBefore
-                << "| forceForeground=" << (ok ? "ok" : "FAILED")
-                << "| fgAfter=" << fgAfter
-                << "(fgAfter==prev:" << (fgAfter == prev) << ")";
+        qInfo() << "Overlay: hidden, restoring focus to" << prev;
+        m_acquirer->acquire(prev, QStringLiteral("overlay hide"));
         m_previousForeground = nullptr;
     } else {
         qInfo() << "Overlay: hidden, no previous foreground to restore";
+    }
+    // A closed overlay makes no isolation claim; clear any stale warning.
+    if (!m_foregroundAcquired) {
+        m_foregroundAcquired = true;
+        emit foregroundAcquiredChanged();
     }
     emit visibleChanged();
 }

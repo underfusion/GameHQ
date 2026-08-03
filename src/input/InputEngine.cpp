@@ -4,11 +4,13 @@
 #include "config/ConfigManager.h"
 #include "input/BindingRuntime.h"
 #include "input/ControllerArbitration.h"
+#include "input/ControllerIdentity.h"
 #include "input/BindingEditorModel.h"
 #include "input/DualSenseDevice.h"
 #include "input/Gamepad.h"
 #include "input/HidCloakMonitor.h"
 #include "input/HotkeyManager.h"
+#include "input/InputDiagnostics.h"
 #include "input/MouseHookDevice.h"
 #include "input/WinMMDevice.h"
 #include "input/XInputDevice.h"
@@ -20,6 +22,8 @@
 #include <QTimer>
 
 #include <windows.h>
+
+#include <limits>
 
 namespace {
 QString keyboardTrigger(int key, int modifiers)
@@ -43,6 +47,32 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
     , m_lastInput(QStringLiteral("Connect a controller and press a button..."))
     , m_controllerStatus(QStringLiteral("No controller detected"))
 {
+    // OS half of the binding transaction. The editor calls this *before* it
+    // writes anything, so a chord Windows refuses can never be persisted and
+    // shown as a working shortcut.
+    m_bindingEditor->setHotkeyApply(
+        [this](const QString& actionId, int slot, const QString& chord, QString* reason) {
+            if (chord.isEmpty()) {
+                // Empty chord means "release the slot" — used by the rollback
+                // path when the action had no previous keyboard binding.
+                m_hotkeys->clearBindingSlot(actionId, slot);
+                return true;
+            }
+            const auto parsed = HotkeyManager::parseChord(chord);
+            if (!parsed.valid) {
+                if (reason)
+                    *reason = parsed.rejectionReason;
+                return false;
+            }
+            if (m_hotkeys->applyBindingSlot(actionId, slot, parsed.modifiers, parsed.vk))
+                return true;
+            if (reason) {
+                *reason = QStringLiteral("This shortcut is already used by Windows or "
+                                         "another application.");
+            }
+            return false;
+        });
+
     m_controllerClock.start();
     m_runtime->setDefaultHoldMs(
         m_config->value(ConfigKeys::InputShareHoldMs, 2000).toInt());
@@ -100,6 +130,7 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
         qInfo() << "Input: device topology changed — rescanning fallback backends";
         m_xinputPad->rescan();
         m_winmmPad->rescan();
+        updateXInputIdentity();
     });
 
     // Surface cloaked pads (present in Windows, hidden from apps by a HID
@@ -244,8 +275,12 @@ void InputEngine::attachGamepad(std::unique_ptr<Gamepad> pad, const QString& dis
 
         if (!c) {
             m_backendLastControlMs.remove(raw);
-            m_backendLastControlId.remove(raw);
+            m_backendCandidateFirstMs.remove(raw);
+            if (m_pending.source == raw)
+                clearPendingCandidate();
         }
+        if (raw == m_xinputPad)
+            updateXInputIdentity();
         updateActiveBackend();
         if (!c && !anyBackendConnected())
             setLastInput(displayName + QStringLiteral(" disconnected"));
@@ -273,6 +308,97 @@ void InputEngine::updateActiveBackend()
     activateBackend(pick, QStringLiteral("connection fallback"));
 }
 
+// A backend the takeover gate refused is tracked as a pending candidate: the
+// role still cannot move on one event, but it no longer has to wait out a full
+// second of silence either. The run restarts the moment the active backend
+// reports again, which is what makes this safe against mirrored input — a
+// remapper feeding two APIs keeps both of them talking.
+bool InputEngine::confirmCandidate(Gamepad* source, qint64 now,
+                                   qint64 activeLastControlMs)
+{
+    const auto firstIt = m_backendCandidateFirstMs.constFind(source);
+    if (firstIt == m_backendCandidateFirstMs.cend() || *firstIt <= activeLastControlMs) {
+        m_backendCandidateFirstMs.insert(source, now);
+        return false;
+    }
+    if (!ControllerArbitration::candidateMayConfirm(*firstIt, now, activeLastControlMs))
+        return false;
+    m_backendCandidateFirstMs.remove(source);
+    return true;
+}
+
+// Buffer the first press of a candidate run. XInput and WinMM report state
+// *changes*, so a user who presses once and lets go produces exactly one event
+// — waiting for a second one would lose that press forever. The press is held
+// for BackendCandidateConfirmMs and then either delivered (active backend
+// stayed silent: this was a real switch) or dropped (active backend spoke: it
+// was a mirror). Only one press is ever held; a further control from the same
+// candidate resolves the run immediately through confirmCandidate().
+void InputEngine::holdCandidatePress(Gamepad* source, const QString& controlId,
+                                     int family, const QString& fingerprint,
+                                     qint64 pressedMs)
+{
+    if (m_pending.source == source && !m_pending.controlId.isEmpty())
+        return;   // already holding this candidate's first press
+    m_pending.source = source;
+    m_pending.controlId = controlId;
+    m_pending.family = family;
+    m_pending.fingerprint = fingerprint;
+    m_pending.pressedMs = pressedMs;
+    m_pending.released = false;
+    const int generation = ++m_pendingGeneration;
+    QTimer::singleShot(ControllerArbitration::BackendCandidateConfirmMs, this,
+                       [this, generation] { resolvePendingCandidate(generation); });
+}
+
+void InputEngine::clearPendingCandidate()
+{
+    ++m_pendingGeneration;   // orphan the timer still counting down
+    m_pending = {};
+}
+
+// The confirmation window closed with the candidate still unanswered: the
+// active backend never spoke, so the held press was real input on a backend
+// that has genuinely taken over.
+void InputEngine::resolvePendingCandidate(int generation)
+{
+    if (generation != m_pendingGeneration || !m_pending.source)
+        return;
+    Gamepad* source = m_pending.source;
+    if (!backendConnected(source)) {
+        clearPendingCandidate();
+        return;
+    }
+    const auto activeIt = m_backendLastControlMs.constFind(m_activeBackend);
+    const qint64 activeLastMs = activeIt != m_backendLastControlMs.cend()
+        ? *activeIt : std::numeric_limits<qint64>::min();
+    if (!ControllerArbitration::heldPressSurvives(m_pending.pressedMs, activeLastMs,
+                                                  m_controllerClock.elapsed())) {
+        clearPendingCandidate();   // the active backend answered after all
+        return;
+    }
+
+    const PendingPress press = m_pending;
+    clearPendingCandidate();
+    m_backendCandidateFirstMs.clear();
+    activateBackend(source, QStringLiteral("sustained candidate"));
+    m_backendLastControlMs.insert(source, m_controllerClock.elapsed());
+    replayPendingPress(press);
+}
+
+void InputEngine::replayPendingPress(const PendingPress& press)
+{
+    deliverPress(press.source, press.controlId, press.family, press.fingerprint);
+    // Replayed back to back so a tap stays a tap: the runtime measures hold
+    // time from the press it just saw, and this release arrives immediately.
+    if (press.released) {
+        m_runtime->release(QStringLiteral("controller"), press.fingerprint,
+                           press.controlId);
+        if (press.controlId == m_repeatTrigger)
+            stopNavRepeat();
+    }
+}
+
 void InputEngine::activateBackend(Gamepad* pick, const QString& reason)
 {
     if (pick == m_activeBackend)
@@ -284,6 +410,7 @@ void InputEngine::activateBackend(Gamepad* pick, const QString& reason)
     if (pick) {
         m_bindingEditor->setControllerProfile(pick->profile());
         const QString name = backendDisplayName(pick);
+        InputDiagnostics::instance().noteBackendSwitch(name, reason);
         qInfo() << "Input: active controller backend ->" << name
                 << "(" << reason << ")";
         setControllerStatus(name + QStringLiteral(" connected"));
@@ -315,6 +442,40 @@ QString InputEngine::backendDisplayName(const Gamepad* pad) const
     if (pad == m_winmmPad)
         return QStringLiteral("WinMM joystick");
     return QStringLiteral("Controller");
+}
+
+int InputEngine::backendPriority(const Gamepad* pad) const
+{
+    if (pad == m_sonyPad)
+        return 3;
+    if (pad == m_xinputPad)
+        return 2;
+    if (pad == m_winmmPad)
+        return 1;
+    return 0;
+}
+
+void InputEngine::updateXInputIdentity()
+{
+    if (!m_sonyPad || !m_xinputPad)
+        return;
+    const int slot = m_xinputPad->firstConnectedSlot();
+    if (slot < 0) {
+        m_xinputPad->setKnownDeviceIdentity({});
+        return;
+    }
+    const QString fingerprint = ControllerIdentity::resolveXInputFingerprint(
+        m_sonyPad->xinputClassIdentities(), m_xinputPad->connectedSlotCount(), slot);
+    const bool stable = !ControllerIdentity::isLegacySlotFingerprint(fingerprint);
+    m_xinputPad->setKnownDeviceIdentity(stable ? fingerprint : QString());
+    // Rows saved before stable identity existed stay live for this pad at
+    // lower precedence; promotion to the identity is the user's explicit
+    // copy action in Settings, never automatic.
+    if (stable)
+        m_runtime->setProfileAlias(fingerprint,
+                                   ControllerIdentity::legacySlotFingerprint(slot));
+    if (m_activeBackend == m_xinputPad)
+        m_bindingEditor->setControllerProfile(m_xinputPad->profile());
 }
 
 void InputEngine::setOverlayVisible(bool visible)
@@ -360,18 +521,49 @@ void InputEngine::onControlPressed(const QString& controlId, int family,
     const qint64 now = m_controllerClock.elapsed();
     if (source != m_activeBackend) {
         const auto activeIt = m_backendLastControlMs.constFind(m_activeBackend);
+        // Same fingerprint on a higher-priority backend = the same physical
+        // pad reached us over a better path (Sony Raw Input and WinMM both
+        // report VID:PID, so the DSX virtual pad matches across them); it may
+        // upgrade without waiting out the silence threshold. XInput's slot
+        // fingerprint never matches a VID:PID one, which is correct — a slot
+        // proves nothing about physical identity.
+        const bool higherPrioritySameDevice = m_activeBackend
+            && backendPriority(source) > backendPriority(m_activeBackend)
+            && !source->profile().fingerprint.isEmpty()
+            && source->profile().fingerprint == m_activeBackend->profile().fingerprint;
+        QString reason = QStringLiteral("control activity");
         if (activeIt != m_backendLastControlMs.cend()
             && !ControllerArbitration::backendMayTakeOver(
-                true,
-                m_backendLastControlId.value(m_activeBackend) == controlId,
-                *activeIt,
-                now))
-            return;
-        activateBackend(source, QStringLiteral("control activity"));
+                true, *activeIt, now, higherPrioritySameDevice)) {
+            if (!confirmCandidate(source, now, *activeIt)) {
+                // Not proven yet — hold the press rather than drop it. If the
+                // candidate turns out to be real it is delivered on promotion;
+                // if the active backend answers, it was a mirror and dies.
+                holdCandidatePress(source, controlId, family, fingerprint, now);
+                return;
+            }
+            reason = QStringLiteral("sustained candidate");
+        }
+        activateBackend(source, reason);
+        // A press held from this candidate's first event still counts: deliver
+        // it before the one that confirmed the switch, in the order pressed.
+        const PendingPress held = m_pending.source == source ? m_pending : PendingPress{};
+        clearPendingCandidate();
+        if (held.source)
+            replayPendingPress(held);
     }
+    // The active backend speaking is proof that a pending candidate press was
+    // a mirror of it, not a failover in progress.
+    if (m_pending.source && m_pending.source != source)
+        clearPendingCandidate();
     m_backendLastControlMs.insert(source, now);
-    m_backendLastControlId.insert(source, controlId);
+    deliverPress(source, controlId, family, fingerprint);
+}
 
+void InputEngine::deliverPress(Gamepad* source, const QString& controlId, int family,
+                               const QString& fingerprint)
+{
+    InputDiagnostics::instance().noteControl(controlId, backendDisplayName(source));
     setLastInput(ControlId::label(controlId, static_cast<ControlId::ControllerFamily>(family))
                  + QStringLiteral(" pressed"));
     if (m_bindingEditor->captureInput(
@@ -386,6 +578,16 @@ void InputEngine::onControlReleased(const QString& controlId, int, const QString
                                     const QString& fingerprint, const QString&)
 {
     auto* source = qobject_cast<Gamepad*>(sender());
+    // A release for a press still waiting on confirmation is remembered, not
+    // forwarded: the press has not been delivered yet, so there is nothing to
+    // release. Recording it is what keeps a tap a tap — on promotion the pair
+    // is replayed back to back and the runtime sees a short press, never a
+    // hold it never was.
+    if (m_pending.source && source == m_pending.source
+        && controlId == m_pending.controlId) {
+        m_pending.released = true;
+        return;
+    }
     if (source != m_activeBackend)
         return;
     m_runtime->release(QStringLiteral("controller"), fingerprint, controlId);
@@ -526,6 +728,23 @@ void InputEngine::setControllerWarning(const QString& text, bool fixAvailable)
     m_controllerWarning = text;
     m_controllerFixAvailable = fixAvailable;
     emit controllerWarningChanged();
+}
+
+void InputEngine::startButtonProbe()
+{
+    InputDiagnostics::instance().startProbe();
+    if (m_sonyPad)
+        m_sonyPad->beginButtonProbe();
+    m_probeRunning = true;
+    m_probeStatus = QStringLiteral("Press the button now — recording for 3 seconds…");
+    emit probeStatusChanged();
+    // The summary is read slightly after the window closes so the last events
+    // are in; the backends notice expiry themselves on their next event.
+    QTimer::singleShot(InputDiagnostics::kProbeDurationMs + 200, this, [this] {
+        m_probeRunning = false;
+        m_probeStatus = InputDiagnostics::instance().probeSummary();
+        emit probeStatusChanged();
+    });
 }
 
 void InputEngine::fixHiddenController()

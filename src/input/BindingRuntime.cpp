@@ -48,12 +48,50 @@ void BindingRuntime::reload()
 {
     cancelAll();
     m_resolver.reload();
+    m_relations.clear();
+}
+
+const QVector<BindingRuntime::Relation>& BindingRuntime::relations(
+    const QString& deviceGroup, const QString& deviceProfile) const
+{
+    const QString key = deviceGroup + QLatin1Char('\x1f') + deviceProfile;
+    const auto cached = m_relations.constFind(key);
+    if (cached != m_relations.cend())
+        return *cached;
+
+    const QVector<BindingResolver::Binding> bindings =
+        m_resolver.effectiveBindings(deviceGroup, deviceProfile);
+    QVector<Relation> classified;
+    for (int i = 0; i < bindings.size(); ++i) {
+        for (int j = i + 1; j < bindings.size(); ++j) {
+            const BindingRelation::Kind kind =
+                BindingRelation::classify(bindings.at(i), bindings.at(j));
+            if (kind != BindingRelation::Kind::None)
+                classified.append({bindings.at(i), bindings.at(j), kind});
+        }
+    }
+    return *m_relations.insert(key, classified);
 }
 
 QVector<BindingResolver::Binding> BindingRuntime::effectiveBindings(
     const QString& deviceGroup, const QString& deviceProfile) const
 {
     return m_resolver.effectiveBindings(deviceGroup, deviceProfile);
+}
+
+BindingResolver::Gesture BindingRuntime::inheritedGesture(
+    const QString& deviceGroup, const QString& deviceProfile,
+    const QString& actionId, int slot) const
+{
+    return m_resolver.inheritedGesture(deviceGroup, deviceProfile, actionId, slot);
+}
+
+void BindingRuntime::setProfileAlias(const QString& profile, const QString& legacyProfile)
+{
+    m_resolver.setProfileAlias(profile, legacyProfile);
+    // The alias changes the effective view, so cached pair classifications
+    // for the affected profile are stale.
+    m_relations.clear();
 }
 
 QString BindingRuntime::stateKey(const QString& group, const QString& profile,

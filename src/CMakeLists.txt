@@ -30,10 +30,16 @@ qt_add_executable(GameHQ
     input/StickNav.h
     input/SonyReportLayout.h
     input/ActionCatalog.cpp input/ActionCatalog.h
+    input/BindingRelation.cpp input/BindingRelation.h
     input/BindingResolver.cpp input/BindingResolver.h
+    input/ContextOverrideCatalog.cpp input/ContextOverrideCatalog.h
     input/BindingRuntime.cpp input/BindingRuntime.h
     input/BindingEditorModel.cpp input/BindingEditorModel.h
     input/ControlId.cpp input/ControlId.h
+    input/ControllerIdentity.cpp input/ControllerIdentity.h
+    input/InputDiagnostics.cpp input/InputDiagnostics.h
+    input/InputRateMonitor.cpp input/InputRateMonitor.h
+    input/RawInputApi.cpp input/RawInputApi.h
     input/DualSenseDevice.cpp input/DualSenseDevice.h
     input/HidCloakMonitor.cpp input/HidCloakMonitor.h
     input/XInputDevice.cpp input/XInputDevice.h
@@ -47,6 +53,8 @@ qt_add_executable(GameHQ
     input/MouseHookDevice.cpp input/MouseHookDevice.h
     input/InputEngine.cpp input/InputEngine.h
     notify/NotificationCenter.cpp notify/NotificationCenter.h
+    overlay/ForegroundAcquirer.cpp overlay/ForegroundAcquirer.h
+    overlay/ForegroundApi.cpp overlay/ForegroundApi.h
     overlay/OverlayManager.cpp overlay/OverlayManager.h
     sound/SoundEngine.cpp  sound/SoundEngine.h
     storage/CaptureDatabase.cpp storage/CaptureDatabase.h
@@ -124,6 +132,7 @@ qt_add_qml_module(GameHQ
         ui/qml/components/TileIconButton.qml
         ui/qml/components/VideoBadge.qml
         ui/qml/components/SettingsPathField.qml
+        ui/qml/components/BindingConflictDialog.qml
         ui/qml/components/ConfirmDialog.qml
         ui/qml/components/Toast.qml
         ui/qml/components/UpdateBanner.qml

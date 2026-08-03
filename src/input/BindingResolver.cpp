@@ -1,10 +1,12 @@
 #include "input/BindingResolver.h"
 
+#include "input/ContextOverrideCatalog.h"
 #include "input/ControlId.h"
 #include "storage/CaptureDatabase.h"
 
 #include <QHash>
 #include <QSet>
+#include <algorithm>
 #include <utility>
 
 namespace {
@@ -24,6 +26,16 @@ void BindingResolver::setDefaultHoldMs(int milliseconds)
     m_defaultHoldMs = qBound(250, milliseconds, 10000);
 }
 
+void BindingResolver::setProfileAlias(const QString& profile, const QString& legacyProfile)
+{
+    if (profile.isEmpty())
+        return;
+    if (legacyProfile.isEmpty())
+        m_profileAliases.remove(profile);
+    else
+        m_profileAliases.insert(profile, legacyProfile);
+}
+
 void BindingResolver::reload()
 {
     m_overrides.clear();
@@ -34,6 +46,73 @@ void BindingResolver::reload()
                             row.slot, row.triggerCode, row.activation,
                             row.holdMs, row.unbound});
     }
+}
+
+// A capture into an empty slot must not invent semantics. The slot's meaning is
+// whatever the user or the defaults last gave it, resolved in a fixed order:
+// the slot's own override row (a cleared row keeps carrying its old gesture),
+// the default binding for that exact slot, another live slot of the same
+// action, any default of the same action, and only then plain press. Without
+// this, every empty-slot capture landed as "press", which the relation policy
+// rightly treats as clashing with any tap/hold on the same trigger — so valid
+// assignments were blocked by conflicts that only existed because of the guess.
+BindingResolver::Gesture BindingResolver::inheritedGesture(
+    const QString& deviceGroup, const QString& deviceProfile,
+    const QString& actionId, int slot) const
+{
+    // 1) The slot's own override row, unbound included — a device-specific row
+    //    wins over a group-wide one, same precedence as effectiveBindings().
+    //    An unbound press/0 row is the pre-0.7.3 clear sentinel, written when
+    //    clearing still erased the gesture; it carries no information, so it
+    //    falls through instead of resurrecting "press".
+    const Binding* overrideRow = nullptr;
+    for (const Binding& binding : m_overrides) {
+        if (binding.deviceGroup != deviceGroup || binding.actionId != actionId
+            || binding.slot != slot)
+            continue;
+        if (!binding.deviceProfile.isEmpty() && binding.deviceProfile != deviceProfile)
+            continue;
+        if (!overrideRow || (overrideRow->deviceProfile.isEmpty()
+                             && !binding.deviceProfile.isEmpty()))
+            overrideRow = &binding;
+    }
+    if (overrideRow
+        && !(overrideRow->unbound && overrideRow->activation == QLatin1String("press")
+             && overrideRow->holdMs == 0))
+        return {overrideRow->activation, overrideRow->holdMs};
+
+    // 2) The default binding for this exact slot.
+    const QVector<Binding> defaults = defaultBindings(m_defaultHoldMs);
+    for (const Binding& binding : defaults) {
+        if (binding.deviceGroup == deviceGroup && binding.actionId == actionId
+            && binding.slot == slot)
+            return {binding.activation, binding.holdMs};
+    }
+
+    // 3) Another live slot of the same action, lowest slot first.
+    const QVector<Binding> effective = effectiveBindings(deviceGroup, deviceProfile);
+    const Binding* sibling = nullptr;
+    for (const Binding& binding : effective) {
+        if (binding.actionId != actionId || binding.slot == slot)
+            continue;
+        if (!sibling || binding.slot < sibling->slot)
+            sibling = &binding;
+    }
+    if (sibling)
+        return {sibling->activation, sibling->holdMs};
+
+    // 4) The action's default semantics: this device group first, then any.
+    for (const Binding& binding : defaults) {
+        if (binding.deviceGroup == deviceGroup && binding.actionId == actionId)
+            return {binding.activation, binding.holdMs};
+    }
+    for (const Binding& binding : defaults) {
+        if (binding.actionId == actionId)
+            return {binding.activation, binding.holdMs};
+    }
+
+    // 5) Nothing anywhere has ever given this slot a meaning.
+    return {};
 }
 
 QVector<BindingResolver::Binding> BindingResolver::defaultBindings(int captureHoldMs)
@@ -145,8 +224,11 @@ QVector<BindingResolver::Binding> BindingResolver::defaultBindings(int captureHo
         c("playback.seek_back", 1, DpadLeft),
         c("playback.seek_forward", 1, DpadRight),
         // Share (Create) grabs the current clip frame while playback is focused.
-        // In every other scope Share tap is global.screenshot; the Playback
-        // binding wins over that fallback only while a clip is focused.
+        // In every other scope Share tap is global.screenshot. The two do not
+        // stack: ContextOverrideCatalog declares frame_grab as an explicit
+        // substitution for screenshot on the tap gesture, so a tap during
+        // playback produces one capture, not two. Hold (save_replay) and
+        // double-tap (toggle_overlay) are different activations and stay live.
         c("playback.frame_grab", 1, Capture, "tap"),
     };
 }
@@ -160,8 +242,16 @@ QVector<BindingResolver::Binding> BindingResolver::effectiveBindings(
             merged.insert(bindingKey(binding.actionId, binding.slot), binding);
     }
 
-    // A device-specific row intentionally wins over a group-wide row.
-    for (const QString& profile : {QString(), deviceProfile}) {
+    // Precedence, later wins: group-wide < legacy alias (pre-identity
+    // "xinput.slotN" rows kept alive for this profile) < device-specific.
+    QStringList profiles{QString()};
+    if (!deviceProfile.isEmpty()) {
+        const QString alias = m_profileAliases.value(deviceProfile);
+        if (!alias.isEmpty() && alias != deviceProfile)
+            profiles.append(alias);
+        profiles.append(deviceProfile);
+    }
+    for (const QString& profile : profiles) {
         for (const Binding& binding : m_overrides) {
             if (binding.deviceGroup != deviceGroup || binding.deviceProfile != profile)
                 continue;
@@ -170,8 +260,6 @@ QVector<BindingResolver::Binding> BindingResolver::effectiveBindings(
                 continue;
             merged.insert(bindingKey(binding.actionId, binding.slot), binding);
         }
-        if (deviceProfile.isEmpty())
-            break;
     }
 
     QVector<Binding> result;
@@ -203,6 +291,23 @@ QVector<BindingResolver::Binding> BindingResolver::matching(
         else if (action->scope == fallbackScope)
             fallback.append(binding);
     }
-    globals += primary.isEmpty() ? fallback : primary;
-    return globals;
+    const QVector<Binding>& contextual = primary.isEmpty() ? fallback : primary;
+
+    // Global bindings normally fire alongside the contextual ones, so a Guide
+    // press still toggles the overlay while a clip is focused. Drop only the
+    // pairs ContextOverrideCatalog declares as deliberate substitutions —
+    // never a blanket "contextual shadows Global" rule, which would hide
+    // user-created overlaps the binding editor is supposed to surface.
+    QVector<Binding> result;
+    for (const Binding& global : globals) {
+        const bool shadowed = std::any_of(
+            contextual.cbegin(), contextual.cend(), [&](const Binding& active) {
+                return ContextOverrideCatalog::shadows(active.actionId, global.actionId,
+                                                       activation);
+            });
+        if (!shadowed)
+            result.append(global);
+    }
+    result += contextual;
+    return result;
 }

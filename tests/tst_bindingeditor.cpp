@@ -1,5 +1,6 @@
 #include "input/ActionCatalog.h"
 #include "input/BindingEditorModel.h"
+#include "input/BindingRelation.h"
 #include "input/BindingRuntime.h"
 #include "input/ControlId.h"
 #include "storage/CaptureDatabase.h"
@@ -220,6 +221,537 @@ private slots:
         QVERIFY(m_runtime->release(QStringLiteral("controller"), {}, ControlId::Capture));
         QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 300);
         QCOMPARE(spy.takeFirst().at(0).toString(), QStringLiteral("global.toggle_overlay"));
+    }
+
+    void playbackCaptureTapDoesNotDoubleFire()
+    {
+        // When the overlay is open and a clip is focused, the primary scope
+        // is Playback.  A Capture tap should emit ONLY playback.frame_grab,
+        // not global.screenshot — the contextual Playback binding is an
+        // explicit override of the Global one.
+        m_runtime->setDefaultHoldMs(250);
+        m_runtime->reload();
+        QSignalSpy spy(m_runtime, &BindingRuntime::actionTriggered);
+
+        QVERIFY(m_runtime->press(QStringLiteral("controller"), {}, ControlId::Capture,
+                                 ActionCatalog::Scope::Playback,
+                                 ActionCatalog::Scope::Overlay));
+        QVERIFY(m_runtime->release(QStringLiteral("controller"), {}, ControlId::Capture));
+        QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 700);
+
+        // Settle past the double-tap window so a late second emission would be
+        // caught rather than raced past.
+        QTest::qWait(350);
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.takeFirst().at(0).toString(), QStringLiteral("playback.frame_grab"));
+    }
+
+    // The replay half of the held-press rule (InputEngine::replayPendingPress):
+    // a press buffered while a candidate backend was being confirmed is
+    // delivered late, with its release immediately behind it. The runtime must
+    // still read that as a tap — a delayed press that turned into a hold would
+    // save a replay when the user asked for a screenshot.
+    void replayedPressAndReleasePairStaysATap()
+    {
+        m_runtime->setDefaultHoldMs(250);
+        m_runtime->reload();
+        QSignalSpy spy(m_runtime, &BindingRuntime::actionTriggered);
+
+        // Exactly what the replay does: press, then release with nothing in
+        // between, however long the press waited to be delivered.
+        QVERIFY(m_runtime->press(QStringLiteral("controller"), {}, ControlId::Capture,
+                                 ActionCatalog::Scope::Global));
+        QVERIFY(m_runtime->release(QStringLiteral("controller"), {}, ControlId::Capture));
+        QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 700);
+
+        QTest::qWait(400);   // past both the double-tap and the hold threshold
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.takeFirst().at(0).toString(), QStringLiteral("global.screenshot"));
+    }
+
+    void playbackCaptureHoldStillSavesReplay()
+    {
+        // The tap override must not swallow the other gestures on the same
+        // button: holding Capture during playback still saves the replay,
+        // because the override is declared for the tap activation only.
+        m_runtime->setDefaultHoldMs(250);
+        m_runtime->reload();
+        QSignalSpy spy(m_runtime, &BindingRuntime::actionTriggered);
+
+        QVERIFY(m_runtime->press(QStringLiteral("controller"), {}, ControlId::Capture,
+                                 ActionCatalog::Scope::Playback,
+                                 ActionCatalog::Scope::Overlay));
+        QTest::qWait(350);
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.takeFirst().at(0).toString(), QStringLiteral("global.save_replay"));
+        QVERIFY(m_runtime->release(QStringLiteral("controller"), {}, ControlId::Capture));
+        QTest::qWait(350);
+        QCOMPARE(spy.count(), 0);
+    }
+
+    void playbackGuideStillTogglesOverlay()
+    {
+        // Guide is Global-only and has no Playback counterpart, so it must keep
+        // firing while a clip is focused — proof the fix suppresses only the
+        // one declared pair, not Global bindings in general.
+        m_runtime->reload();
+        QSignalSpy spy(m_runtime, &BindingRuntime::actionTriggered);
+
+        QVERIFY(m_runtime->press(QStringLiteral("controller"), {}, ControlId::Guide,
+                                 ActionCatalog::Scope::Playback,
+                                 ActionCatalog::Scope::Overlay));
+        QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 300);
+        QCOMPARE(spy.takeFirst().at(0).toString(), QStringLiteral("global.toggle_overlay"));
+        // Guide is a plain press binding: the runtime consumes it on press, so
+        // the matching release has nothing pending and returns false. Released
+        // anyway to leave the runtime clean for the next test.
+        m_runtime->release(QStringLiteral("controller"), {}, ControlId::Guide);
+    }
+
+    void hardConflictOpensDialogAndCanRetryCapture()
+    {
+        m_editor->setDeviceGroup(QStringLiteral("keyboard"));
+        m_editor->beginCapture(QStringLiteral("desktop.navigate_down"), 2);
+        QVERIFY(m_editor->captureInput(QStringLiteral("keyboard"), QStringLiteral("Up"),
+                                       QStringLiteral("Up")));
+        QVERIFY(m_editor->conflictPending());
+        QCOMPARE(m_editor->relationKind(), QStringLiteral("hard_conflict"));
+        // The blocking tier must not be duplicated into the quiet notice
+        // channel; the dialog owns it.
+        QVERIFY(m_editor->validationError().isEmpty());
+
+        // "Choose another" re-arms the same action and slot rather than
+        // dropping the edit.
+        m_editor->retryConflictCapture();
+        QVERIFY(!m_editor->conflictPending());
+        QVERIFY(m_editor->captureActive());
+        m_editor->cancelCapture();
+        // The original binding survived the aborted edit.
+        QVERIFY(hasBinding(*m_runtime, QStringLiteral("keyboard"), {},
+                           QStringLiteral("desktop.navigate_up"), 1, QStringLiteral("Up")));
+    }
+
+    void contextOverrideOutranksSharedGestureNotice()
+    {
+        // Re-confirming Screenshot on the Share button keeps its tap gesture and
+        // meets three existing bindings at once: save_replay (hold) and
+        // toggle_overlay (double tap) are shared gestures, playback.frame_grab
+        // is the declared override. The override is the one that changes what
+        // the button does, so it must win regardless of hash iteration order.
+        m_editor->setDeviceGroup(QStringLiteral("controller"));
+        m_editor->beginCapture(QStringLiteral("global.screenshot"), 1);
+        QVERIFY(m_editor->captureInput(QStringLiteral("controller"), ControlId::Capture,
+                                       QStringLiteral("Share")));
+        QVERIFY(!m_editor->conflictPending());
+        QCOMPARE(m_editor->relationKind(), QStringLiteral("context_override"));
+    }
+
+    void sharedGestureIsSavedWithAQuietNotice()
+    {
+        // Same edit with the override binding cleared: what is left on the
+        // button are complementary gestures, which are legal and must save with
+        // an explanation rather than be refused.
+        m_editor->setDeviceGroup(QStringLiteral("controller"));
+        m_editor->clearBinding(QStringLiteral("playback.frame_grab"), 1);
+
+        m_editor->beginCapture(QStringLiteral("global.screenshot"), 1);
+        QVERIFY(m_editor->captureInput(QStringLiteral("controller"), ControlId::Capture,
+                                       QStringLiteral("Share")));
+        QVERIFY(!m_editor->conflictPending());
+        QCOMPARE(m_editor->relationKind(), QStringLiteral("shared_gesture"));
+        QVERIFY(m_editor->relationNotice().contains(QStringLiteral("Tap")));
+        QVERIFY(hasBinding(*m_runtime, QStringLiteral("controller"), {},
+                           QStringLiteral("global.screenshot"), 1, ControlId::Capture));
+
+        m_editor->dismissRelationNotice();
+        QCOMPARE(m_editor->relationKind(), QStringLiteral("none"));
+        QVERIFY(m_editor->relationNotice().isEmpty());
+    }
+
+    void unsupportedInputIsItsOwnTier()
+    {
+        // The controlled fixture for the tier no production backend can emit
+        // yet: only a GameInput-class backend will know that a control exists
+        // but cannot be delivered. Hotkey refusals and failed writes have
+        // their own kinds and must never stand in for this one.
+        m_editor->reportUnsupportedInput(QStringLiteral("Capture"));
+        QCOMPARE(m_editor->relationKind(), QStringLiteral("unsupported_input"));
+        // The three failure kinds populate validationError, so QML can style
+        // them as errors without inspecting the message text.
+        QVERIFY(m_editor->validationError().contains(QStringLiteral("not exposed")));
+        m_editor->dismissRelationNotice();
+        QVERIFY(m_editor->validationError().isEmpty());
+    }
+
+    void refusedChordIsNeverPersisted()
+    {
+        // Windows owning the chord must abort the whole change: nothing written,
+        // the previous shortcut still live, and the reason on screen.
+        m_editor->setDeviceGroup(QStringLiteral("keyboard"));
+        int applyCalls = 0;
+        m_editor->setHotkeyApply([&](const QString &, int, const QString &chord,
+                                     QString *reason) {
+            ++applyCalls;
+            if (chord == QLatin1String("Ctrl+Alt+P")) {
+                if (reason)
+                    *reason = QStringLiteral("This shortcut is already used by Windows or another application.");
+                return false;
+            }
+            return true;
+        });
+
+        m_editor->beginCapture(QStringLiteral("global.screenshot"), 2);
+        QVERIFY(m_editor->captureInput(QStringLiteral("keyboard"),
+                                       QStringLiteral("Ctrl+Alt+P"),
+                                       QStringLiteral("Ctrl+Alt+P")));
+        QCOMPARE(applyCalls, 1);
+        QVERIFY(m_database->listBindingOverrides().isEmpty());
+        QVERIFY(!hasBinding(*m_runtime, QStringLiteral("keyboard"), {},
+                            QStringLiteral("global.screenshot"), 2,
+                            QStringLiteral("Ctrl+Alt+P")));
+        QVERIFY(m_editor->validationError().contains(QStringLiteral("already used")));
+        // A chord Windows owns is its own kind. It is NOT unsupported_input:
+        // that tier means the controller backend cannot expose a control, and
+        // conflating the two would let a hotkey refusal masquerade as proof
+        // that the unsupported-control path works.
+        QCOMPARE(m_editor->relationKind(), QStringLiteral("hotkey_unavailable"));
+        // The chord that was live before is untouched.
+        QVERIFY(hasBinding(*m_runtime, QStringLiteral("keyboard"), {},
+                           QStringLiteral("global.screenshot"), 1,
+                           QStringLiteral("Ctrl+Shift+S")));
+        m_editor->setHotkeyApply(nullptr);
+    }
+
+    void failedWriteRollsTheHotkeyBack()
+    {
+        // The other half: Windows accepted the chord but the database refused
+        // the row. The OS registration must be handed back to the previous
+        // chord rather than left pointing at a binding nobody saved.
+        m_editor->setDeviceGroup(QStringLiteral("keyboard"));
+        QStringList applied;
+        m_editor->setHotkeyApply([&](const QString &, int, const QString &chord, QString *) {
+            applied.append(chord.isEmpty() ? QStringLiteral("<cleared>") : chord);
+            return true;
+        });
+        m_editor->setPersistRow([](const BindingOverrideRow &) { return false; });
+
+        m_editor->beginCapture(QStringLiteral("global.screenshot"), 1);
+        QVERIFY(m_editor->captureInput(QStringLiteral("keyboard"),
+                                       QStringLiteral("Ctrl+Alt+K"),
+                                       QStringLiteral("Ctrl+Alt+K")));
+
+        // Claimed the new chord, then restored the one that was live.
+        QCOMPARE(applied, QStringList({QStringLiteral("Ctrl+Alt+K"),
+                                       QStringLiteral("Ctrl+Shift+S")}));
+        QVERIFY(m_database->listBindingOverrides().isEmpty());
+        QVERIFY(hasBinding(*m_runtime, QStringLiteral("keyboard"), {},
+                           QStringLiteral("global.screenshot"), 1,
+                           QStringLiteral("Ctrl+Shift+S")));
+        QVERIFY(!m_editor->validationError().isEmpty());
+        // A failed write is a third, separate kind — not a hotkey problem and
+        // not an unsupported control.
+        QCOMPARE(m_editor->relationKind(), QStringLiteral("persistence_error"));
+
+        m_editor->setPersistRow(nullptr);
+        m_editor->setHotkeyApply(nullptr);
+    }
+
+    void controllerBindingsSkipTheHotkeyLayer()
+    {
+        // Only keyboard Global press bindings own a Win32 hotkey. A controller
+        // edit must not be gated on RegisterHotKey.
+        m_editor->setDeviceGroup(QStringLiteral("controller"));
+        bool called = false;
+        m_editor->setHotkeyApply([&](const QString &, int, const QString &, QString *) {
+            called = true;
+            return false;
+        });
+        m_editor->beginCapture(QStringLiteral("desktop.favorite"), 2);
+        QVERIFY(m_editor->captureInput(QStringLiteral("controller"),
+                                       ControlId::genericButton(19),
+                                       QStringLiteral("Button 19")));
+        QVERIFY(!called);
+        QVERIFY(hasBinding(*m_runtime, QStringLiteral("controller"), {},
+                           QStringLiteral("desktop.favorite"), 2,
+                           ControlId::genericButton(19)));
+        m_editor->setHotkeyApply(nullptr);
+    }
+
+    void shippedDefaultsContainNoHardConflicts()
+    {
+        // The defaults are the one binding set every user starts from. If the
+        // policy ever calls a shipped pair a hard conflict, either a default is
+        // wrong or the policy is — both need a human, so fail loudly and name
+        // the offending pair.
+        m_runtime->reload();
+        for (const QString &group : {QStringLiteral("controller"), QStringLiteral("keyboard"),
+                                     QStringLiteral("mouse")}) {
+            for (const auto &relation : m_runtime->relations(group, {})) {
+                if (relation.kind != BindingRelation::Kind::HardConflict)
+                    continue;
+                QFAIL(qPrintable(QStringLiteral("default hard conflict: %1 vs %2 on %3")
+                                     .arg(relation.left.actionId, relation.right.actionId,
+                                          relation.left.triggerCode)));
+            }
+        }
+    }
+
+    void runtimeRelationsMatchDirectClassification()
+    {
+        // The editor trusts the precompiled table instead of walking the
+        // binding list itself; it must agree with the policy pair for pair.
+        m_runtime->reload();
+        const auto bindings = m_runtime->effectiveBindings(QStringLiteral("controller"), {});
+        int expected = 0;
+        for (int i = 0; i < bindings.size(); ++i) {
+            for (int j = i + 1; j < bindings.size(); ++j) {
+                if (BindingRelation::classify(bindings.at(i), bindings.at(j))
+                    != BindingRelation::Kind::None)
+                    ++expected;
+            }
+        }
+        QCOMPARE(m_runtime->relations(QStringLiteral("controller"), {}).size(), expected);
+        // The Share tap pair is the one declared override, so it must be present
+        // and classified as such rather than dropped.
+        bool sawOverride = false;
+        for (const auto &relation : m_runtime->relations(QStringLiteral("controller"), {})) {
+            if (relation.kind == BindingRelation::Kind::ContextOverride)
+                sawOverride = true;
+        }
+        QVERIFY(sawOverride);
+    }
+
+    void desktopCaptureTapStillFiresScreenshot()
+    {
+        // In Desktop scope (no clip focused), a Capture tap should still
+        // emit global.screenshot as before — the contextual-override fix
+        // must not break the Desktop → Global fallback path.
+        m_runtime->setDefaultHoldMs(250);
+        m_runtime->reload();
+        QSignalSpy spy(m_runtime, &BindingRuntime::actionTriggered);
+
+        QVERIFY(m_runtime->press(QStringLiteral("controller"), {}, ControlId::Capture,
+                                 ActionCatalog::Scope::Desktop,
+                                 ActionCatalog::Scope::Overlay));
+        QVERIFY(m_runtime->release(QStringLiteral("controller"), {}, ControlId::Capture));
+        QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 700);
+
+        QCOMPARE(spy.takeFirst().at(0).toString(), QStringLiteral("global.screenshot"));
+    }
+
+    void emptySecondaryScreenshotCapturesAsTap()
+    {
+        // An empty slot inherits the action's real gesture instead of "press".
+        // Screenshot's only controller default is a slot-1 tap, so a fresh
+        // secondary assignment is a tap too — and the prompt says so.
+        m_editor->beginCapture(QStringLiteral("global.screenshot"), 2);
+        QVERIFY(m_editor->capturePrompt().contains(QStringLiteral("· Tap")));
+        QVERIFY(m_editor->captureInput(QStringLiteral("controller"),
+                                       ControlId::genericButton(20),
+                                       QStringLiteral("Button 20")));
+        QVERIFY(!m_editor->conflictPending());
+        const auto rows = m_database->listBindingOverrides();
+        QCOMPARE(rows.size(), 1);
+        QCOMPARE(rows.first().activation, QStringLiteral("tap"));
+    }
+
+    void emptySecondarySaveReplayCapturesAsHoldWithHoldMs()
+    {
+        m_runtime->setDefaultHoldMs(2000);
+        m_runtime->reload();
+        m_editor->beginCapture(QStringLiteral("global.save_replay"), 2);
+        QVERIFY(m_editor->capturePrompt().contains(QStringLiteral("· Hold")));
+        QVERIFY(m_editor->captureInput(QStringLiteral("controller"),
+                                       ControlId::genericButton(21),
+                                       QStringLiteral("Button 21")));
+        QVERIFY(!m_editor->conflictPending());
+        const auto rows = m_database->listBindingOverrides();
+        QCOMPARE(rows.size(), 1);
+        QCOMPARE(rows.first().activation, QStringLiteral("hold"));
+        QCOMPARE(rows.first().holdMs, 2000);
+    }
+
+    void captureOntoSharedTriggerIsNotAnArtificialConflict()
+    {
+        // Capture already carries tap/hold/double_tap defaults. A secondary
+        // Screenshot landing there as a tap is legitimate multiplexing; only
+        // the old "press" guess made this a HardConflict on every button that
+        // carried a timed gesture.
+        m_editor->beginCapture(QStringLiteral("global.screenshot"), 2);
+        QVERIFY(m_editor->captureInput(QStringLiteral("controller"),
+                                       ControlId::Capture,
+                                       QStringLiteral("Share")));
+        QVERIFY(!m_editor->conflictPending());
+        QVERIFY(hasBinding(*m_runtime, QStringLiteral("controller"), {},
+                           QStringLiteral("global.screenshot"), 2, ControlId::Capture));
+    }
+
+    void clearKeepsTheSlotGesture()
+    {
+        // Toggle Overlay's secondary default is a Capture double-tap. Clearing
+        // it must not degrade the slot to press — the unbound row carries the
+        // gesture, and the next capture into the slot inherits it.
+        m_editor->clearBinding(QStringLiteral("global.toggle_overlay"), 2);
+        auto rows = m_database->listBindingOverrides();
+        QCOMPARE(rows.size(), 1);
+        QVERIFY(rows.first().unbound);
+        QCOMPARE(rows.first().activation, QStringLiteral("double_tap"));
+
+        m_editor->beginCapture(QStringLiteral("global.toggle_overlay"), 2);
+        QVERIFY(m_editor->capturePrompt().contains(QStringLiteral("· Double tap")));
+        QVERIFY(m_editor->captureInput(QStringLiteral("controller"),
+                                       ControlId::genericButton(22),
+                                       QStringLiteral("Button 22")));
+        QVERIFY(!m_editor->conflictPending());
+        rows = m_database->listBindingOverrides();
+        QCOMPARE(rows.size(), 1);
+        QVERIFY(!rows.first().unbound);
+        QCOMPARE(rows.first().activation, QStringLiteral("double_tap"));
+    }
+
+    void clearRebindRoundTripPreservesHoldMs()
+    {
+        m_runtime->setDefaultHoldMs(2000);
+        m_runtime->reload();
+        m_editor->clearBinding(QStringLiteral("global.save_replay"), 1);
+        m_editor->beginCapture(QStringLiteral("global.save_replay"), 1);
+        QVERIFY(m_editor->captureInput(QStringLiteral("controller"),
+                                       ControlId::genericButton(23),
+                                       QStringLiteral("Button 23")));
+        const auto rows = m_database->listBindingOverrides();
+        QCOMPARE(rows.size(), 1);
+        QCOMPARE(rows.first().activation, QStringLiteral("hold"));
+        QCOMPARE(rows.first().holdMs, 2000);
+    }
+
+    void legacyClearSentinelDoesNotResurrectPress()
+    {
+        // Rows cleared before 0.7.3 carry the old press/0 sentinel. They hold
+        // no real gesture information, so the resolution falls through to the
+        // action's live slot instead of trusting them.
+        QVERIFY(m_database->upsertBindingOverride(
+            {QStringLiteral("controller"), {}, QStringLiteral("global.screenshot"), 2,
+             {}, QStringLiteral("press"), 0, true}));
+        m_runtime->reload();
+        m_editor->beginCapture(QStringLiteral("global.screenshot"), 2);
+        QVERIFY(m_editor->captureInput(QStringLiteral("controller"),
+                                       ControlId::genericButton(24),
+                                       QStringLiteral("Button 24")));
+        QVERIFY(!m_editor->conflictPending());
+        const auto rows = m_database->listBindingOverrides();
+        QCOMPARE(rows.size(), 1);
+        QCOMPARE(rows.first().activation, QStringLiteral("tap"));
+    }
+
+    void replaceRollbackRestoresTheDisplacedOverride()
+    {
+        // Replace displaces the conflicting binding, then writes the new one.
+        // If that second write fails, the displaced action must get back the
+        // custom binding it had before the transaction — not its shipped
+        // default, which is what a bare row delete would restore.
+        m_editor->setDeviceGroup(QStringLiteral("keyboard"));
+        m_editor->beginCapture(QStringLiteral("desktop.navigate_up"), 1);
+        QVERIFY(m_editor->captureInput(QStringLiteral("keyboard"), QStringLiteral("J"),
+                                       QStringLiteral("J")));
+        QVERIFY(!m_editor->conflictPending());
+
+        m_editor->setPersistRow([this](const BindingOverrideRow &row) {
+            if (row.actionId == QLatin1String("desktop.navigate_down"))
+                return false;
+            return m_database->upsertBindingOverride(row);
+        });
+        m_editor->beginCapture(QStringLiteral("desktop.navigate_down"), 2);
+        QVERIFY(m_editor->captureInput(QStringLiteral("keyboard"), QStringLiteral("J"),
+                                       QStringLiteral("J")));
+        QVERIFY(m_editor->conflictPending());
+        m_editor->confirmConflict();
+        m_editor->setPersistRow(nullptr);
+
+        QVERIFY(hasBinding(*m_runtime, QStringLiteral("keyboard"), {},
+                           QStringLiteral("desktop.navigate_up"), 1, QStringLiteral("J")));
+        QVERIFY(!hasBinding(*m_runtime, QStringLiteral("keyboard"), {},
+                            QStringLiteral("desktop.navigate_down"), 2, QStringLiteral("J")));
+    }
+
+    void legacySlotRowsApplyThroughAliasOnlyAndCopyIsExplicit()
+    {
+        // A pre-identity "any pad in slot 0" override.
+        QVERIFY(m_database->upsertBindingOverride(
+            {QStringLiteral("controller"), QStringLiteral("xinput.slot0"),
+             QStringLiteral("desktop.favorite"), 2, ControlId::genericButton(30),
+             QStringLiteral("press"), 0, false}));
+        m_runtime->reload();
+        const QString pad = QStringLiteral("3537:1004");
+
+        // A stable-identity profile does not inherit the slot row by itself...
+        QVERIFY(!hasBinding(*m_runtime, QStringLiteral("controller"), pad,
+                            QStringLiteral("desktop.favorite"), 2,
+                            ControlId::genericButton(30)));
+        // ...until the alias declares this pad currently occupies that slot.
+        m_runtime->setProfileAlias(pad, QStringLiteral("xinput.slot0"));
+        QVERIFY(hasBinding(*m_runtime, QStringLiteral("controller"), pad,
+                           QStringLiteral("desktop.favorite"), 2,
+                           ControlId::genericButton(30)));
+        // A different pad's identity never sees the slot row.
+        QVERIFY(!hasBinding(*m_runtime, QStringLiteral("controller"),
+                            QStringLiteral("045e:02ff"),
+                            QStringLiteral("desktop.favorite"), 2,
+                            ControlId::genericButton(30)));
+
+        // A row saved for the pad itself outranks the aliased slot row.
+        QVERIFY(m_database->upsertBindingOverride(
+            {QStringLiteral("controller"), pad, QStringLiteral("desktop.favorite"), 2,
+             ControlId::genericButton(31), QStringLiteral("press"), 0, false}));
+        m_runtime->reload();
+        QVERIFY(hasBinding(*m_runtime, QStringLiteral("controller"), pad,
+                           QStringLiteral("desktop.favorite"), 2,
+                           ControlId::genericButton(31)));
+        QVERIFY(!hasBinding(*m_runtime, QStringLiteral("controller"), pad,
+                            QStringLiteral("desktop.favorite"), 2,
+                            ControlId::genericButton(30)));
+
+        m_runtime->setProfileAlias(pad, {});
+    }
+
+    void copyLegacyOverridesKeepsOriginalsAndOwnRows()
+    {
+        QVERIFY(m_database->upsertBindingOverride(
+            {QStringLiteral("controller"), QStringLiteral("xinput.slot0"),
+             QStringLiteral("desktop.favorite"), 2, ControlId::genericButton(32),
+             QStringLiteral("press"), 0, false}));
+        QVERIFY(m_database->upsertBindingOverride(
+            {QStringLiteral("controller"), QStringLiteral("xinput.slot0"),
+             QStringLiteral("desktop.menu"), 2, ControlId::genericButton(33),
+             QStringLiteral("press"), 0, false}));
+        const QString pad = QStringLiteral("3537:1004");
+        // The pad already customized desktop.favorite slot 2 itself.
+        QVERIFY(m_database->upsertBindingOverride(
+            {QStringLiteral("controller"), pad, QStringLiteral("desktop.favorite"), 2,
+             ControlId::genericButton(34), QStringLiteral("press"), 0, false}));
+        m_runtime->reload();
+
+        m_editor->setControllerProfile({QStringLiteral("XInput"), pad,
+                                        ControlId::ControllerFamily::Xbox,
+                                        QStringLiteral("Xbox-compatible controller")});
+        m_editor->setControllerSpecific(true);
+        QVERIFY(m_editor->legacyCopyAvailable());
+        m_editor->copyLegacyOverridesToController();
+
+        int legacyRows = 0, padMenu = 0, padFavorite34 = 0;
+        for (const BindingOverrideRow& row : m_database->listBindingOverrides()) {
+            if (row.deviceProfile == QLatin1String("xinput.slot0"))
+                ++legacyRows;
+            if (row.deviceProfile == pad && row.actionId == QLatin1String("desktop.menu")
+                && row.triggerCode == ControlId::genericButton(33))
+                ++padMenu;
+            if (row.deviceProfile == pad
+                && row.actionId == QLatin1String("desktop.favorite")
+                && row.triggerCode == ControlId::genericButton(34))
+                ++padFavorite34;
+        }
+        QCOMPARE(legacyRows, 2);      // originals untouched
+        QCOMPARE(padMenu, 1);         // promoted
+        QCOMPARE(padFavorite34, 1);   // the pad's own row was not clobbered
     }
 };
 

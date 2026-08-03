@@ -45,6 +45,11 @@ class InputEngine : public QObject
     Q_PROPERTY(QString controllerWarning READ controllerWarning NOTIFY controllerWarningChanged)
     Q_PROPERTY(bool controllerFixAvailable READ controllerFixAvailable NOTIFY controllerWarningChanged)
     Q_PROPERTY(QObject* bindingEditor READ bindingEditor CONSTANT)
+    // Diagnostics button probe (Settings → Input): startButtonProbe() opens a
+    // 3 s window in which raw button changes — including ones GameHQ normally
+    // ignores — are summarized into probeStatus and the diagnostics export.
+    Q_PROPERTY(QString probeStatus READ probeStatus NOTIFY probeStatusChanged)
+    Q_PROPERTY(bool probeRunning READ probeRunning NOTIFY probeStatusChanged)
 public:
     InputEngine(ConfigManager* config, CaptureDatabase* db, HotkeyManager* hotkeys,
                 QObject* parent = nullptr);
@@ -62,6 +67,10 @@ public:
     // HidHide's application allow-list, then rescans. Progress/outcome is
     // reported through controllerWarning.
     Q_INVOKABLE void fixHiddenController();
+
+    QString probeStatus() const { return m_probeStatus; }
+    bool probeRunning() const { return m_probeRunning; }
+    Q_INVOKABLE void startButtonProbe();
 
 public slots:
     void setOverlayVisible(bool visible);
@@ -115,6 +124,7 @@ signals:
     void lastInputChanged();
     void controllerStatusChanged();
     void controllerWarningChanged();
+    void probeStatusChanged();
 
 private:
     void onControlPressed(const QString& controlId, int family,
@@ -126,8 +136,25 @@ private:
     void attachGamepad(std::unique_ptr<Gamepad> pad, const QString& displayName);
     void updateActiveBackend();
     void activateBackend(Gamepad* pad, const QString& reason);
+    // Pending-candidate confirmation: true once `source` has carried input on
+    // its own long enough to take the active role before the silence threshold.
+    bool confirmCandidate(Gamepad* source, qint64 now, qint64 activeLastControlMs);
+    // Hold / drop / deliver the first press of an unconfirmed candidate.
+    void holdCandidatePress(Gamepad* source, const QString& controlId, int family,
+                            const QString& fingerprint, qint64 pressedMs);
+    void clearPendingCandidate();
+    void resolvePendingCandidate(int generation);
+    struct PendingPress;
+    void replayPendingPress(const PendingPress& press);
+    void deliverPress(Gamepad* source, const QString& controlId, int family,
+                      const QString& fingerprint);
     bool backendConnected(const Gamepad* pad) const;
     QString backendDisplayName(const Gamepad* pad) const;
+    int backendPriority(const Gamepad* pad) const;   // Sony 3 > XInput 2 > WinMM 1
+    // Correlates the XInput pad with the IG_ devices Raw Input sees and, when
+    // unambiguous, keys its bindings on real hardware identity instead of
+    // the slot number (see ControllerIdentity).
+    void updateXInputIdentity();
     void setLastInput(const QString& text);
     void setControllerStatus(const QString& text);
     bool desktopCanReceiveInput() const;
@@ -202,7 +229,22 @@ private:
     Gamepad* m_activeBackend = nullptr;   // the one backend whose events route
     QElapsedTimer m_controllerClock;
     QHash<Gamepad*, qint64> m_backendLastControlMs;
-    QHash<Gamepad*, QString> m_backendLastControlId;
+    // First event of each non-active backend's current pending run; cleared on
+    // takeover and on disconnect, restarted whenever the active backend speaks.
+    QHash<Gamepad*, qint64> m_backendCandidateFirstMs;
+    // The one press held while a candidate backend is being confirmed. Empty
+    // source = nothing held. `released` records that the user already let go,
+    // so the replay stays a tap.
+    struct PendingPress {
+        Gamepad* source = nullptr;
+        QString controlId;
+        QString fingerprint;
+        int family = 0;
+        qint64 pressedMs = 0;
+        bool released = false;
+    };
+    PendingPress m_pending;
+    int m_pendingGeneration = 0;   // cancels a superseded confirmation timer
     bool m_sonyConnected = false;
     bool m_xinputConnected = false;
     bool m_winmmConnected = false;
@@ -212,6 +254,8 @@ private:
     QString m_lastInput;
     QString m_controllerStatus;
     QString m_controllerWarning;
+    QString m_probeStatus;
+    bool m_probeRunning = false;
     bool m_controllerFixAvailable = false;
     void setControllerWarning(const QString& text, bool fixAvailable);
     QTimer* m_fixWatch = nullptr;        // polls the elevated helper process

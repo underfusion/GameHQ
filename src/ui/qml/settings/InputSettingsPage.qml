@@ -63,6 +63,47 @@ SettingsPage {
         }
     }
 
+    // Non-blocking result of the last assignment. Deliberately its own section
+    // on its own property: input.controllerWarning above is reserved for
+    // HidHide/cloaked-pad state, and a routine binding notice must never
+    // overwrite the one warning the user cannot diagnose on their own.
+    // HardConflict never lands here — it takes over the modal dialog instead.
+    SettingsSection {
+        visible: editor.relationNotice.length > 0
+                 && editor.relationKind !== "none"
+                 && editor.relationKind !== "hard_conflict"
+        // Three different failures, three different words. "Button not
+        // reported" is only ever the controller/backend case — a chord Windows
+        // owns and a failed write are separate kinds with their own copy.
+        eyebrow: editor.relationKind === "context_override" ? "Context"
+                 : editor.relationKind === "unsupported_input" ? "Not available"
+                 : editor.relationKind === "hotkey_unavailable" ? "In use"
+                 : editor.relationKind === "persistence_error" ? "Not saved"
+                 : editor.relationKind === "redundant" ? "Duplicate"
+                                                       : "Shared button"
+        title: editor.relationKind === "context_override" ? "This button changes meaning"
+               : editor.relationKind === "unsupported_input" ? "Button not reported"
+               : editor.relationKind === "hotkey_unavailable" ? "Shortcut already taken"
+               : editor.relationKind === "persistence_error" ? "Could not save this binding"
+               : editor.relationKind === "redundant" ? "Already assigned"
+                                                     : "One button, several gestures"
+        description: editor.relationNotice
+        // Context overrides and the three failure kinds are worth a second
+        // look; shared gestures and duplicates are informational, so they stay
+        // quiet.
+        variant: editor.relationKind === "context_override"
+                 || editor.relationKind === "unsupported_input"
+                 || editor.relationKind === "hotkey_unavailable"
+                 || editor.relationKind === "persistence_error" ? "warning" : "status"
+        headerAction: Component {
+            AccentButton {
+                label: "Dismiss"
+                quiet: true
+                onClicked: editor.dismissRelationNotice()
+            }
+        }
+    }
+
     SettingsSection {
         eyebrow: "Profile"
         title: "Test and restore"
@@ -83,6 +124,28 @@ SettingsPage {
                          ? "Remove overrides for this controller only."
                          : "Remove overrides for the selected device type and shared profile."
             AccentButton { label: "Restore defaults"; quiet: true; onClicked: resetProfileDialog.open() }
+        }
+        SettingsRow {
+            visible: editor.legacyCopyAvailable
+            label: "Adopt per-slot bindings"
+            description: "Copy bindings saved for any controller in this slot to this specific controller. The originals are kept."
+            AccentButton {
+                label: "Copy to this controller"
+                quiet: true
+                onClicked: editor.copyLegacyOverridesToController()
+            }
+        }
+        SettingsRow {
+            label: "Identify a controller button"
+            description: input.probeRunning || input.probeStatus.length > 0
+                         ? input.probeStatus
+                         : "Records the next 3 seconds of raw button changes — including buttons GameHQ does not recognize — into the diagnostics you can copy from Advanced."
+            AccentButton {
+                label: "Start 3-second probe"
+                quiet: true
+                enabled: !input.probeRunning
+                onClicked: input.startButtonProbe()
+            }
         }
     }
 
@@ -294,15 +357,16 @@ SettingsPage {
         }
     }
 
-    ConfirmDialog {
+    BindingConflictDialog {
         id: conflictDialog
         parent: root
         anchors.fill: parent
         z: 210
-        title: "Replace conflicting assignment?"
         message: editor.conflictMessage
-        confirmLabel: "Replace"
-        onConfirmed: editor.confirmConflict()
+        onReplaced: editor.confirmConflict()
+        // Re-arms capture on the same action and slot, so the user can pick a
+        // different button without hunting for the row again.
+        onRetried: editor.retryConflictCapture()
         onCanceled: editor.dismissConflict()
     }
     Connections {

@@ -1,5 +1,8 @@
 #pragma once
 #include "input/Gamepad.h"
+#include "input/InputDiagnostics.h"
+#include "input/InputRateMonitor.h"
+#include "input/RawInputApi.h"
 
 #include <QElapsedTimer>
 #include <QHash>
@@ -7,6 +10,8 @@
 #include <QString>
 #include <QStringList>
 #include <QtGlobal>
+
+#include <memory>
 
 class QTimer;
 
@@ -27,11 +32,20 @@ class QTimer;
 // are both parsed. HID collections whose path contains "IG_" are XInput
 // devices and are left to the XInput backend. See docs/controller-input.md.
 // Win32 lives in the .cpp only.
+//
+// Every WM_INPUT is read header-first and classified once per handle: a device
+// this backend does not drive — an 8000 Hz gamepad in XInput mode, say — costs
+// one header read and one hash lookup for the rest of its life, never a
+// payload fetch on the GUI thread. All OS queries go through the injectable
+// RawInputApi seam so that guarantee is testable.
 class DualSenseDevice : public Gamepad
 {
     Q_OBJECT
 public:
     explicit DualSenseDevice(QObject* parent = nullptr);
+    // Test seam: takes ownership of `api`. Production uses the constructor
+    // above, which installs RawInputApi::createSystem().
+    explicit DualSenseDevice(RawInputApi* api, QObject* parent = nullptr);
     ~DualSenseDevice() override;
 
     bool start() override;
@@ -40,6 +54,21 @@ public:
     // Re-run the debounced device reconciliation (used after the HidHide
     // whitelist fix so a newly-visible pad is picked up promptly).
     void rescan();
+
+    // "Press your screenshot button now" diagnostics probe: while the
+    // InputDiagnostics window is open, ignored gamepad-usage handles get their
+    // payloads read and diffed too, so a button GameHQ never delivers still
+    // shows up as changed report bytes. Strictly bounded (payload-read cap,
+    // one eligibility query per handle per probe) and self-cleaning — the
+    // per-event fast path returns to one hash lookup when the window closes.
+    void beginButtonProbe();
+
+    // Distinct "vvvv:pppp" identities of the XInput-class (IG_) HID
+    // collections Raw Input currently sees. This backend never drives them,
+    // but it is the only one that knows their real hardware identity — the
+    // XInput API itself only exposes slot numbers. Feeds the stable-identity
+    // correlation in InputEngine (ControllerIdentity).
+    QStringList xinputClassIdentities() const;
 
     // Called from the window procedure — not for general use.
     void onRawInput(void* hRawInput);
@@ -74,6 +103,11 @@ private:
 
     bool registerRawInput(bool remove = false);
     DeviceState* probeDevice(void* handle);   // query + track a handle; null if unsupported
+    DeviceState* ignoreDevice(void* handle, const QString& id, const QString& reason);
+    void forgetClassification(void* handle);  // drop cached verdict + rate counter
+    void noteEvent(void* handle, bool ignored);
+    void logInputRates();
+    QString deviceLabel(void* handle, bool ignored) const;
     void removeDevice(void* handle);
     void reconcileDevices();                  // debounced full-list sync (prune stale handles)
     void failoverOrScheduleDisconnect();
@@ -87,17 +121,39 @@ private:
     void routeReport(void* handle, const DeviceState& st, quint32 s, bool changed,
                      unsigned char reportId, const unsigned char* d, int len);
     void emitEdges(quint32 buttons);
+    // Probe helpers: called only while m_probing (never on the idle fast path).
+    void probeIgnoredEvent(void* handle, void* hRawInput);
+    void noteProbeButtonChange(const DeviceState& st, quint32 before, quint32 after);
+    bool probeWindowStillOpen();   // clears all probe state once the window ends
 
+    std::unique_ptr<RawInputApi> m_api;      // every OS query goes through here
     void* m_hwnd = nullptr;                  // HWND of the message-only window
     QHash<void*, DeviceState> m_devices;     // tracked Sony/DS4 devices by Raw Input handle
-    QSet<QString> m_loggedIgnored;           // device paths already logged as ignored
+    // Negative classification cache: handles already proven to be somebody
+    // else's device, mapped to their "vvvv:pppp" identity for the rate log.
+    // Keyed strictly by live handle and dropped on every removal, reconcile
+    // and arrival — Windows reuses handle VALUES after a replug.
+    QHash<void*, QString> m_ignoredHandles;
+    // Subset of the ignored handles that are XInput-class (IG_) collections,
+    // kept in lockstep with m_ignoredHandles' lifetime rules.
+    QHash<void*, QString> m_xinputClass;
+    QSet<QString> m_loggedIgnored;           // device identities already logged as ignored
     void* m_activeHandle = nullptr;          // device currently driving input (or null)
     QTimer* m_disconnectTimer = nullptr;
     QTimer* m_reconcileTimer = nullptr;
     QTimer* m_topologyTimer = nullptr;
+    QTimer* m_rateTimer = nullptr;           // aggregated event-rate log interval
+    InputRateMonitor m_rates;
+    qint64 m_lastRateSampleMs = 0;
     QElapsedTimer m_clock;
     quint32 m_emittedButtons = 0;            // bitmask InputEngine has seen so far
     bool m_connectedState = false;           // connected(bool) as last emitted
     bool m_sawInput = false;                 // first WM_INPUT diagnostic logged?
     QStringList m_lastHiddenPads;            // last cloak-scan result (change detection)
+
+    // Diagnostics probe state; all cleared when the probe window closes.
+    bool m_probing = false;                  // one branch on the hot path when idle
+    ProbeReadBudget m_probeBudget;           // per-slice read allowance
+    QHash<void*, int> m_probeEligible;       // 1 = gamepad-usage HID, -1 = not ours
+    QHash<void*, QByteArray> m_probePrev;    // last payload per probed handle
 };

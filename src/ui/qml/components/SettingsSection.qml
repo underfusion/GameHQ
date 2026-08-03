@@ -48,7 +48,7 @@ Rectangle {
                     : Theme.stroke
 
     Behavior on color {
-        ColorAnimation { duration: Theme.motionFast }
+        ColorAnimation { duration: Theme.durFast }
     }
 
     ColumnLayout {

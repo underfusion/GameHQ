@@ -4,6 +4,113 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- Assigning a controller button to an empty binding slot now keeps the gesture
+  that slot really means — a second Screenshot button is a tap, a second Save
+  Replay button is a hold — instead of a plain press that was then reported as
+  conflicting with everything else sharing the button. The capture prompt now
+  shows the gesture being assigned, and clearing a binding no longer quietly
+  turns its tap, hold, or double-tap into a press on the next assignment.
+- Settings cards no longer log a warning and now fade smoothly when a card
+  changes colour, for example when a binding notice appears.
+- Choosing Replace in the binding conflict dialog no longer risks losing the
+  displaced action's custom assignment if saving fails halfway: the previous
+  assignment is put back exactly as it was, not reset to the factory default.
+- The overlay now verifies that Windows actually gave it the screen focus when
+  it opens, retrying briefly when the system refuses. If focus could not be
+  taken, the overlay says so with a small notice instead of silently leaving
+  the game reacting to your controller behind it.
+- Switching controller software between modes (for example DSX from Sony to
+  Xbox) no longer leaves the pad dead for up to a second, and the first button
+  press after the switch is no longer swallowed: it is held briefly and then
+  performed once the old input path proves it has really gone quiet. A quick
+  tap that waited stays a tap — it never turns into a hold — and a press that
+  was only an echo of the old path is still discarded.
+- The controller button probe now listens for the full three seconds it
+  advertises and reads every report from pads up to 8000 Hz, so a quick tap at
+  any moment of the window is caught. Only an extreme flood makes it sample,
+  spread evenly across the window, and it says so in the result.
+- Binding problems now say what actually went wrong instead of sharing one
+  message: a shortcut Windows already owns, a binding that could not be saved,
+  and a controller button your controller never reports are three different
+  notices.
+- One button press can no longer trigger two actions when controller software
+  (such as DSX) makes the same pad visible to Windows through several input
+  APIs at once. GameHQ now treats near-simultaneous reports from a second API
+  as echoes of the same press, and only hands control to another API when the
+  current one goes silent, disconnects, or a better connection to the same
+  controller appears.
+- Custom bindings for Xbox-type controllers now follow the physical controller
+  where it can be identified, instead of whichever controller happens to sit
+  in the same slot. When the controller cannot be identified, Settings says so
+  plainly, and a new "Adopt per-slot bindings" action lets you copy older
+  slot-based assignments to a recognized controller — nothing is migrated or
+  deleted behind your back.
+
+- Pressing the Share button while a clip is playing now grabs one frame from
+  that clip. It previously grabbed the frame *and* took a desktop screenshot
+  from the same press, saving two files where the user asked for one. Holding
+  the same button still saves the replay, and double-tapping it still opens
+  the overlay.
+- A keyboard shortcut that Windows or another application already owns is no
+  longer saved as if it worked. GameHQ now claims the shortcut first and tells
+  you when it cannot, leaving your previous shortcut in place instead of
+  showing one that silently does nothing until the next restart.
+
+### Changed
+
+- Settings now explains what a button assignment actually does instead of
+  refusing anything that looks similar. A genuine clash — two things that
+  would fire at once — opens a dialog offering Replace, Choose another, or
+  Cancel. Assignments that only *look* like clashes are kept and explained:
+  sharing one button between a tap and a hold, an assignment that replaces
+  another only while a clip is playing, and a duplicate that has no effect
+  each get their own note.
+- Assigning the same action to two different keys is no longer reported as a
+  conflict. Having both Ctrl+Shift+S and F12 take a screenshot is valid and
+  now works without a warning.
+
+### Added
+
+- Controller diagnostics in the copied summary (Settings → Advanced → Copy
+  diagnostics): which controller backend is active and every switch, each
+  device Windows offered with how GameHQ classified it, measured event rates,
+  the last controller inputs received, whether the overlay actually took
+  focus, whether a pad is hidden by HidHide, and whether the previous session
+  ended unexpectedly. Serial numbers and full device paths are never included.
+- "Identify a controller button" in Settings → Input: press it, then press any
+  button on your controller within 3 seconds — GameHQ records what actually
+  arrived, including buttons it does not recognize, so unsupported controllers
+  (such as the GameSir G7 Pro) can be mapped from a report instead of
+  guesswork.
+- A design document for Exclusive Controller Mode, the feature that would stop
+  games receiving input while the overlay is open
+  (`docs/design/exclusive-controller-mode.md`). It is not implemented; the
+  document records why, and what a future implementation would have to
+  guarantee.
+
+## [0.7.2] - 2026-08-01
+
+### Fixed
+
+- Controllers that GameHQ does not drive can no longer slow the app down.
+  A pad polling at up to 8000 times a second — several current models
+  advertise this — was re-examined on every single report, on the same thread
+  that draws the interface. Each device is now identified once and then
+  recognised instantly, and its reports are not read any further.
+- The Windows raw-input messages GameHQ receives while a game is in the
+  foreground are now completed the way Windows documents, instead of being
+  dropped once handled.
+
+### Added
+
+- The log now records how many controller reports each device sends per
+  second, summarised on an interval and only when the number changes
+  meaningfully, so a flooding controller is visible without filling the log.
+
 ## [0.7.1] - 2026-07-26
 
 ### Added

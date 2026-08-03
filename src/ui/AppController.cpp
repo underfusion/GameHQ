@@ -8,6 +8,7 @@
 #include "config/Paths.h"
 #include "core/ProcessIdentity.h"
 #include "diagnostics/Logger.h"
+#include "input/InputDiagnostics.h"
 #include "storage/CaptureDatabase.h"
 #include "storage/CaptureScanner.h"
 #include "ui/CaptureLibraryService.h"
@@ -197,13 +198,15 @@ void AppController::copyDiagnosticSummary() const
         "Logs folder: %4 (%5)\n"
         "Screenshots folder: %6\n"
         "Clips folder: %7\n"
-        "%8")
+        "%8\n"
+        "%9")
         .arg(version(), portableMode() ? QStringLiteral("portable") : QStringLiteral("installed"),
              dataRoot(), logsRoot(),
              Logger::writingToFile() ? QStringLiteral("writing")
                                      : QStringLiteral("NOT writable — logging to stderr"),
              screenshotsRoot(), clipsRoot(),
-             m_hdr.summaryLines().join(QLatin1Char('\n')));
+             m_hdr.summaryLines().join(QLatin1Char('\n')),
+             InputDiagnostics::instance().exportText());
     QGuiApplication::clipboard()->setText(summary);
 }
 

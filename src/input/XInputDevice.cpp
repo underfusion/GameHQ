@@ -1,5 +1,7 @@
 #include "input/XInputDevice.h"
 
+#include "input/ControllerIdentity.h"
+#include "input/InputDiagnostics.h"
 #include "input/StickNav.h"
 
 #include <QDebug>
@@ -129,10 +131,24 @@ void XInputDevice::poll()
         if (!m_connected[slot])
             continue;
         XINPUT_STATE state{};
-        if (m_getState(static_cast<DWORD>(slot), &state) != ERROR_SUCCESS)
+        if (m_getState(static_cast<DWORD>(slot), &state) != ERROR_SUCCESS) {
             setSlotState(slot, 0, false);
-        else
+        } else {
+            // Diagnostics probe: report the RAW wButtons diff — the mapped
+            // mask drops bits GameHQ has no binding for, which are exactly
+            // the ones an unsupported-button report needs to show.
+            const quint16 raw = state.Gamepad.wButtons;
+            if (raw != m_prevRawButtons[slot]
+                && InputDiagnostics::instance().probeActive()) {
+                InputDiagnostics::instance().noteProbeEvent(
+                    QStringLiteral("XInput slot %1").arg(slot),
+                    QStringLiteral("XInput"),
+                    QStringLiteral("wButtons %1 -> %2")
+                        .arg(m_prevRawButtons[slot], 0, 16).arg(raw, 0, 16));
+            }
+            m_prevRawButtons[slot] = raw;
             setSlotState(slot, mapButtons(state.Gamepad), true);
+        }
     }
 }
 
@@ -181,19 +197,47 @@ void XInputDevice::setSlotState(int slot, quint32 buttons, bool connected)
     }
 }
 
-ControlId::DeviceProfile XInputDevice::profile() const
+void XInputDevice::setKnownDeviceIdentity(const QString& vidPid)
+{
+    if (m_knownIdentity == vidPid)
+        return;
+    m_knownIdentity = vidPid;
+    if (!vidPid.isEmpty())
+        qInfo().noquote() << "Gamepad: XInput pad correlated to hardware identity"
+                          << vidPid << "- device-specific bindings follow the pad";
+}
+
+int XInputDevice::firstConnectedSlot() const
 {
     for (int slot = 0; slot < 4; ++slot) {
-        if (m_connected[slot]) {
-            return ControlId::DeviceProfile{
-                QStringLiteral("XInput"),
-                QStringLiteral("xinput.slot%1").arg(slot),
-                ControlId::ControllerFamily::Xbox,
-                QStringLiteral("Xbox Controller"),
-            };
-        }
+        if (m_connected[slot])
+            return slot;
     }
-    return {};
+    return -1;
+}
+
+ControlId::DeviceProfile XInputDevice::profile() const
+{
+    const int slot = firstConnectedSlot();
+    if (slot < 0)
+        return {};
+    if (!m_knownIdentity.isEmpty()) {
+        return ControlId::DeviceProfile{
+            QStringLiteral("XInput"),
+            m_knownIdentity,
+            ControlId::ControllerFamily::Xbox,
+            QStringLiteral("Xbox-compatible controller"),
+        };
+    }
+    // No stable identity is obtainable: say so instead of pretending. The
+    // fingerprint stays slot-keyed, so overrides saved now follow the slot,
+    // not the physical pad.
+    return ControlId::DeviceProfile{
+        QStringLiteral("XInput"),
+        ControllerIdentity::legacySlotFingerprint(slot),
+        ControlId::ControllerFamily::Xbox,
+        QStringLiteral("Xbox controller (per-slot profile — model cannot be identified)"),
+    };
 }
 
 int XInputDevice::connectedCount() const

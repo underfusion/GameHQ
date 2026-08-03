@@ -39,8 +39,55 @@ gamehq_add_test(tst_gameidentity
 gamehq_add_test(tst_controllerarbitration
     tst_controllerarbitration.cpp)
 
+gamehq_add_test(tst_controlleridentity
+    tst_controlleridentity.cpp
+    "${CMAKE_SOURCE_DIR}/src/input/ControllerIdentity.cpp")
+
 gamehq_add_test(tst_sonyreportlayout
     tst_sonyreportlayout.cpp)
+
+# Pure policy test: no database, no Qt GUI. Covers the frozen decision order in
+# BindingRelation that both the editor and the runtime depend on.
+gamehq_add_test(tst_bindingrelation
+    tst_bindingrelation.cpp
+    "${CMAKE_SOURCE_DIR}/src/input/ActionCatalog.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/BindingRelation.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ContextOverrideCatalog.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp")
+
+gamehq_add_test(tst_inputratemonitor
+    tst_inputratemonitor.cpp
+    "${CMAKE_SOURCE_DIR}/src/input/InputRateMonitor.cpp")
+
+# Pure logic: bounded rings, probe window, privacy redaction, export layout.
+gamehq_add_test(tst_inputdiagnostics
+    tst_inputdiagnostics.cpp
+    "${CMAKE_SOURCE_DIR}/src/input/InputDiagnostics.cpp")
+
+# Verify + bounded-retry policy behind the overlay's foreground grab, driven
+# through a fake ForegroundApi that can refuse deterministically.
+gamehq_add_test(tst_foregroundacquirer
+    tst_foregroundacquirer.cpp
+    "${CMAKE_SOURCE_DIR}/src/overlay/ForegroundAcquirer.cpp"
+    "${CMAKE_SOURCE_DIR}/src/overlay/ForegroundApi.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/InputDiagnostics.cpp")
+target_link_libraries(tst_foregroundacquirer PRIVATE user32)
+
+# Drives the real DualSenseDevice through a fake RawInputApi. It links the
+# Win32 implementation only because the production constructor references it;
+# the fake overrides every call, so no test here touches the machine's devices.
+gamehq_add_test(tst_rawinputflood
+    tst_rawinputflood.cpp
+    # Gamepad.h has no .cpp of its own, so AUTOMOC only sees its Q_OBJECT when
+    # the header is listed here explicitly.
+    "${CMAKE_SOURCE_DIR}/src/input/Gamepad.h"
+    "${CMAKE_SOURCE_DIR}/src/input/DualSenseDevice.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/InputDiagnostics.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/InputRateMonitor.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/RawInputApi.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/HidCloakMonitor.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp")
+target_link_libraries(tst_rawinputflood PRIVATE user32 cfgmgr32)
 
 gamehq_add_test(tst_configmanager
     tst_configmanager.cpp
@@ -181,8 +228,11 @@ gamehq_add_test(tst_bindingeditor
     "${CMAKE_SOURCE_DIR}/src/input/ActionCatalog.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/BindingEditorModel.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/BindingResolver.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/BindingRelation.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/BindingRuntime.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ContextOverrideCatalog.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ControllerIdentity.cpp"
     "${CMAKE_SOURCE_DIR}/src/storage/CaptureDatabase.cpp"
     "${CMAKE_SOURCE_DIR}/src/storage/CaptureQueries.cpp"
     "${CMAKE_SOURCE_DIR}/src/storage/GameRowRepair.cpp"

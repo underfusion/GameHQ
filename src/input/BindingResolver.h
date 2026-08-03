@@ -2,6 +2,7 @@
 
 #include "input/ActionCatalog.h"
 
+#include <QHash>
 #include <QString>
 #include <QVector>
 
@@ -23,10 +24,29 @@ public:
         bool unbound = false;
     };
 
+    // The gesture a slot carries independently of what trigger sits in it.
+    // Capturing into an empty slot and clearing a bound one both consult this,
+    // so a slot whose meaning is "tap" stays a tap across clear and rebind.
+    struct Gesture {
+        QString activation = QStringLiteral("press");
+        int holdMs = 0;
+    };
+
     explicit BindingResolver(CaptureDatabase* database);
 
     void setDefaultHoldMs(int milliseconds);
     void reload();
+
+    Gesture inheritedGesture(const QString& deviceGroup, const QString& deviceProfile,
+                             const QString& actionId, int slot) const;
+
+    // Legacy-profile aliasing: rows saved under `legacyProfile` (an
+    // "xinput.slotN" fingerprint from before stable identity existed) keep
+    // applying while `profile` is active, at lower precedence than rows saved
+    // for `profile` itself. Existing overrides survive the upgrade unchanged;
+    // they are never silently rewritten or broadened — promotion to the
+    // stable identity is the user's explicit copy action in Settings.
+    void setProfileAlias(const QString& profile, const QString& legacyProfile);
 
     QVector<Binding> effectiveBindings(const QString& deviceGroup,
                                        const QString& deviceProfile = {}) const;
@@ -42,5 +62,6 @@ public:
 private:
     CaptureDatabase* m_database = nullptr;
     QVector<Binding> m_overrides;
+    QHash<QString, QString> m_profileAliases;
     int m_defaultHoldMs = 2000;
 };

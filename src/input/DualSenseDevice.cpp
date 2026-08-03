@@ -1,14 +1,12 @@
 #include "input/DualSenseDevice.h"
 
 #include "input/ControllerArbitration.h"
-#include "input/HidCloakMonitor.h"
+#include "input/InputDiagnostics.h"
 #include "input/SonyReportLayout.h"
 #include "input/StickNav.h"
 
-#include <QByteArray>
 #include <QDebug>
 #include <QTimer>
-#include <QVarLengthArray>
 
 #include <windows.h>
 
@@ -40,6 +38,10 @@ constexpr int kDisconnectDebounceMs = 1500;
 // Arrival/removal bursts (Windows re-enumerates the whole HID tree at once)
 // collapse into one reconciliation pass and one topology hint.
 constexpr int kTopologyDebounceMs = 400;
+// How often the aggregated per-device event-rate counters are turned into (at
+// most) one log line each. Never log per event: an 8 kHz pad would write 8000
+// lines a second and the diagnostic would become the outage.
+constexpr int kRateSampleMs = 5000;
 
 enum ReportLayout {
     LayoutUnknown = 0,
@@ -69,12 +71,12 @@ int supportedReportLayout(quint32 vendorId, quint32 productId)
     return LayoutUnknown;
 }
 
-bool isGamepadUsage(const RID_DEVICE_INFO_HID& hid)
+bool isGamepadUsage(quint16 usagePage, quint16 usage)
 {
-    return hid.usUsagePage == kUsagePageGeneric
-        && (hid.usUsage == kUsageGamepad
-            || hid.usUsage == kUsageJoystick
-            || hid.usUsage == kUsageMultiAxis);
+    return usagePage == kUsagePageGeneric
+        && (usage == kUsageGamepad
+            || usage == kUsageJoystick
+            || usage == kUsageMultiAxis);
 }
 
 const char* padName(int layout)
@@ -92,17 +94,9 @@ int devicePriority(quint32 vendorId, quint32 productId)
     return 1;
 }
 
-QString devicePath(HANDLE handle)
+QString deviceIdentity(quint32 vendorId, quint32 productId)
 {
-    UINT chars = 0;
-    if (GetRawInputDeviceInfoW(handle, RIDI_DEVICENAME, nullptr, &chars) != 0 || chars == 0)
-        return {};
-    QVarLengthArray<wchar_t, 256> buf(static_cast<int>(chars) + 1);
-    if (GetRawInputDeviceInfoW(handle, RIDI_DEVICENAME, buf.data(), &chars)
-            == static_cast<UINT>(-1))
-        return {};
-    buf[buf.size() - 1] = 0;
-    return QString::fromWCharArray(buf.data());
+    return QString::asprintf("%04x:%04x", vendorId, productId);
 }
 
 LRESULT CALLBACK rawInputWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -111,6 +105,12 @@ LRESULT CALLBACK rawInputWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     case WM_INPUT:
         if (auto* dev = deviceFor(hwnd))
             dev->onRawInput(reinterpret_cast<void*>(lParam));
+        // Documented WM_INPUT contract: a foreground event (RIM_INPUT) must be
+        // passed to DefWindowProc so the system can perform its cleanup pass,
+        // while a sink event (RIM_INPUTSINK) returns 0. Returning 0 for both —
+        // as this did — leaks the OS-side buffer for every foreground event.
+        if (GET_RAWINPUT_CODE_WPARAM(wParam) == RIM_INPUT)
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
         return 0;
     case WM_INPUT_DEVICE_CHANGE:
         if (auto* dev = deviceFor(hwnd))
@@ -123,10 +123,17 @@ LRESULT CALLBACK rawInputWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 } // namespace
 
 DualSenseDevice::DualSenseDevice(QObject* parent)
+    : DualSenseDevice(RawInputApi::createSystem(), parent)
+{
+}
+
+DualSenseDevice::DualSenseDevice(RawInputApi* api, QObject* parent)
     : Gamepad(parent)
+    , m_api(api)
     , m_disconnectTimer(new QTimer(this))
     , m_reconcileTimer(new QTimer(this))
     , m_topologyTimer(new QTimer(this))
+    , m_rateTimer(new QTimer(this))
 {
     m_clock.start();
 
@@ -141,6 +148,11 @@ DualSenseDevice::DualSenseDevice(QObject* parent)
     m_topologyTimer->setSingleShot(true);
     m_topologyTimer->setInterval(kTopologyDebounceMs);
     connect(m_topologyTimer, &QTimer::timeout, this, &DualSenseDevice::deviceTopologyChanged);
+
+    // Runs only while devices are actually reporting; the sample that finds
+    // everything quiet stops it again.
+    m_rateTimer->setInterval(kRateSampleMs);
+    connect(m_rateTimer, &QTimer::timeout, this, &DualSenseDevice::logInputRates);
 }
 
 DualSenseDevice::~DualSenseDevice()
@@ -202,7 +214,8 @@ bool DualSenseDevice::start()
 // Sony/DS4-compatible pad. Returns the tracked state, or null for anything
 // else (XInput collections, unsupported pads, non-HID handles). Safe to call
 // repeatedly with the same handle — arrival bursts and per-report lookups
-// hit the "already tracked" fast path.
+// hit the "already tracked" / "already ignored" fast paths, and a definitive
+// rejection is remembered so a flooding device is classified exactly once.
 DualSenseDevice::DeviceState* DualSenseDevice::probeDevice(void* handle)
 {
     if (!handle)
@@ -211,54 +224,112 @@ DualSenseDevice::DeviceState* DualSenseDevice::probeDevice(void* handle)
     auto it = m_devices.find(handle);
     if (it != m_devices.end())
         return &it.value();
-
-    RID_DEVICE_INFO info{};
-    info.cbSize = sizeof(info);
-    UINT infoSize = sizeof(info);
-    if (GetRawInputDeviceInfoW(handle, RIDI_DEVICEINFO, &info, &infoSize)
-            == static_cast<UINT>(-1)
-        || info.dwType != RIM_TYPEHID)
+    if (m_ignoredHandles.contains(handle))
         return nullptr;
 
-    const QString path = devicePath(handle);
-    // Xbox-type pads expose HID collections whose interface path contains
-    // "IG_"; they never send usable WM_INPUT reports and are handled by the
-    // XInput backend — skip them here so one pad can't drive both backends.
-    const bool xinputDevice = path.contains(QLatin1String("IG_"), Qt::CaseInsensitive);
-    const int layout = supportedReportLayout(info.hid.dwVendorId, info.hid.dwProductId);
-    const bool gamepadUsage = isGamepadUsage(info.hid);
+    const RawInputApi::DeviceInfo info = m_api->describeDevice(handle);
+    // A failed query is not a verdict — the device may simply have been
+    // unplugged mid-call. Caching it as ignored would blind the backend to a
+    // pad that is about to come back, so leave the handle unclassified.
+    if (!info.queried)
+        return nullptr;
+    if (!info.isHid)
+        return ignoreDevice(handle, QStringLiteral("non-HID"), {});
+
+    const int layout = supportedReportLayout(info.vendorId, info.productId);
+    const bool gamepadUsage = isGamepadUsage(info.usagePage, info.usage);
+    const QString id = deviceIdentity(info.vendorId, info.productId);
 
     // A supported VID/PID alone is NOT enough: the same hardware IDs appear
     // on non-input collections (the PlayStation Link adapter exposes
     // 054C:0ECC vendor-defined pages). Tracking those produced phantom
     // "DualSense" entries that never send a report — require a real
     // Joystick/Gamepad/MultiAxis collection.
-    if (layout == LayoutUnknown || xinputDevice || !gamepadUsage) {
-        if ((gamepadUsage || layout != LayoutUnknown) && !m_loggedIgnored.contains(path)) {
-            m_loggedIgnored.insert(path);
-            qInfo() << "Gamepad: ignoring HID device VID"
-                    << Qt::hex << info.hid.dwVendorId << "PID" << info.hid.dwProductId
-                    << (xinputDevice     ? "(XInput device — XInput backend handles it)"
-                        : !gamepadUsage  ? "(non-gamepad collection on supported hardware)"
-                                         : "(unsupported report layout)");
-        }
-        return nullptr;
+    if (layout == LayoutUnknown || !gamepadUsage) {
+        // Only hardware that at least looks like a pad earns a log line;
+        // everything else is silently remembered as somebody else's device.
+        const QString reason = layout == LayoutUnknown
+            ? (gamepadUsage ? QStringLiteral("unsupported report layout") : QString())
+            : QStringLiteral("non-gamepad collection on supported hardware");
+        return ignoreDevice(handle, id, reason);
+    }
+
+    // Only a plausible pad is worth the second OS query. Xbox-type pads expose
+    // HID collections whose interface path contains "IG_"; they never send
+    // usable WM_INPUT reports and are handled by the XInput backend — skip
+    // them here so one pad can't drive both backends.
+    const RawInputApi::DevicePath path = m_api->devicePath(handle);
+    if (!path.queried)
+        return nullptr;   // transient again: re-query on the next report
+    if (path.value.contains(QLatin1String("IG_"), Qt::CaseInsensitive)) {
+        // Remember its identity: XInput only knows slot numbers, so this is
+        // the one place the real VID/PID of an XInput pad is visible.
+        m_xinputClass.insert(handle, id);
+        return ignoreDevice(handle, id,
+                            QStringLiteral("XInput device — XInput backend handles it"));
     }
 
     DeviceState st;
     st.layout    = layout;
-    st.vendorId  = info.hid.dwVendorId;
-    st.productId = info.hid.dwProductId;
-    st.path      = path;
+    st.vendorId  = info.vendorId;
+    st.productId = info.productId;
+    st.path      = path.value;
     auto inserted = m_devices.insert(handle, st);
     qInfo() << "Gamepad: tracking" << padName(layout)
             << "VID" << Qt::hex << st.vendorId << "PID" << st.productId
             << Qt::dec << "(" << m_devices.size() << "Sony/DS4 device(s) known)";
+    InputDiagnostics::instance().noteDevice(
+        id, InputDiagnostics::redactDevicePath(path.value),
+        QStringLiteral("tracked (%1)").arg(QString::fromLatin1(padName(layout))));
     return &inserted.value();
+}
+
+// Remember a definitive "not our device" verdict for this handle. `reason`
+// empty = not worth a log line. The log is deduplicated by device identity,
+// not by handle: one pad exposes several collections and reconnects change
+// every handle, so keying the log on handles would make it repeat forever.
+DualSenseDevice::DeviceState* DualSenseDevice::ignoreDevice(void* handle, const QString& id,
+                                                           const QString& reason)
+{
+    m_ignoredHandles.insert(handle, id);
+    if (!reason.isEmpty() && !m_loggedIgnored.contains(id)) {
+        m_loggedIgnored.insert(id);
+        qInfo().noquote() << "Gamepad: ignoring HID device" << id
+                          << QStringLiteral("(%1)").arg(reason);
+    }
+    InputDiagnostics::instance().noteDevice(
+        id, {}, reason.isEmpty() ? QStringLiteral("ignored")
+                                 : QStringLiteral("ignored (%1)").arg(reason));
+    return nullptr;
+}
+
+// Windows reuses handle VALUES once a device is gone, so a cached verdict is
+// only valid while the handle is live.
+void DualSenseDevice::forgetClassification(void* handle)
+{
+    m_ignoredHandles.remove(handle);
+    m_xinputClass.remove(handle);
+    m_rates.forget(handle);
+}
+
+QStringList DualSenseDevice::xinputClassIdentities() const
+{
+    QStringList identities;
+    for (const QString& identity : m_xinputClass) {
+        if (!identities.contains(identity))
+            identities.append(identity);
+    }
+    return identities;
 }
 
 void DualSenseDevice::onDeviceChange(bool arrived, void* deviceHandle)
 {
+    // Any change to this handle voids what was cached about it — on arrival
+    // too, because the value may now belong to a completely different device.
+    // Tracked devices are left to removeDevice()/reconcile: dropping a live
+    // pad's state on an arrival message would reset its active role.
+    forgetClassification(deviceHandle);
+
     if (arrived)
         probeDevice(deviceHandle);
     else
@@ -279,6 +350,7 @@ void DualSenseDevice::removeDevice(void* handle)
     const int layout = it->layout;
     const bool wasActive = (handle == m_activeHandle);
     m_devices.erase(it);
+    m_rates.forget(handle);
     qInfo() << "Gamepad:" << padName(layout) << "removed"
             << "(" << m_devices.size() << "Sony/DS4 device(s) left)";
 
@@ -297,20 +369,29 @@ void DualSenseDevice::reconcileDevices()
     QSet<void*> present;
     QSet<QString> rawPathsLower;   // every HID interface Raw Input can see
 
-    UINT count = 0;
-    if (GetRawInputDeviceList(nullptr, &count, sizeof(RAWINPUTDEVICELIST)) == 0 && count > 0) {
-        QByteArray bytes(static_cast<int>(count * sizeof(RAWINPUTDEVICELIST)), Qt::Uninitialized);
-        auto* devices = reinterpret_cast<RAWINPUTDEVICELIST*>(bytes.data());
-        if (GetRawInputDeviceList(devices, &count, sizeof(RAWINPUTDEVICELIST))
-                != static_cast<UINT>(-1)) {
-            for (UINT i = 0; i < count; ++i) {
-                if (devices[i].dwType != RIM_TYPEHID)
-                    continue;
-                present.insert(devices[i].hDevice);
-                rawPathsLower.insert(devicePath(devices[i].hDevice).toLower());
-                probeDevice(devices[i].hDevice);
-            }
+    for (const RawInputApi::EnumeratedDevice& device : m_api->enumerateDevices()) {
+        // Every type goes into `present`: the classification cache holds
+        // non-HID handles too and must be pruned against the full list.
+        present.insert(device.handle);
+        if (device.type != RawInputApi::DeviceType::Hid)
+            continue;
+        const RawInputApi::DevicePath path = m_api->devicePath(device.handle);
+        if (path.queried)
+            rawPathsLower.insert(path.value.toLower());
+        probeDevice(device.handle);
+    }
+
+    // Prune classifications for handles Windows no longer lists. This is the
+    // safety net for handle reuse: a value that comes back later is
+    // re-classified from scratch instead of inheriting the old verdict.
+    for (auto it = m_ignoredHandles.begin(); it != m_ignoredHandles.end();) {
+        if (present.contains(it.key())) {
+            ++it;
+            continue;
         }
+        m_rates.forget(it.key());
+        m_xinputClass.remove(it.key());
+        it = m_ignoredHandles.erase(it);
     }
 
     bool lostActive = false;
@@ -325,6 +406,7 @@ void DualSenseDevice::reconcileDevices()
             m_activeHandle = nullptr;
             lostActive = true;
         }
+        m_rates.forget(it.key());
         it = m_devices.erase(it);
     }
     if (lostActive)
@@ -337,7 +419,7 @@ void DualSenseDevice::reconcileDevices()
     // supported pad present in PnP but absent here is being cloaked by a HID
     // filter driver (HidHide, installed with DSX/DS4Windows/reWASD) — the app
     // can't read it, but it CAN tell the user exactly what is wrong.
-    auto cloak = HidCloakMonitor::scan(rawPathsLower);
+    auto cloak = m_api->scanHiddenPads(rawPathsLower);
     // Only alarm the user when the cloak explains an actual absence: with a
     // working pad tracked, hidden *additional* devices (e.g. DSX's parked
     // virtual pads) are expected and not worth a Settings warning.
@@ -357,6 +439,8 @@ void DualSenseDevice::reconcileDevices()
             qInfo() << "Gamepad: previously hidden pad(s) now visible to Raw Input";
         }
         m_lastHiddenPads = cloak.hiddenPads;
+        InputDiagnostics::instance().setCloakStatus(cloak.hiddenPads,
+                                                    cloak.hidHidePresent);
         emit hiddenPadsChanged(cloak.hiddenPads, cloak.hidHidePresent);
     }
 }
@@ -412,17 +496,15 @@ void DualSenseDevice::finishDisconnect()
     emit connected(false);
 }
 
+// The GUI thread runs this once per WM_INPUT, and a pad polling at 8000 Hz
+// sends 8000 of them a second — per device. So the work is ordered by cost:
+// header (fixed-size, stack, no allocation) → cached verdict (one hash lookup)
+// → classification (twice per handle, ever) → payload. A device this backend
+// does not drive never reaches the payload read at all.
 void DualSenseDevice::onRawInput(void* hRawInputV)
 {
-    HRAWINPUT hRawInput = static_cast<HRAWINPUT>(hRawInputV);
-
-    UINT size = 0;
-    if (GetRawInputData(hRawInput, RID_INPUT, nullptr, &size, sizeof(RAWINPUTHEADER)) != 0
-        || size == 0)
-        return;
-
-    QByteArray buffer(static_cast<int>(size), Qt::Uninitialized);
-    if (GetRawInputData(hRawInput, RID_INPUT, buffer.data(), &size, sizeof(RAWINPUTHEADER)) != size)
+    RawInputApi::Header header;
+    if (!m_api->readHeader(hRawInputV, header) || !header.device)
         return;
 
     if (!m_sawInput) {
@@ -430,22 +512,191 @@ void DualSenseDevice::onRawInput(void* hRawInputV)
         qInfo() << "Gamepad: first WM_INPUT received (a gamepad is sending reports)";
     }
 
-    auto* ri = reinterpret_cast<RAWINPUT*>(buffer.data());
-    if (ri->header.dwType != RIM_TYPEHID)
+    void* handle = header.device;
+    if (header.type != RawInputApi::DeviceType::Hid) {
+        noteEvent(handle, true);
         return;
+    }
+    if (m_ignoredHandles.contains(handle)) {
+        noteEvent(handle, true);
+        // Only the diagnostics probe ever looks past an ignored verdict, and
+        // only inside its bounded window — the idle cost stays one branch.
+        if (m_probing)
+            probeIgnoredEvent(handle, hRawInputV);
+        return;
+    }
 
     // Look up (or start tracking) this device — reports can beat the arrival
     // message, so an unknown handle is probed here too.
-    void* handle = ri->header.hDevice;
     DeviceState* st = probeDevice(handle);
-    if (!st)
+    if (!st) {
+        noteEvent(handle, true);
+        return;
+    }
+    noteEvent(handle, false);
+
+    RawInputApi::Payload payload;
+    if (!m_api->readPayload(hRawInputV, payload))
         return;
 
-    const DWORD count   = ri->data.hid.dwCount;
-    const DWORD hidSize = ri->data.hid.dwSizeHid;
-    const BYTE* raw     = ri->data.hid.bRawData;
-    for (DWORD i = 0; i < count; ++i)
-        parseReport(handle, *st, raw + i * hidSize, static_cast<int>(hidSize));
+    for (int i = 0; i < payload.reportCount; ++i)
+        parseReport(handle, *st, payload.reports + i * payload.reportSize, payload.reportSize);
+}
+
+// Count the event and make sure the sampler is running. Deliberately the only
+// bookkeeping on the ignored path: one hash lookup, no allocation, no log.
+void DualSenseDevice::noteEvent(void* handle, bool ignored)
+{
+    m_rates.record(handle, ignored);
+    if (!m_rateTimer->isActive()) {
+        m_lastRateSampleMs = m_clock.elapsed();
+        m_rateTimer->start();
+    }
+}
+
+void DualSenseDevice::beginButtonProbe()
+{
+    m_probing = true;
+    m_probeBudget.reset();
+    m_probeEligible.clear();
+    m_probePrev.clear();
+}
+
+// One call per probe-window event; also the single place probe state is torn
+// down, so an expired window cannot leave payload reads enabled.
+bool DualSenseDevice::probeWindowStillOpen()
+{
+    if (InputDiagnostics::instance().probeActive())
+        return true;
+    m_probing = false;
+    m_probeEligible.clear();
+    m_probePrev.clear();
+    m_probeBudget.reset();
+    return false;
+}
+
+void DualSenseDevice::probeIgnoredEvent(void* handle, void* hRawInput)
+{
+    if (!probeWindowStillOpen())
+        return;
+
+    // One eligibility query per handle per window: only devices that present a
+    // Joystick/Gamepad/MultiAxis collection are worth a payload read — the
+    // ignored set also contains keyboards, mice and vendor collections whose
+    // reports must never be captured, even summarized.
+    int eligible = m_probeEligible.value(handle, 0);
+    if (eligible == 0) {
+        const RawInputApi::DeviceInfo info = m_api->describeDevice(handle);
+        eligible = (info.queried && info.isHid
+                    && isGamepadUsage(info.usagePage, info.usage)) ? 1 : -1;
+        m_probeEligible.insert(handle, eligible);
+    }
+    if (eligible < 0)
+        return;
+    // Full coverage up to 10 000 reports/s (so 4 and 8 kHz pads are read report
+    // for report), evenly strided above that, hard-stopped at 30 000 reads for
+    // the window. A short tap cannot land in a blind interval.
+    if (!m_probeBudget.allow(m_clock.elapsed())) {
+        InputDiagnostics::instance().noteProbeSampled();
+        return;
+    }
+
+    RawInputApi::Payload payload;
+    if (!m_api->readPayload(hRawInput, payload) || payload.reportSize <= 0)
+        return;
+    const QByteArray current(reinterpret_cast<const char*>(payload.reports),
+                             payload.reportSize);
+    QByteArray& previous = m_probePrev[handle];
+    if (previous.isEmpty()) {
+        previous = current;
+        return;
+    }
+    if (current == previous)
+        return;
+
+    // Only the diff leaves the process: changed byte positions and the XOR of
+    // their values, never the report itself.
+    QStringList changes;
+    const int n = qMin(current.size(), previous.size());
+    for (int i = 0; i < n && changes.size() < 8; ++i) {
+        const uchar diff = uchar(current[i]) ^ uchar(previous[i]);
+        if (diff)
+            changes << QStringLiteral("byte %1 ^%2")
+                           .arg(i)
+                           .arg(uint(diff), 2, 16, QLatin1Char('0'));
+    }
+    previous = current;
+    if (!changes.isEmpty())
+        InputDiagnostics::instance().noteProbeEvent(
+            m_ignoredHandles.value(handle), QStringLiteral("Raw Input"),
+            changes.join(QStringLiteral(", ")));
+}
+
+void DualSenseDevice::noteProbeButtonChange(const DeviceState& st, quint32 before,
+                                            quint32 after)
+{
+    if (!probeWindowStillOpen())
+        return;
+    InputDiagnostics::instance().noteProbeEvent(
+        deviceIdentity(st.vendorId, st.productId), QStringLiteral("Raw Input"),
+        QStringLiteral("buttons %1 -> %2")
+            .arg(before, 0, 16).arg(after, 0, 16));
+}
+
+void DualSenseDevice::logInputRates()
+{
+    const qint64 now = m_clock.elapsed();
+    const qint64 window = qMax<qint64>(1, now - m_lastRateSampleMs);
+    m_lastRateSampleMs = now;
+
+    bool traffic = false;
+    for (const InputRateMonitor::Sample& s : m_rates.sample(window)) {
+        if (s.eventsPerSecond > 0)
+            traffic = true;
+        {
+            // Keep the diagnostics registry current on every sample, not only
+            // on the (rarer) loggable changes — the export should show the
+            // last measured rate, not the last newsworthy one.
+            const QString identity = s.ignored
+                ? m_ignoredHandles.value(s.handle)
+                : (m_devices.contains(s.handle)
+                       ? deviceIdentity(m_devices.value(s.handle).vendorId,
+                                        m_devices.value(s.handle).productId)
+                       : QString());
+            if (!identity.isEmpty())
+                InputDiagnostics::instance().noteRate(identity, s.eventsPerSecond);
+        }
+        if (!s.worthLogging)
+            continue;
+        const QString what = deviceLabel(s.handle, s.ignored);
+        if (s.eventsPerSecond == 0) {
+            qInfo().noquote()
+                << QStringLiteral("Gamepad: Raw Input stream from %1 stopped").arg(what);
+            continue;
+        }
+        qInfo().noquote()
+            << QStringLiteral("Gamepad: Raw Input %1 events/s from %2%3")
+                   .arg(s.eventsPerSecond)
+                   .arg(what, s.ignored
+                            ? QStringLiteral(" (classified once, payload never read)")
+                            : QString());
+    }
+    if (!traffic)
+        m_rateTimer->stop();
+}
+
+QString DualSenseDevice::deviceLabel(void* handle, bool ignored) const
+{
+    if (ignored) {
+        const QString id = m_ignoredHandles.value(handle);
+        return id.isEmpty() ? QStringLiteral("unclassified device")
+                            : QStringLiteral("ignored device %1").arg(id);
+    }
+    auto it = m_devices.constFind(handle);
+    if (it == m_devices.cend())
+        return QStringLiteral("device");
+    return QStringLiteral("%1 %2").arg(QString::fromLatin1(padName(it->layout)),
+                                       deviceIdentity(it->vendorId, it->productId));
 }
 
 // Locate the button block. USB report 0x01 puts it at byte 8; Bluetooth
@@ -553,6 +804,8 @@ void DualSenseDevice::parseReport(void* handle, DeviceState& st,
     s |= st.stick;
 
     const bool changed = (s != st.buttons);
+    if (changed && m_probing)
+        noteProbeButtonChange(st, st.buttons, s);
     st.buttons = s;
     if (changed)
         st.lastChangeMs = st.lastReportMs;
