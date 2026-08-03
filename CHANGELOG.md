@@ -6,7 +6,46 @@ All notable public releases of GameHQ are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Button combinations.** A controller action can now be assigned to two
+  buttons: hold the first, press the second. Several combinations can share the
+  same first button — the second one decides which action runs. Combinations are
+  controller-only, and the buttons keep their normal jobs when the combination
+  is not completed.
+- **Triple tap**, alongside single and double tap. Tapping three times runs the
+  triple-tap action only; it no longer also runs the single and double ones on
+  the way there.
+- **Edit Assignment dialog.** Assigning a button now opens one dialog that shows
+  the whole assignment: single button or combination, how it is pressed, and how
+  long a hold takes. Recording a button is an explicit step, so your controller
+  keeps navigating the dialog until you ask it to listen — and while it is
+  listening, pressing Share records Share instead of taking a screenshot.
+- Settings → Input → Gesture timing now also exposes the **multi-tap interval**
+  and the **combination window**, and the dialog explains in plain words when an
+  action has to wait for one of them.
+- The copied diagnostics now include the gesture timing, your controller
+  assignments, the last recognized patterns, and whether the Guide/PS button has
+  ever reached GameHQ this session — the usual reason a combination never fires.
+
+### Changed
+
+- Controller gestures now count taps instead of hard-coding "double tap", which
+  is what will make triple taps assignable. Every existing assignment keeps
+  working exactly as before, including per-controller and cleared ones.
+- The hold threshold in Settings is now the single source of truth for how long
+  "hold" means. Built-in hold bindings follow that setting instead of keeping a
+  copy of it, so changing it applies everywhere at once. Hold-to-bulk-select in
+  the gallery keeps its own shorter, deliberate one second.
+
 ### Fixed
+
+- A controller or keyboard assignment that has become unreadable — corrupted in
+  the database, or saved by a newer version of GameHQ that this one does not
+  understand — is now ignored and the action falls back to its built-in default
+  instead of being guessed at and possibly firing the wrong thing. Every
+  ignored assignment is listed in the copied diagnostics so it is obvious which
+  one needs to be set again.
 
 - Assigning a controller button to an empty binding slot now keeps the gesture
   that slot really means — a second Screenshot button is a tap, a second Save

@@ -152,15 +152,37 @@ SettingsPage {
     SettingsSection {
         eyebrow: "Gestures"
         title: "Gesture timing"
-        description: "Tune how long a capture button must be held before it becomes a replay action."
+        description: "How long GameHQ waits before it decides what a button press meant."
         SettingsRow {
-            label: "Capture-button hold time"
-            description: "A completed hold saves replay and consumes the screenshot tap."
+            label: "Hold time"
+            description: "How long a button must be held for a hold action. A completed hold consumes the tap."
             SettingsCombo {
-                configKey: "input.share_hold_ms"; defaultValue: 2000
+                configKey: "input.default_hold_ms"; defaultValue: 2000
                 options: [
                     { label: "1.0 seconds", value: 1000 }, { label: "1.5 seconds", value: 1500 },
                     { label: "2.0 seconds", value: 2000 }, { label: "3.0 seconds", value: 3000 }
+                ]
+            }
+        }
+        SettingsRow {
+            label: "Multi-tap interval"
+            description: "How long a single tap waits when the same button also has a double or triple tap."
+            SettingsCombo {
+                configKey: "input.multi_tap_interval_ms"; defaultValue: 300
+                options: [
+                    { label: "200 ms (fast)", value: 200 }, { label: "300 ms", value: 300 },
+                    { label: "400 ms", value: 400 }, { label: "500 ms (relaxed)", value: 500 }
+                ]
+            }
+        }
+        SettingsRow {
+            label: "Combination window"
+            description: "How long the first button of a combination waits for the second one."
+            SettingsCombo {
+                configKey: "input.chord_window_ms"; defaultValue: 300
+                options: [
+                    { label: "200 ms (fast)", value: 200 }, { label: "300 ms", value: 300 },
+                    { label: "400 ms", value: 400 }, { label: "500 ms (relaxed)", value: 500 }
                 ]
             }
         }
@@ -172,140 +194,130 @@ SettingsPage {
         title: "Assignments"
         description: "Primary and secondary slots are independent. Contexts can reuse the same input safely."
 
-        GridLayout {
-            Layout.fillWidth: true
-            visible: assignmentsSection.width >= 820
-            columns: 4
-            columnSpacing: Theme.s12
-            Item { Layout.fillWidth: true }
-            Repeater {
-                model: [
-                    { label: "PRIMARY", width: 210 },
-                    { label: "SECONDARY", width: 210 },
-                    { label: "ACTION", width: 76 }
-                ]
-                delegate: Text {
-                    text: modelData.label
-                    color: Theme.textFaint
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontCaption
-                    font.letterSpacing: Theme.letterSpacingWide
-                    Layout.preferredWidth: modelData.width
-                }
-            }
-        }
-
         Repeater {
             model: editor.rows
-            delegate: ColumnLayout {
+            delegate: Rectangle {
+                property bool modified: Boolean(modelData.modified)
+
                 Layout.fillWidth: true
-                spacing: Theme.s8
+                implicitHeight: actionLayout.implicitHeight + Theme.s32
+                radius: Theme.radiusM
+                color: modified ? Theme.accentSoft : Theme.bg1
+                border.width: Theme.borderWidth
+                border.color: modified ? Theme.accent : Theme.stroke
 
-                GridLayout {
-                    id: bindingGrid
-                    Layout.fillWidth: true
-                    columns: width < 820 ? 1 : 4
-                    columnSpacing: Theme.s12
-                    rowSpacing: Theme.s8
+                Behavior on color { ColorAnimation { duration: Theme.durFast } }
+                Behavior on border.color { ColorAnimation { duration: Theme.durFast } }
 
-                    ColumnLayout {
+                ColumnLayout {
+                    id: actionLayout
+                    x: Theme.s16
+                    y: Theme.s16
+                    width: parent.width - Theme.s32
+                    spacing: Theme.s12
+
+                    RowLayout {
                         Layout.fillWidth: true
-                        spacing: Theme.s4
-                        Text {
-                            text: modelData.label
-                            color: Theme.text
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontBody
-                            wrapMode: Text.WordWrap
+                        spacing: Theme.s12
+
+                        ColumnLayout {
                             Layout.fillWidth: true
+                            spacing: Theme.s4
+                            Text {
+                                text: modelData.label
+                                color: Theme.text
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontH3
+                                font.weight: Font.DemiBold
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+                            Text {
+                                text: modelData.scope + " · " + modelData.description
+                                color: Theme.textMuted
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontCaption
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
                         }
-                        Text {
-                            text: modelData.scope + " · " + modelData.description
-                            color: Theme.textMuted
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontCaption
-                            wrapMode: Text.WordWrap
-                            Layout.fillWidth: true
+                        AccentButton {
+                            visible: modelData.bindable
+                            label: "Restore defaults"
+                            quiet: true
+                            enabled: modified
+                            labelColor: modified ? Theme.accent : Theme.textMuted
+                            quietIdleBorderColor: modified ? Theme.accent : Theme.borderLight
+                            onClicked: editor.resetAction(modelData.actionId)
                         }
                     }
 
                     Rectangle {
-                        Layout.fillWidth: bindingGrid.columns === 1
-                        Layout.preferredWidth: bindingGrid.columns === 1 ? -1 : 210
-                        Layout.preferredHeight: 44
-                        radius: Theme.radiusS
-                        color: Theme.bg1
-                        border.width: 1
+                        Layout.fillWidth: true
+                        implicitHeight: assignmentLayout.implicitHeight + Theme.s24
+                        radius: Theme.radiusM
+                        color: Theme.surfaceAlt
+                        border.width: Theme.borderWidth
                         border.color: Theme.stroke
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.margins: Theme.s4
-                            spacing: Theme.s4
-                            AccentButton {
-                                label: modelData.bindable ? modelData.primary : "Fixed · " + modelData.primary
-                                quiet: true
-                                enabled: modelData.bindable
+
+                        ColumnLayout {
+                            id: assignmentLayout
+                            x: Theme.s12
+                            y: Theme.s12
+                            width: parent.width - Theme.s24
+                            spacing: Theme.s8
+
+                            RowLayout {
                                 Layout.fillWidth: true
-                                Layout.preferredWidth: 0
-                                onClicked: editor.beginCapture(modelData.actionId, 1)
+                                spacing: Theme.s12
+                                Text {
+                                    text: "INPUT ASSIGNMENTS"
+                                    color: Theme.textFaint
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontCaption
+                                    font.letterSpacing: Theme.letterSpacingWide
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "Both slots can be active. Select one to edit."
+                                    color: Theme.textMuted
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontCaption
+                                    horizontalAlignment: Text.AlignRight
+                                    wrapMode: Text.WordWrap
+                                }
                             }
-                            AccentButton {
-                                label: "×"
-                                quiet: true
-                                enabled: modelData.bindable && modelData.primary !== "Unassigned"
-                                Layout.preferredWidth: 34
-                                onClicked: editor.clearBinding(modelData.actionId, 1)
+
+                            GridLayout {
+                                id: slotGrid
+                                Layout.fillWidth: true
+                                columns: width < 640 ? 1 : 2
+                                columnSpacing: Theme.s8
+                                rowSpacing: Theme.s8
+
+                                BindingCard {
+                                    Layout.fillWidth: true
+                                    slotLabel: "Primary"
+                                    assigned: modelData.primaryAssigned
+                                    triggerLabel: modelData.primaryTrigger
+                                    badgeLabel: modelData.bindable ? modelData.primaryGesture : "Fixed"
+                                    editable: modelData.bindable
+                                    onEditRequested: editor.openAssignmentEditor(modelData.actionId, 1)
+                                    onClearRequested: editor.clearBinding(modelData.actionId, 1)
+                                }
+                                BindingCard {
+                                    Layout.fillWidth: true
+                                    slotLabel: "Secondary"
+                                    assigned: modelData.secondaryAssigned
+                                    triggerLabel: modelData.secondaryTrigger
+                                    badgeLabel: modelData.bindable ? modelData.secondaryGesture : "Fixed"
+                                    editable: modelData.bindable
+                                    onEditRequested: editor.openAssignmentEditor(modelData.actionId, 2)
+                                    onClearRequested: editor.clearBinding(modelData.actionId, 2)
+                                }
                             }
                         }
                     }
-
-                    Rectangle {
-                        Layout.fillWidth: bindingGrid.columns === 1
-                        Layout.preferredWidth: bindingGrid.columns === 1 ? -1 : 210
-                        Layout.preferredHeight: 44
-                        radius: Theme.radiusS
-                        color: Theme.bg1
-                        border.width: 1
-                        border.color: Theme.stroke
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.margins: Theme.s4
-                            spacing: Theme.s4
-                            AccentButton {
-                                label: modelData.bindable ? modelData.secondary : "Fixed"
-                                quiet: true
-                                enabled: modelData.bindable
-                                Layout.fillWidth: true
-                                Layout.preferredWidth: 0
-                                onClicked: editor.beginCapture(modelData.actionId, 2)
-                            }
-                            AccentButton {
-                                label: "×"
-                                quiet: true
-                                enabled: modelData.bindable && modelData.secondary !== "Unassigned"
-                                Layout.preferredWidth: 34
-                                onClicked: editor.clearBinding(modelData.actionId, 2)
-                            }
-                        }
-                    }
-
-                    AccentButton {
-                        label: "Reset"
-                        primary: true
-                        contentHorizontalOffset: bindingGrid.columns === 1
-                                                 ? -(34 + Theme.s4) / 2 : 0
-                        enabled: modelData.bindable
-                        Layout.fillWidth: bindingGrid.columns === 1
-                        Layout.preferredWidth: bindingGrid.columns === 1 ? -1 : 76
-                        onClicked: editor.resetAction(modelData.actionId)
-                    }
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: Theme.stroke
-                    opacity: index < editor.rows.length - 1 ? 1 : 0
                 }
             }
         }
@@ -355,6 +367,14 @@ SettingsPage {
                 AccentButton { label: "Cancel"; onClicked: editor.cancelCapture() }
             }
         }
+    }
+
+    BindingAssignmentDialog {
+        id: assignmentDialog
+        parent: root
+        anchors.fill: parent
+        z: 205
+        model: editor
     }
 
     BindingConflictDialog {

@@ -117,6 +117,23 @@ public:
     void noteControl(const QString& controlId, const QString& backend);
     // phase: "overlay show" / "overlay hide".
     void noteForeground(const QString& phase, bool acquired);
+    // A stored binding row did not survive validation and was skipped, so the
+    // action fell back to its default. Silent skipping would read as "the app
+    // forgot my binding"; this is what turns that into an answerable report.
+    void noteRejectedBinding(const QString& subject, const QString& reason);
+    // The live gesture timing, so a report about "the button feels slow" comes
+    // with the numbers that decided how long it waited.
+    void setGestureTiming(const QString& description);
+    // Recognizer traffic: which pattern fired, and the chord lifecycle around
+    // it (opened / completed / timed out). Control ids only - no report bytes,
+    // no device paths.
+    void notePattern(const QString& detail);
+    // The effective controller assignments, in canonical serialized form, so a
+    // report shows what was bound and not just what happened.
+    void setBoundPatterns(const QStringList& patterns);
+    // Whether the Guide/PS button has ever reached GameHQ this session. The
+    // usual reason a combination never fires is that another app owns it.
+    void setGuideObserved(bool observed);
     void setCloakStatus(const QStringList& hiddenPads, bool hidHidePresent);
 
     // "Press your screenshot button now": for `durationMs` the backends may
@@ -143,6 +160,8 @@ public:
     static constexpr int kMaxSwitches = 32;
     static constexpr int kMaxControls = 16;
     static constexpr int kMaxForeground = 8;
+    static constexpr int kMaxRejectedBindings = 16;
+    static constexpr int kMaxPatterns = 16;
     static constexpr int kMaxProbeEvents = 64;
 
 private:
@@ -165,6 +184,11 @@ private:
     QVector<Stamped> m_switches;
     QVector<Stamped> m_controls;
     QVector<Stamped> m_foreground;
+    QVector<Stamped> m_rejectedBindings;
+    QString m_gestureTiming;
+    QVector<Stamped> m_patterns;
+    QStringList m_boundPatterns;
+    bool m_guideObserved = false;
     QHash<QString, DeviceInfo> m_devices;
     QStringList m_deviceOrder;            // insertion order for stable export
     QStringList m_hiddenPads;

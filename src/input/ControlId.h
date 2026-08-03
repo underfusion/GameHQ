@@ -32,6 +32,13 @@ QString genericButton(int index);
 // True for any gamepad.button.N code produced by genericButton().
 bool isGenericButton(const QString& code);
 
+// True for a code this build can actually deliver from a controller backend:
+// one of the named positions above, or a well-formed generic button. Keyboard
+// chords ("Ctrl+Shift+S") and typos are not canonical. Chord triggers require
+// this — a combination is only portable across Sony HID, XInput and WinMM when
+// both of its controls are canonical.
+bool isCanonical(const QString& code);
+
 enum class ControllerFamily {
     PlayStation,
     Xbox,

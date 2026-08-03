@@ -127,6 +127,10 @@ signals:
     void probeStatusChanged();
 
 private:
+    void migrateLegacyHoldSetting();
+    void applyGestureTiming();
+    QString m_lastTimingDescription;
+
     void onControlPressed(const QString& controlId, int family,
                           const QString& backend, const QString& fingerprint,
                           const QString& displayName);

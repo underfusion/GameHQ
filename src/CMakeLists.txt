@@ -30,10 +30,13 @@ qt_add_executable(GameHQ
     input/StickNav.h
     input/SonyReportLayout.h
     input/ActionCatalog.cpp input/ActionCatalog.h
+    input/BindingPattern.cpp input/BindingPattern.h
     input/BindingRelation.cpp input/BindingRelation.h
     input/BindingResolver.cpp input/BindingResolver.h
     input/ContextOverrideCatalog.cpp input/ContextOverrideCatalog.h
     input/BindingRuntime.cpp input/BindingRuntime.h
+    input/InputPatternRecognizer.cpp input/InputPatternRecognizer.h
+    input/GestureTiming.cpp input/GestureTiming.h
     input/BindingEditorModel.cpp input/BindingEditorModel.h
     input/ControlId.cpp input/ControlId.h
     input/ControllerIdentity.cpp input/ControllerIdentity.h
@@ -132,6 +135,9 @@ qt_add_qml_module(GameHQ
         ui/qml/components/TileIconButton.qml
         ui/qml/components/VideoBadge.qml
         ui/qml/components/SettingsPathField.qml
+        ui/qml/components/BindingCard.qml
+        ui/qml/components/BindingSegmentedControl.qml
+        ui/qml/components/BindingAssignmentDialog.qml
         ui/qml/components/BindingConflictDialog.qml
         ui/qml/components/ConfirmDialog.qml
         ui/qml/components/Toast.qml

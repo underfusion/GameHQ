@@ -86,32 +86,54 @@ QString BindingEditorModel::scopeLabel(ActionCatalog::Scope scope)
     return {};
 }
 
+QString BindingEditorModel::formatTrigger(const BindingResolver::Binding& binding) const
+{
+    if (binding.triggerCode.isEmpty())
+        return {};
+    const TriggerSpec trigger = binding.trigger();
+    if (m_deviceGroup == QLatin1String("controller"))
+        return trigger.label(m_controllerFamily);
+    return controlLabel(trigger.firstControl());
+}
+
 QString BindingEditorModel::formatBinding(const BindingResolver::Binding& binding) const
 {
     if (binding.triggerCode.isEmpty())
         return QStringLiteral("Unassigned");
-    QString label = binding.triggerCode;
-    if (m_deviceGroup == QLatin1String("controller"))
-        label = ControlId::label(binding.triggerCode, m_controllerFamily);
-    else if (m_deviceGroup == QLatin1String("mouse")) {
-        if (binding.triggerCode == QLatin1String("mouse.button4")) label = QStringLiteral("Mouse Back");
-        else if (binding.triggerCode == QLatin1String("mouse.button5")) label = QStringLiteral("Mouse Forward");
-        else if (binding.triggerCode == QLatin1String("mouse.middle")) label = QStringLiteral("Middle Mouse");
-    }
-    if (binding.activation == QLatin1String("tap"))
-        label += QStringLiteral(" · Tap");
-    else if (binding.activation == QLatin1String("hold"))
-        label += QStringLiteral(" · Hold");
-    else if (binding.activation == QLatin1String("double_tap"))
-        label += QStringLiteral(" · Double tap");
+    QString label = formatTrigger(binding);
+    const GestureSpec gesture = binding.gesture();
+    if (gesture.kind != GestureSpec::Kind::Press)
+        label += QStringLiteral(" · %1").arg(gesture.label());
     return label;
+}
+
+QString BindingEditorModel::formatGestureBadge(const BindingResolver::Binding& binding)
+{
+    if (binding.trigger().isChord())
+        return QStringLiteral("Combination");
+    const GestureSpec gesture = binding.gesture();
+    if (gesture.kind == GestureSpec::Kind::Hold) {
+        if (gesture.holdMs == 0)
+            return QStringLiteral("Hold · Default");
+        const bool wholeSeconds = gesture.holdMs % 1000 == 0;
+        return QStringLiteral("Hold · %1 s")
+            .arg(gesture.holdMs / 1000.0, 0, 'f', wholeSeconds ? 0 : 1);
+    }
+    return gesture.label();
 }
 
 void BindingEditorModel::rebuildRows()
 {
+    const QString profile = selectedProfile();
     QHash<QString, BindingResolver::Binding> bindings;
-    for (const auto& binding : m_runtime->effectiveBindings(m_deviceGroup, selectedProfile()))
+    for (const auto& binding : m_runtime->effectiveBindings(m_deviceGroup, profile))
         bindings.insert(slotKey(binding.actionId, binding.slot), binding);
+
+    QSet<QString> modifiedActions;
+    for (const BindingOverrideRow& row : m_database->listBindingOverrides()) {
+        if (row.deviceGroup == m_deviceGroup && row.deviceProfile == profile)
+            modifiedActions.insert(row.actionId);
+    }
 
     QVariantList next;
     for (const auto& action : ActionCatalog::all()) {
@@ -121,10 +143,18 @@ void BindingEditorModel::rebuildRows()
         row.insert(QStringLiteral("description"), action.description);
         row.insert(QStringLiteral("scope"), scopeLabel(action.scope));
         row.insert(QStringLiteral("bindable"), action.bindable);
+        row.insert(QStringLiteral("modified"), modifiedActions.contains(action.id));
         for (int slot = 1; slot <= 2; ++slot) {
             const auto binding = bindings.value(slotKey(action.id, slot));
-            row.insert(slot == 1 ? QStringLiteral("primary") : QStringLiteral("secondary"),
-                       binding.actionId.isEmpty() ? QStringLiteral("Unassigned") : formatBinding(binding));
+            const QString prefix = slot == 1 ? QStringLiteral("primary")
+                                             : QStringLiteral("secondary");
+            const bool assigned = !binding.actionId.isEmpty();
+            row.insert(prefix, assigned ? formatBinding(binding) : QStringLiteral("Unassigned"));
+            row.insert(prefix + QStringLiteral("Assigned"), assigned);
+            row.insert(prefix + QStringLiteral("Trigger"),
+                       assigned ? formatTrigger(binding) : QString());
+            row.insert(prefix + QStringLiteral("Gesture"),
+                       assigned ? formatGestureBadge(binding) : QString());
         }
         next.append(row);
     }
@@ -151,7 +181,7 @@ void BindingEditorModel::beginCapture(const QString& actionId, int slot)
     if (m_deviceGroup == QLatin1String("controller")) {
         const BindingResolver::Gesture gesture =
             m_runtime->inheritedGesture(m_deviceGroup, selectedProfile(), actionId, slot);
-        m_capturePrompt += QStringLiteral(" · %1").arg(gestureLabel(gesture.activation));
+        m_capturePrompt += QStringLiteral(" · %1").arg(gesture.spec().label());
     }
     emit captureChanged();
 }
@@ -205,6 +235,10 @@ bool BindingEditorModel::captureInput(const QString& deviceGroup, const QString&
 {
     if (!m_captureActive || deviceGroup != m_deviceGroup || triggerCode.isEmpty())
         return false;
+    // The dialog records into its draft rather than saving on the spot: a
+    // combination needs two buttons and a gesture needs choosing.
+    if (m_editorOpen)
+        return editorCaptureInput(deviceGroup, triggerCode);
 
     const QString profile = selectedProfile();
     const auto effective = m_runtime->effectiveBindings(deviceGroup, profile);
@@ -216,10 +250,12 @@ bool BindingEditorModel::captureInput(const QString& deviceGroup, const QString&
     const BindingResolver::Gesture gesture =
         m_runtime->inheritedGesture(deviceGroup, profile, m_captureActionId, m_captureSlot);
     BindingResolver::Binding target{deviceGroup, profile, m_captureActionId, m_captureSlot,
-                                    triggerCode, gesture.activation, gesture.holdMs, false};
+                                    triggerCode, gesture.activation, gesture.holdMs, false,
+                                    gesture.tapCount};
     if (deviceGroup != QLatin1String("controller")) {
         target.activation = QStringLiteral("press");
         target.holdMs = 0;
+        target.tapCount = 1;
     }
 
     // One shared policy decides what the new binding means next to every
@@ -292,8 +328,8 @@ QString BindingEditorModel::noticeTextFor(BindingRelation::Kind kind,
     case BindingRelation::Kind::SharedGesture:
         return QStringLiteral("%1 is shared: %2 = %3, %4 = %5.")
             .arg(displayLabel,
-                 gestureLabel(target.activation), targetAction->label,
-                 gestureLabel(partner.activation), partnerAction->label);
+                 gestureLabel(target), targetAction->label,
+                 gestureLabel(partner), partnerAction->label);
     case BindingRelation::Kind::HardConflict:
     case BindingRelation::Kind::None:
         break;
@@ -301,12 +337,9 @@ QString BindingEditorModel::noticeTextFor(BindingRelation::Kind kind,
     return {};
 }
 
-QString BindingEditorModel::gestureLabel(const QString& activation)
+QString BindingEditorModel::gestureLabel(const BindingResolver::Binding& binding)
 {
-    if (activation == QLatin1String("tap")) return QStringLiteral("Tap");
-    if (activation == QLatin1String("hold")) return QStringLiteral("Hold");
-    if (activation == QLatin1String("double_tap")) return QStringLiteral("Double tap");
-    return QStringLiteral("Press");
+    return binding.gesture().label();
 }
 
 bool BindingEditorModel::legacyCopyAvailable() const
@@ -437,7 +470,8 @@ bool BindingEditorModel::applyChange(const PendingChange& change)
     bool persisted = true;
     for (const auto& conflict : change.conflicts) {
         BindingOverrideRow row{conflict.deviceGroup, profile, conflict.actionId,
-                               conflict.slot, {}, conflict.activation, conflict.holdMs, true};
+                               conflict.slot, {}, conflict.activation, conflict.holdMs, true,
+                               conflict.tapCount};
         if (!persist(row)) {
             persisted = false;
             break;
@@ -446,7 +480,8 @@ bool BindingEditorModel::applyChange(const PendingChange& change)
     }
     if (persisted) {
         BindingOverrideRow row{target.deviceGroup, profile, target.actionId, target.slot,
-                               target.triggerCode, target.activation, target.holdMs, false};
+                               target.triggerCode, target.activation, target.holdMs, false,
+                               target.tapCount};
         persisted = persist(row);
     }
 
@@ -489,7 +524,7 @@ void BindingEditorModel::clearBinding(const QString& actionId, int slot)
     const BindingResolver::Gesture gesture =
         m_runtime->inheritedGesture(m_deviceGroup, selectedProfile(), actionId, slot);
     BindingOverrideRow row{m_deviceGroup, selectedProfile(), actionId, slot, {},
-                           gesture.activation, gesture.holdMs, true};
+                           gesture.activation, gesture.holdMs, true, gesture.tapCount};
     m_database->upsertBindingOverride(row);
     reloadAndRefresh();
 }
@@ -562,4 +597,347 @@ void BindingEditorModel::setLastFiredAction(const QString& actionId)
         return;
     m_lastFiredAction = text;
     emit lastFiredActionChanged();
+}
+
+// ---------------------------------------------------------------------------
+// Edit Assignment dialog
+//
+// Everything below manipulates a DRAFT. A gesture and a combination cannot be
+// captured — they have to be chosen — so the old "press a button and we save
+// it" flow could never express them. The draft holds the whole pattern, the
+// dialog edits it, and only saveAssignment() touches the database.
+// ---------------------------------------------------------------------------
+
+QString BindingEditorModel::controlLabel(const QString& controlId) const
+{
+    if (controlId.isEmpty())
+        return {};
+    if (m_deviceGroup == QLatin1String("controller"))
+        return ControlId::label(controlId, m_controllerFamily);
+    if (controlId == QLatin1String("mouse.button4")) return QStringLiteral("Mouse Back");
+    if (controlId == QLatin1String("mouse.button5")) return QStringLiteral("Mouse Forward");
+    if (controlId == QLatin1String("mouse.middle"))  return QStringLiteral("Middle Mouse");
+    return controlId;
+}
+
+TriggerSpec BindingEditorModel::editorTrigger() const
+{
+    if (m_editorTriggerKind == QLatin1String("combination"))
+        return TriggerSpec::orderedChord(m_editorFirstControl, m_editorSecondControl);
+    return TriggerSpec::single(m_editorFirstControl);
+}
+
+BindingResolver::Binding BindingEditorModel::editorBinding() const
+{
+    return {m_deviceGroup, selectedProfile(), m_editorActionId, m_editorSlot,
+            editorTrigger().serialize(), m_editorGesture.activationCode(),
+            m_editorGesture.holdMs, false, m_editorGesture.tapCount};
+}
+
+QString BindingEditorModel::editorTriggerLabel() const
+{
+    if (m_editorFirstControl.isEmpty())
+        return QStringLiteral("Not set");
+    if (m_editorTriggerKind != QLatin1String("combination"))
+        return controlLabel(m_editorFirstControl);
+    if (m_editorSecondControl.isEmpty())
+        return QStringLiteral("%1 + ...").arg(controlLabel(m_editorFirstControl));
+    return QStringLiteral("%1 + %2").arg(controlLabel(m_editorFirstControl),
+                                          controlLabel(m_editorSecondControl));
+}
+
+QString BindingEditorModel::editorTriggerHint() const
+{
+    if (m_editorCaptureStep == QLatin1String("first")) {
+        return m_editorTriggerKind == QLatin1String("combination")
+            ? QStringLiteral("Press the button you want to HOLD first.")
+            : QStringLiteral("Press the button you want to assign.");
+    }
+    if (m_editorCaptureStep == QLatin1String("second"))
+        return QStringLiteral("Now press the second button.");
+    if (m_editorTriggerKind == QLatin1String("combination") && !m_editorSecondControl.isEmpty()) {
+        // Say what to do, not just what it is called: "View + Guide" alone does
+        // not tell anyone that one button is held and the other tapped.
+        return QStringLiteral("Hold %1, then press %2.")
+            .arg(controlLabel(m_editorFirstControl), controlLabel(m_editorSecondControl));
+    }
+    return {};
+}
+
+bool BindingEditorModel::editorCanSave() const
+{
+    if (!m_editorOpen || m_editorFirstControl.isEmpty())
+        return false;
+    if (m_editorTriggerKind == QLatin1String("combination")
+        && (m_editorSecondControl.isEmpty() || m_editorSecondControl == m_editorFirstControl))
+        return false;
+    QString error;
+    return BindingPattern{editorTrigger(), m_editorGesture}.isValid(m_deviceGroup, &error);
+}
+
+void BindingEditorModel::openAssignmentEditor(const QString& actionId, int slot)
+{
+    const auto* action = ActionCatalog::find(actionId);
+    if (!action || !action->bindable || slot < 1 || slot > 2)
+        return;
+    cancelCapture();
+    m_editorOpen = true;
+    m_editorActionId = actionId;
+    m_editorActionLabel = action->label;
+    m_editorScopeLabel = scopeLabel(action->scope);
+    m_editorSlot = slot;
+    m_editorCaptureStep = QStringLiteral("idle");
+    m_editorFirstControl.clear();
+    m_editorSecondControl.clear();
+    m_editorTriggerKind = QStringLiteral("single");
+
+    // Seed from what the slot holds today, so opening the dialog on a bound
+    // slot shows that binding instead of an empty form.
+    for (const auto& binding : m_runtime->effectiveBindings(m_deviceGroup, selectedProfile())) {
+        if (binding.actionId != actionId || binding.slot != slot)
+            continue;
+        const TriggerSpec trigger = binding.trigger();
+        m_editorFirstControl = trigger.firstControl();
+        m_editorSecondControl = trigger.secondControl();
+        m_editorTriggerKind = trigger.isChord() ? QStringLiteral("combination")
+                                                : QStringLiteral("single");
+        m_editorGesture = binding.gesture();
+        refreshEditorNotice();
+        emit editorChanged();
+        return;
+    }
+    // Empty slot: inherit the gesture the slot means, exactly as a plain
+    // capture does, so a second Screenshot button still starts out as a tap.
+    m_editorGesture = m_runtime->inheritedGesture(m_deviceGroup, selectedProfile(),
+                                                  actionId, slot).spec();
+    if (m_deviceGroup != QLatin1String("controller"))
+        m_editorGesture = GestureSpec::press();
+    refreshEditorNotice();
+    emit editorChanged();
+}
+
+void BindingEditorModel::closeAssignmentEditor()
+{
+    if (!m_editorOpen)
+        return;
+    cancelTriggerCapture();
+    m_editorOpen = false;
+    m_editorNotice.clear();
+    m_editorNoticeKind = QStringLiteral("none");
+    emit editorChanged();
+}
+
+void BindingEditorModel::setEditorTriggerKind(const QString& kind)
+{
+    if (!m_editorOpen)
+        return;
+    const bool combination = kind == QLatin1String("combination");
+    if (combination && !editorCombinationAvailable())
+        return;
+    m_editorTriggerKind = combination ? QStringLiteral("combination")
+                                      : QStringLiteral("single");
+    if (combination) {
+        // Version 1 chords fire on the second button's down edge. Layering a
+        // tap count or a hold on an already two-stage trigger multiplies the
+        // waiting windows, so the gesture is fixed here rather than offered
+        // and then rejected on save.
+        m_editorGesture = GestureSpec::press();
+    } else {
+        m_editorSecondControl.clear();
+    }
+    refreshEditorNotice();
+    emit editorChanged();
+}
+
+void BindingEditorModel::beginTriggerCapture(int step)
+{
+    if (!m_editorOpen)
+        return;
+    // Capture is an explicit mode. Until it is on, the pad still navigates the
+    // dialog; once it is on, captureInput() consumes every control so pressing
+    // Share records Share instead of taking a screenshot.
+    m_captureActive = true;
+    m_editorCaptureStep = step >= 2 ? QStringLiteral("second") : QStringLiteral("first");
+    if (m_editorCaptureStep == QLatin1String("first"))
+        m_editorFirstControl.clear();
+    m_editorSecondControl.clear();
+    emit captureChanged();
+    emit editorChanged();
+}
+
+void BindingEditorModel::cancelTriggerCapture()
+{
+    if (m_editorCaptureStep == QLatin1String("idle") && !m_captureActive)
+        return;
+    m_captureActive = false;
+    m_editorCaptureStep = QStringLiteral("idle");
+    emit captureChanged();
+    emit editorChanged();
+}
+
+void BindingEditorModel::setEditorGesture(const QString& kind, int tapCount, int holdMs)
+{
+    if (!m_editorOpen || editorGestureLocked())
+        return;
+    const auto parsed = GestureSpec::parse(kind, qBound(1, tapCount, GestureSpec::kMaxTapCount),
+                                           qMax(0, holdMs));
+    if (!parsed.ok)
+        return;
+    m_editorGesture = parsed.gesture;
+    refreshEditorNotice();
+    emit editorChanged();
+}
+
+bool BindingEditorModel::controlWasObserved(const QString& controlId) const
+{
+    return m_observedControls.contains(controlId);
+}
+
+void BindingEditorModel::noteObservedControl(const QString& controlId)
+{
+    if (controlId.isEmpty() || m_observedControls.contains(controlId))
+        return;
+    m_observedControls.insert(controlId);
+    if (m_editorOpen) {
+        refreshEditorNotice();
+        emit editorChanged();
+    }
+}
+
+// Fills the draft's trigger instead of saving, while the dialog is capturing.
+bool BindingEditorModel::editorCaptureInput(const QString& deviceGroup, const QString& triggerCode)
+{
+    if (deviceGroup != m_deviceGroup || triggerCode.isEmpty())
+        return false;
+    if (m_editorCaptureStep == QLatin1String("first")) {
+        m_editorFirstControl = triggerCode;
+        // A combination is captured stepwise: recording both buttons at once
+        // would need them pressed simultaneously, which is exactly the
+        // unordered chord v1 deliberately does not support.
+        if (m_editorTriggerKind == QLatin1String("combination")) {
+            m_editorCaptureStep = QStringLiteral("second");
+        } else {
+            m_captureActive = false;
+            m_editorCaptureStep = QStringLiteral("idle");
+        }
+    } else if (m_editorCaptureStep == QLatin1String("second")) {
+        if (triggerCode == m_editorFirstControl) {
+            // Same button twice is not a combination. Stay in capture rather
+            // than saving something that would fail validation later.
+            m_editorNoticeKind = QStringLiteral("invalid_pattern");
+            m_editorNotice = QStringLiteral("A combination needs two different buttons.");
+            emit editorChanged();
+            return true;
+        }
+        m_editorSecondControl = triggerCode;
+        m_captureActive = false;
+        m_editorCaptureStep = QStringLiteral("idle");
+    } else {
+        return false;
+    }
+    refreshEditorNotice();
+    emit captureChanged();
+    emit editorChanged();
+    return true;
+}
+
+// Everything the user should know before saving: what the draft collides with,
+// why it might feel slow, and whether the pad has ever produced the button.
+void BindingEditorModel::refreshEditorNotice()
+{
+    m_editorNotice.clear();
+    m_editorNoticeKind = QStringLiteral("none");
+    if (!m_editorOpen || m_editorFirstControl.isEmpty())
+        return;
+
+    const TriggerSpec trigger = editorTrigger();
+    if (m_deviceGroup == QLatin1String("controller")) {
+        for (const QString& control : trigger.controls) {
+            if (control.isEmpty() || controlWasObserved(control))
+                continue;
+            // Only said about buttons the pad genuinely never delivered — the
+            // Guide button is the usual casualty, intercepted by Steam or the
+            // Game Bar before it reaches any application.
+            m_editorNoticeKind = QStringLiteral("unsupported_input");
+            m_editorNotice = QStringLiteral(
+                "GameHQ has not received %1 yet. Another application may be intercepting it.")
+                                     .arg(controlLabel(control));
+            return;
+        }
+    }
+
+    const BindingResolver::Binding target = editorBinding();
+    const auto timing = m_runtime->timing();
+    BindingRelation::Kind worst = BindingRelation::Kind::None;
+    BindingRelation::Notice notice = BindingRelation::Notice::None;
+    BindingResolver::Binding partner;
+    for (const auto& binding : m_runtime->effectiveBindings(m_deviceGroup, selectedProfile())) {
+        if (binding.actionId == target.actionId && binding.slot == target.slot)
+            continue;
+        const auto kind = BindingRelation::classify(target, binding);
+        if (kind == BindingRelation::Kind::HardConflict) {
+            worst = kind;
+            partner = binding;
+            break;
+        }
+        if (notice == BindingRelation::Notice::None)
+            notice = BindingRelation::noticeFor(target, binding);
+        if (noticeSeverity(kind) > noticeSeverity(worst)) {
+            worst = kind;
+            partner = binding;
+        }
+    }
+
+    if (worst == BindingRelation::Kind::HardConflict) {
+        const auto* other = ActionCatalog::find(partner.actionId);
+        m_editorNoticeKind = BindingRelation::kindId(worst);
+        m_editorNotice = QStringLiteral("%1 is already used by %2. Saving will replace it.")
+                             .arg(editorTriggerLabel(),
+                                  other ? other->label : partner.actionId);
+        return;
+    }
+    if (notice != BindingRelation::Notice::None) {
+        m_editorNoticeKind = BindingRelation::noticeId(notice);
+        m_editorNotice = BindingRelation::noticeText(notice, timing.chordWindowMs,
+                                                     timing.multiTapIntervalMs);
+        return;
+    }
+    if (worst != BindingRelation::Kind::None) {
+        m_editorNoticeKind = BindingRelation::kindId(worst);
+        m_editorNotice = noticeTextFor(worst, target, partner, editorTriggerLabel());
+    }
+}
+
+void BindingEditorModel::saveAssignment()
+{
+    if (!editorCanSave())
+        return;
+    const BindingResolver::Binding target = editorBinding();
+
+    PendingChange change;
+    change.target = target;
+    for (const auto& binding : m_runtime->effectiveBindings(m_deviceGroup, selectedProfile())) {
+        if (binding.actionId == target.actionId && binding.slot == target.slot)
+            continue;
+        if (BindingRelation::classify(target, binding) == BindingRelation::Kind::HardConflict)
+            change.conflicts.append(binding);
+    }
+
+    if (!change.conflicts.isEmpty()) {
+        // The dialog already said this would replace something; the modal is
+        // still where the user confirms it, so both paths stay identical.
+        m_pending = change;
+        m_conflictPending = true;
+        const auto* other = ActionCatalog::find(change.conflicts.first().actionId);
+        m_conflictMessage = QStringLiteral("%1 is already assigned to %2. Replace that assignment?")
+                                .arg(editorTriggerLabel(),
+                                     other ? other->label : change.conflicts.first().actionId);
+        setRelationNotice(BindingRelation::kindId(BindingRelation::Kind::HardConflict),
+                          m_conflictMessage);
+        emit conflictChanged();
+        return;
+    }
+    if (!applyChange(change))
+        return;
+    closeAssignmentEditor();
 }

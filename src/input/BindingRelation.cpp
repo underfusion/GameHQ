@@ -4,11 +4,28 @@
 
 namespace {
 
-bool isPressGesture(const QString& activation)
+// Every control a trigger physically involves: one for a single, two for a
+// chord. Two bindings that share none of them can never interact.
+bool sharesAnyControl(const TriggerSpec& left, const TriggerSpec& right)
 {
-    // Empty is treated as "press": that is the resolver's default for rows
-    // written before activations existed.
-    return activation.isEmpty() || activation == QLatin1String("press");
+    for (const QString& control : left.controls) {
+        if (right.controls.contains(control))
+            return true;
+    }
+    return false;
+}
+
+bool repeatsWhileHeld(const ActionCatalog::Action* action)
+{
+    return action && action->repeats;
+}
+
+// A binding that acts the moment the button goes down, with no window in which
+// a chord could still form: a plain press, or a navigation step that repeats
+// while held.
+bool actsImmediately(const GestureSpec& gesture, const ActionCatalog::Action* action)
+{
+    return gesture.kind == GestureSpec::Kind::Press || repeatsWhileHeld(action);
 }
 
 } // namespace
@@ -28,13 +45,19 @@ bool BindingRelation::scopesOverlap(ActionCatalog::Scope left, ActionCatalog::Sc
     return left == right;
 }
 
-bool BindingRelation::gesturesCompatible(const QString& left, const QString& right)
+bool BindingRelation::gesturesCompatible(const GestureSpec& left, const GestureSpec& right)
 {
-    if (left == right)
+    // Press resolves on the down edge, before any timed gesture is known, so it
+    // never shares a button.
+    if (left.kind == GestureSpec::Kind::Press || right.kind == GestureSpec::Kind::Press)
         return false;
-    if (isPressGesture(left) || isPressGesture(right))
-        return false;
-    // Everything left is a distinct pair drawn from tap / hold / double_tap.
+    // Two taps coexist only when they need a different number of them: x1 and
+    // x2 are separated in time, x2 and x2 are the same event. Hold durations do
+    // not separate anything — the shorter one always fires first — so two holds
+    // on one button stay a conflict regardless of their thresholds.
+    if (left.kind == right.kind)
+        return left.kind == GestureSpec::Kind::Tap && left.tapCount != right.tapCount;
+    // Tap and hold: the runtime tells them apart by how long the button is down.
     return true;
 }
 
@@ -42,13 +65,19 @@ BindingRelation::Kind BindingRelation::classify(const BindingResolver::Binding& 
                                                 const BindingResolver::Binding& right)
 {
     // 0) Preconditions. A keyboard chord and a controller button never compete,
-    //    and neither do two different triggers — the same action reached from
-    //    both Ctrl+Shift+S and F12 is a deliberate second slot, not a fault.
+    //    and neither do two triggers with no control in common — the same
+    //    action reached from both Ctrl+Shift+S and F12 is a deliberate second
+    //    slot, not a fault.
     if (left.deviceGroup != right.deviceGroup)
         return Kind::None;
-    if (left.triggerCode != right.triggerCode || left.triggerCode.isEmpty())
+    if (left.triggerCode.isEmpty() || right.triggerCode.isEmpty())
         return Kind::None;
     if (left.unbound || right.unbound)
+        return Kind::None;
+
+    const TriggerSpec leftTrigger = left.trigger();
+    const TriggerSpec rightTrigger = right.trigger();
+    if (!sharesAnyControl(leftTrigger, rightTrigger))
         return Kind::None;
 
     const ActionCatalog::Action* leftAction = ActionCatalog::find(left.actionId);
@@ -60,16 +89,21 @@ BindingRelation::Kind BindingRelation::classify(const BindingResolver::Binding& 
     if (!scopesOverlap(leftAction->scope, rightAction->scope))
         return Kind::None;
 
+    const GestureSpec leftGesture = left.gesture();
+    const GestureSpec rightGesture = right.gesture();
+
     // 2) A declared substitution is expected behavior, not a conflict. Both
     //    directions are checked because argument order is the caller's choice.
-    if (ContextOverrideCatalog::shadows(left.actionId, right.actionId, left.activation)
-        || ContextOverrideCatalog::shadows(right.actionId, left.actionId, right.activation)) {
+    if (ContextOverrideCatalog::shadows(left.actionId, right.actionId, leftGesture)
+        || ContextOverrideCatalog::shadows(right.actionId, left.actionId, rightGesture)) {
         return Kind::ContextOverride;
     }
 
     if (left.actionId == right.actionId) {
         // 3) Truly duplicated work: the same action reached twice the same way.
-        if (left.activation == right.activation && left.deviceProfile == right.deviceProfile)
+        if (leftTrigger == rightTrigger && leftGesture.kind == rightGesture.kind
+            && leftGesture.tapCount == rightGesture.tapCount
+            && left.deviceProfile == right.deviceProfile)
             return Kind::Redundant;
         // A device-specific row layered over a group-wide row for the same
         // action is the override mechanism working as designed; the resolver
@@ -78,15 +112,105 @@ BindingRelation::Kind BindingRelation::classify(const BindingResolver::Binding& 
             return Kind::None;
     }
 
-    // 4) Complementary gestures share one button on purpose.
-    if (gesturesCompatible(left.activation, right.activation))
+    // 4) Chord rules. Appended to the frozen order, never interleaved with it.
+    const bool leftIsChord = leftTrigger.isChord();
+    const bool rightIsChord = rightTrigger.isChord();
+    if (leftIsChord || rightIsChord) {
+        if (leftIsChord && rightIsChord) {
+            // The same combination twice is a straight collision; two different
+            // chords sharing a first control are fine, because the second
+            // control is what selects between them.
+            return leftTrigger == rightTrigger ? Kind::HardConflict : Kind::None;
+        }
+
+        const TriggerSpec& chord = leftIsChord ? leftTrigger : rightTrigger;
+        const bool singleIsLeft = rightIsChord;
+        const GestureSpec& singleGesture = singleIsLeft ? leftGesture : rightGesture;
+        const ActionCatalog::Action* singleAction = singleIsLeft ? leftAction : rightAction;
+        const QString& singleControl = singleIsLeft ? leftTrigger.firstControl()
+                                                    : rightTrigger.firstControl();
+
+        if (singleControl == chord.firstControl()) {
+            // Deterministic latency rule, frozen: the first control of a chord
+            // has to be holdable. A press that acts on the down edge, or a
+            // navigation step that repeats while held, would fire on the way to
+            // the second button — so this is a hard conflict in v1, with no
+            // "we'll just delay it" escape hatch.
+            if (actsImmediately(singleGesture, singleAction))
+                return Kind::HardConflict;
+            // A tap or hold on the same button is allowed: the chord consumes
+            // the components when it completes, and the constituent is replayed
+            // when it does not. It does cost the chord window, which is what
+            // noticeFor() reports.
+            return Kind::SharedGesture;
+        }
+        // The second control keeps its ordinary behaviour unless the chord
+        // actually completes, in which case the chord consumes it.
+        return Kind::SharedGesture;
+    }
+
+    // 5) Complementary gestures share one button on purpose.
+    if (leftTrigger == rightTrigger && gesturesCompatible(leftGesture, rightGesture))
         return Kind::SharedGesture;
 
-    // 5) Either the same gesture drives two different actions, or a press
+    // 6) Either the same gesture drives two different actions, or a press
     //    binding sits on a button that also carries a timed gesture. Press
     //    fires on the down edge, so it always beats and doubles up with the
     //    gesture that would have resolved later.
     return Kind::HardConflict;
+}
+
+BindingRelation::Notice BindingRelation::noticeFor(const BindingResolver::Binding& left,
+                                                   const BindingResolver::Binding& right)
+{
+    if (classify(left, right) == Kind::None)
+        return Notice::None;
+
+    const TriggerSpec leftTrigger = left.trigger();
+    const TriggerSpec rightTrigger = right.trigger();
+    const GestureSpec leftGesture = left.gesture();
+    const GestureSpec rightGesture = right.gesture();
+
+    // Chord-start delay outranks the tap notice: it is the longer wait and the
+    // more surprising one ("why is my screenshot button slow now?").
+    const bool leftIsChord = leftTrigger.isChord();
+    const bool rightIsChord = rightTrigger.isChord();
+    if (leftIsChord != rightIsChord) {
+        const TriggerSpec& chord = leftIsChord ? leftTrigger : rightTrigger;
+        const TriggerSpec& single = leftIsChord ? rightTrigger : leftTrigger;
+        const GestureSpec& singleGesture = leftIsChord ? rightGesture : leftGesture;
+        if (single.firstControl() == chord.firstControl()
+            && singleGesture.kind != GestureSpec::Kind::Press)
+            return Notice::ChordStartDelay;
+        return Notice::None;
+    }
+
+    // A lower tap count on the same button waits out the multi-tap window only
+    // because a higher count exists — that is exactly what to tell the user.
+    if (!leftIsChord && leftTrigger == rightTrigger
+        && leftGesture.kind == GestureSpec::Kind::Tap
+        && rightGesture.kind == GestureSpec::Kind::Tap
+        && leftGesture.tapCount != rightGesture.tapCount) {
+        return Notice::HigherTapCountDelay;
+    }
+    return Notice::None;
+}
+
+QString BindingRelation::noticeText(Notice notice, int chordWindowMs, int multiTapIntervalMs)
+{
+    switch (notice) {
+    case Notice::HigherTapCountDelay:
+        return QStringLiteral("This action waits up to %1 ms because the same button also "
+                              "has an assignment that needs more taps.")
+            .arg(multiTapIntervalMs);
+    case Notice::ChordStartDelay:
+        return QStringLiteral("This action waits up to %1 ms because this button starts "
+                              "a combination.")
+            .arg(chordWindowMs);
+    case Notice::None:
+        break;
+    }
+    return {};
 }
 
 QString BindingRelation::kindId(Kind kind)
@@ -97,6 +221,16 @@ QString BindingRelation::kindId(Kind kind)
     case Kind::Redundant: return QStringLiteral("redundant");
     case Kind::SharedGesture: return QStringLiteral("shared_gesture");
     case Kind::HardConflict: return QStringLiteral("hard_conflict");
+    }
+    return QStringLiteral("none");
+}
+
+QString BindingRelation::noticeId(Notice notice)
+{
+    switch (notice) {
+    case Notice::None: return QStringLiteral("none");
+    case Notice::HigherTapCountDelay: return QStringLiteral("higher_tap_count_delay");
+    case Notice::ChordStartDelay: return QStringLiteral("chord_start_delay");
     }
     return QStringLiteral("none");
 }

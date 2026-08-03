@@ -10,19 +10,20 @@ const QVector<ContextOverrideCatalog::Override>& ContextOverrideCatalog::all()
         // and both stay active during playback.
         {QStringLiteral("playback.frame_grab"),
          QStringLiteral("global.screenshot"),
-         QStringLiteral("tap")},
+         GestureSpec::tap(1)},
     };
     return catalog;
 }
 
 bool ContextOverrideCatalog::shadows(const QString& overridingActionId,
                                      const QString& shadowedActionId,
-                                     const QString& activation)
+                                     const GestureSpec& gesture)
 {
     for (const Override& entry : all()) {
         if (entry.overridingActionId == overridingActionId
             && entry.shadowedActionId == shadowedActionId
-            && entry.activation == activation) {
+            && entry.gesture.kind == gesture.kind
+            && entry.gesture.tapCount == gesture.tapCount) {
             return true;
         }
     }

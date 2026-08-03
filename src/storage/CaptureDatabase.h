@@ -56,9 +56,11 @@ struct BindingOverrideRow
     QString actionId;       // ActionCatalog id, e.g. "global.screenshot"
     int slot = 1;           // 1 = primary, 2 = secondary
     QString triggerCode;    // canonical control id or key chord; empty when unbound
-    QString activation = QStringLiteral("press"); // "press" | "tap" | "hold" | "double_tap"
-    int holdMs = 0;         // 0 = not applicable
+    QString activation = QStringLiteral("press"); // "press" | "tap" | "hold" (v4 canonical)
+    int holdMs = 0;         // 0 = not applicable, or "use the configured default" for a hold
     bool unbound = false;   // explicit "no trigger" override
+    // Appended last so every existing brace-initialization keeps its meaning.
+    int tapCount = 1;       // taps a "tap" activation needs, 1-3
 };
 
 class CaptureDatabase : public QObject
@@ -70,7 +72,7 @@ public:
 
     // Highest schema this build understands. A database stamped higher was
     // written by a newer GameHQ and must never be modified by this one.
-    static constexpr int kCurrentSchemaVersion = 3;
+    static constexpr int kCurrentSchemaVersion = 4;
 
     bool open();      // opens + runs pending migrations
     int schemaVersion() const;
@@ -124,6 +126,7 @@ private:
     bool applyV1();
     bool applyV2();
     bool applyV3();
+    bool applyV4();
     bool ensureGameMetadataColumns();
     bool repairsV1Done() const;
     bool markRepairsV1Done();

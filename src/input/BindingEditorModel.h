@@ -6,6 +6,7 @@
 #include "storage/CaptureDatabase.h"
 
 #include <QObject>
+#include <QSet>
 #include <QVariantList>
 #include <functional>
 
@@ -38,6 +39,31 @@ class BindingEditorModel : public QObject
     // may want to promote to it. Promotion is always this explicit action —
     // slot rows are never silently rewritten or broadened.
     Q_PROPERTY(bool legacyCopyAvailable READ legacyCopyAvailable NOTIFY rowsChanged)
+    // --- Edit Assignment dialog -------------------------------------------
+    // A draft, not a live binding: nothing reaches the database until save().
+    // The dialog is the only place a gesture or a combination can be chosen,
+    // which is why the draft carries the whole pattern rather than just a
+    // captured trigger.
+    Q_PROPERTY(bool editorOpen READ editorOpen NOTIFY editorChanged)
+    Q_PROPERTY(QString editorActionLabel READ editorActionLabel NOTIFY editorChanged)
+    Q_PROPERTY(QString editorScopeLabel READ editorScopeLabel NOTIFY editorChanged)
+    Q_PROPERTY(int editorSlot READ editorSlot NOTIFY editorChanged)
+    Q_PROPERTY(QString editorTriggerKind READ editorTriggerKind NOTIFY editorChanged)
+    Q_PROPERTY(QString editorTriggerLabel READ editorTriggerLabel NOTIFY editorChanged)
+    Q_PROPERTY(QString editorFirstControlLabel READ editorFirstControlLabel NOTIFY editorChanged)
+    Q_PROPERTY(QString editorSecondControlLabel READ editorSecondControlLabel NOTIFY editorChanged)
+    Q_PROPERTY(QString editorTriggerHint READ editorTriggerHint NOTIFY editorChanged)
+    // "idle" | "first" | "second" — capture mode is explicit, so controller
+    // navigation keeps working until the user asks to record a button.
+    Q_PROPERTY(QString editorCaptureStep READ editorCaptureStep NOTIFY editorChanged)
+    Q_PROPERTY(QString editorGestureKind READ editorGestureKind NOTIFY editorChanged)
+    Q_PROPERTY(int editorTapCount READ editorTapCount NOTIFY editorChanged)
+    Q_PROPERTY(int editorHoldMs READ editorHoldMs NOTIFY editorChanged)
+    Q_PROPERTY(bool editorGestureLocked READ editorGestureLocked NOTIFY editorChanged)
+    Q_PROPERTY(bool editorCombinationAvailable READ editorCombinationAvailable NOTIFY editorChanged)
+    Q_PROPERTY(bool editorCanSave READ editorCanSave NOTIFY editorChanged)
+    Q_PROPERTY(QString editorNotice READ editorNotice NOTIFY editorChanged)
+    Q_PROPERTY(QString editorNoticeKind READ editorNoticeKind NOTIFY editorChanged)
 public:
     // Registers `chord` for actionId/slot with the OS, or releases the slot when
     // `chord` is empty. Returns false and fills `reason` when Windows refuses
@@ -86,6 +112,39 @@ public:
     bool legacyCopyAvailable() const;
     Q_INVOKABLE void copyLegacyOverridesToController();
 
+    bool editorOpen() const { return m_editorOpen; }
+    QString editorActionLabel() const { return m_editorActionLabel; }
+    QString editorScopeLabel() const { return m_editorScopeLabel; }
+    int editorSlot() const { return m_editorSlot; }
+    QString editorTriggerKind() const { return m_editorTriggerKind; }
+    QString editorTriggerLabel() const;
+    QString editorFirstControlLabel() const { return controlLabel(m_editorFirstControl); }
+    QString editorSecondControlLabel() const { return controlLabel(m_editorSecondControl); }
+    QString editorTriggerHint() const;
+    QString editorCaptureStep() const { return m_editorCaptureStep; }
+    QString editorGestureKind() const { return m_editorGesture.activationCode(); }
+    int editorTapCount() const { return m_editorGesture.tapCount; }
+    int editorHoldMs() const { return m_editorGesture.holdMs; }
+    // Combinations are press-only in v1, so the gesture picker is fixed there.
+    bool editorGestureLocked() const { return m_editorTriggerKind == QLatin1String("combination"); }
+    bool editorCombinationAvailable() const { return m_deviceGroup == QLatin1String("controller"); }
+    bool editorCanSave() const;
+    QString editorNotice() const { return m_editorNotice; }
+    QString editorNoticeKind() const { return m_editorNoticeKind; }
+
+    Q_INVOKABLE void openAssignmentEditor(const QString& actionId, int slot);
+    Q_INVOKABLE void closeAssignmentEditor();
+    Q_INVOKABLE void setEditorTriggerKind(const QString& kind);
+    Q_INVOKABLE void beginTriggerCapture(int step = 1);
+    Q_INVOKABLE void cancelTriggerCapture();
+    Q_INVOKABLE void setEditorGesture(const QString& kind, int tapCount, int holdMs);
+    Q_INVOKABLE void saveAssignment();
+    // A control the backends have actually delivered this session. The dialog
+    // uses it to say "your controller never sent this button" instead of
+    // guessing from a hardware list that is always out of date.
+    Q_INVOKABLE bool controlWasObserved(const QString& controlId) const;
+    void noteObservedControl(const QString& controlId);
+
     bool captureInput(const QString& deviceGroup, const QString& triggerCode,
                       const QString& displayLabel);
     // Fourth notice tier. Raised when a backend knows a physical button exists
@@ -97,6 +156,7 @@ public:
     void setLastFiredAction(const QString& actionId);
 
 signals:
+    void editorChanged();
     void deviceGroupChanged();
     void rowsChanged();
     void controllerSpecificChanged();
@@ -120,14 +180,21 @@ private:
     bool isGlobalHotkey(const BindingResolver::Binding& binding) const;
     bool persist(const BindingOverrideRow& row);
     void reloadAndRefresh();
+    QString formatTrigger(const BindingResolver::Binding& binding) const;
     QString formatBinding(const BindingResolver::Binding& binding) const;
+    static QString formatGestureBadge(const BindingResolver::Binding& binding);
     void setRelationNotice(const QString& kindId, const QString& text);
     QString noticeTextFor(BindingRelation::Kind kind,
                           const BindingResolver::Binding& target,
                           const BindingResolver::Binding& partner,
                           const QString& displayLabel) const;
-    static QString gestureLabel(const QString& activation);
+    static QString gestureLabel(const BindingResolver::Binding& binding);
     static QString scopeLabel(ActionCatalog::Scope scope);
+    bool editorCaptureInput(const QString& deviceGroup, const QString& triggerCode);
+    void refreshEditorNotice();
+    TriggerSpec editorTrigger() const;
+    BindingResolver::Binding editorBinding() const;
+    QString controlLabel(const QString& controlId) const;
 
     CaptureDatabase* m_database = nullptr;
     BindingRuntime* m_runtime = nullptr;
@@ -151,4 +218,18 @@ private:
     QString m_validationError;
     PendingChange m_pending;
     QString m_lastFiredAction = QStringLiteral("No action fired yet");
+
+    bool m_editorOpen = false;
+    QString m_editorActionId;
+    QString m_editorActionLabel;
+    QString m_editorScopeLabel;
+    int m_editorSlot = 1;
+    QString m_editorTriggerKind = QStringLiteral("single");
+    QString m_editorCaptureStep = QStringLiteral("idle");
+    QString m_editorFirstControl;
+    QString m_editorSecondControl;
+    GestureSpec m_editorGesture;
+    QString m_editorNotice;
+    QString m_editorNoticeKind = QStringLiteral("none");
+    QSet<QString> m_observedControls;
 };

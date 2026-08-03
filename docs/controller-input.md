@@ -84,7 +84,40 @@ Threshold options: 1.0 / 1.5 / 2.0 / 3.0 s / custom. Implemented in the binding 
 
 **Frame grab while a clip is focused.** In the Playback scope (a clip focused in the overlay or the desktop lightbox), a **Share tap** is bound to `playback.frame_grab` instead of the global screenshot. It grabs the exact frame currently shown on the video surface — paused or mid-playback — and saves it as a screenshot for the clip's game through the normal screenshot pipeline. Keyboard equivalent: **S** (Playback scope only, so it never collides with the global `Ctrl+Shift+S`). Share **hold** is unbound in Playback scope, so it still falls through to the global save-replay action.
 
-The substitution is **declared, not inferred**. `ContextOverrideCatalog` (`src/input/ContextOverrideCatalog.h`) holds the explicit list of contextual actions that replace a Global one, and it currently contains exactly one entry: `playback.frame_grab` shadows `global.screenshot` on the **tap** activation. `BindingResolver::matching()` unions Global bindings with the active contextual ones and drops only the pairs this catalog names. There is deliberately **no** generic "a contextual scope shadows Global" rule — that would silently swallow overlaps the user created themselves, which the binding editor is supposed to surface and classify. Because the entry is scoped to `tap`, Share **hold** (save replay) and Share **double-tap** (overlay toggle) stay live during playback, and Guide keeps toggling the overlay in every scope.
+The substitution is **declared, not inferred**. `ContextOverrideCatalog` (`src/input/ContextOverrideCatalog.h`) holds the explicit list of contextual actions that replace a Global one, and it currently contains exactly one entry: `playback.frame_grab` shadows `global.screenshot` on a **single tap**. `BindingResolver::matching()` unions Global bindings with the active contextual ones and drops only the pairs this catalog names. There is deliberately **no** generic "a contextual scope shadows Global" rule — that would silently swallow overlaps the user created themselves, which the binding editor is supposed to surface and classify. Because the entry is scoped to a single tap, Share **hold** (save replay) and Share **double-tap** (overlay toggle) stay live during playback, and Guide keeps toggling the overlay in every scope.
+
+## Binding patterns (trigger + gesture model)
+
+`src/input/BindingPattern.h` holds the model a binding is expressed in. A binding is a **trigger** (what is pressed) plus a **gesture** (how it is pressed):
+
+| | Kinds | Fields |
+|---|---|---|
+| `TriggerSpec` | `Single`, `OrderedChord` | ordered list of canonical control ids |
+| `GestureSpec` | `Press`, `Tap`, `Hold` | `tapCount` (1–3), `holdMs` (0 = use the configured default) |
+
+**Serialization.** A single trigger serializes to its control id verbatim — `gamepad.capture`, `Ctrl+Shift+S`, `gamepad.button.7` — so every value written before patterns existed parses back to exactly what it meant and nothing on disk is rewritten. An ordered chord serializes to `chord:v1:<first>><second>`, e.g. `chord:v1:gamepad.capture>gamepad.guide`. The whole `chord:` prefix is a reserved namespace: a serialization version this build does not know (`chord:v2:…`) **fails closed** rather than being approximated. Order is significant — the first control is held, the second one is pressed.
+
+**Validation** happens at the parse boundary and is mandatory:
+
+- `Single` — exactly one control, and it may not sit in the reserved `chord:` namespace.
+- `OrderedChord` — exactly two **different** controls, both canonical (`ControlId::isCanonical`), so one saved chord means the same thing on Sony HID, XInput and WinMM. Chords are controller-only and support the `Press` gesture only in version 1.
+- `Press` — `tapCount` 1, `holdMs` 0. `Tap` — `tapCount` 1–3, `holdMs` 0. `Hold` — `tapCount` 1, `holdMs` ≥ 0.
+
+`GestureSpec` still speaks the persisted activation tokens: an empty string and `press` mean Press, `tap` means Tap ×1, `double_tap` means Tap ×2, `hold` means Hold. Tap ×3 deliberately has **no** legacy spelling — `hasLegacyActivation()` returns false for it, so nothing can quietly downgrade a triple tap to a double one before the `tap_count` column exists.
+
+**Persistence.** `binding_overrides` stores the trigger in `trigger_code` and the gesture in `activation` + `tap_count` + `hold_ms` (schema v4, see [database.md](database.md)). A Hold row that stores `0` means "use the configured hold duration" — the built-in hold defaults do exactly that, so **Settings → Input → hold threshold** is the single place that number lives instead of being copied into every default row. `desktop.bulk_toggle` keeps its own explicit 1000 ms because that one is a per-binding duration, not the global one.
+
+**Where it bites.** `BindingResolver::reload()` validates every `binding_overrides` row it reads. A row that cannot form a valid pattern — an unknown chord version, the same control twice, a `press` carrying a hold duration, a value corrupted outside the app — is **skipped**, so the action falls back to its default instead of firing something nobody assigned. Each skip is logged (`Bindings: skipping stored override …`) and recorded through `InputDiagnostics::noteRejectedBinding()`, which surfaces it in the copied diagnostics under *Rejected binding rows*. Cleared slots (`unbound`, no trigger) are validated on the gesture half only, so the gesture-inheritance sentinels below survive untouched.
+
+## Pattern recognition (runtime)
+
+`src/input/InputPatternRecognizer.{h,cpp}` is the whole timing state machine: tap counting, hold timing, chord candidates, constituent suppression and cancellation. `BindingRuntime` keeps only the two halves that need the binding table — telling the recognizer what exists on a control, and turning a recognized pattern into actions. The split is deliberate: dispatch bugs read as *the wrong thing happened*, timing bugs read as *sometimes nothing happens*, and only the second kind needs a clock you control. Behind the `TriggerFacts` seam the recognizer is testable with no device, database or app (`tst_inputpattern`, 34 cases).
+
+**Snapshot and generation.** At the first physical press of a pattern the recognizer snapshots the device profile, the scope pair, the effective facts for that control, and the timing values. A pending pattern carries a generation counter; a backend switch, a disconnect, a binding reload, a timing change or a scope change bumps it and cancels whatever was pending. A delayed action can therefore never fire into a context the user has already left — first tap in the gallery, overlay opens, second tap: the gallery action does not arrive late.
+
+**Exact-count taps.** Three taps fire the ×3 binding **only** — never ×1, then ×2, then ×3 on the way up. A lower count waits out `input.multi_tap_interval_ms` **only** when a higher count is actually bound on that control; otherwise it fires on the release edge exactly as a single tap always has. A count nobody bound fires nothing: with ×1 and ×3 bound, two taps mean neither. A hold consumes the pending tap sequence, and hold time is measured from *that* press — holding the second tap of a double tap is a hold, not a slow tap.
+
+**Ordered chords.** A control that starts a chord opens a bounded candidate instead of acting; a configured partner pressed within `input.chord_window_ms` completes it and consumes both components. Several chords can share a first control (View+Guide, View+X) — the second control selects. Everything about the fallback is anchored to the **original physical press**: a hold threshold that elapsed inside the window fires immediately at timeout, a hold longer than the window still fires at its own threshold, and letting go of the first control early replays press+release at once so a quick tap stays a tap and can never become a hold. Constituents are replayed at most once. A repeated press of a control whose candidate is already open is ignored, so a mirrored backend (physical DualSense + DSX virtual pad) cannot double-fire.
 
 ## Binding relations (conflict policy)
 
@@ -102,7 +135,11 @@ The substitution is **declared, not inferred**. `ContextOverrideCatalog` (`src/i
 
 **Scope overlap.** Global is always live, so it overlaps everything. Two *different* contextual scopes never overlap: `matching()` takes the primary scope's matches and consults the fallback only when primary produced none, so Playback-over-Desktop and Playback-over-Overlay are priority chains, not collisions. This is why D-pad Left can ship as both `playback.seek_back` and `desktop.navigate_left`.
 
-**Gesture compatibility.** `tap`/`hold`, `tap`/`double_tap` and `hold`/`double_tap` coexist on one button because the runtime separates them in time. Anything involving `press` does not: press resolves on the down edge, before a timed gesture is known.
+**Chords and tap counts.** The precondition is *triggers share any control*, not *same trigger code*. Appended rules, in order: the same chord twice is a `HardConflict`; two chords sharing only a first control are `None` (the second control selects); a single-button binding on a chord's **first** control is a `HardConflict` when it acts immediately — a plain press, or an action flagged `repeats` in the catalog such as d-pad navigation or L1/R1 paging — and otherwise `SharedGesture`; a binding on the **second** control is `SharedGesture`.
+
+**Two notice tiers** (`BindingRelation::Notice`, produced by the shared policy, never by ad-hoc editor logic). *Higher-tap-count delay*: this action waits because the same button also carries a higher tap count. *Chord-start delay*: this action waits because the button starts a combination. `noticeText()` takes the live `input.chord_window_ms` and `input.multi_tap_interval_ms`, so the number the user reads is the number the runtime waits.
+
+**Gesture compatibility.** Tap and hold coexist on one button, and so do two taps that need a different number of taps (×1 with ×2, ×2 with ×3), because the runtime separates them in time. Two holds never do — the shorter threshold always fires first — and anything involving `press` does not either: press resolves on the down edge, before a timed gesture is known.
 
 **Redundant requires an identical trigger.** The same action reached from both `Ctrl+Shift+S` and `F12` is a deliberate second slot, not redundancy.
 
@@ -134,7 +171,7 @@ See [product-spec.md §6](product-spec.md#6-controller-mapping-default). PS butt
 
 ## Bindings
 
-Built-in defaults are merged with sparse rows from `binding_overrides`. `BindingResolver` applies group-wide or device-fingerprint overrides, and `BindingRuntime` resolves press, tap, hold, and double-tap gestures with playback → overlay/desktop → global context precedence. Controller codes are position-based, so the same assignment follows the physical button position across PlayStation, Xbox, Nintendo, and generic pads. The legacy `bindings` table is retained only for database compatibility.
+Built-in defaults are merged with sparse rows from `binding_overrides`. `BindingResolver` applies group-wide or device-fingerprint overrides, and `BindingRuntime` resolves press, tap (by count) and hold gestures with playback → overlay/desktop → global context precedence. Controller codes are position-based, so the same assignment follows the physical button position across PlayStation, Xbox, Nintendo, and generic pads. The legacy `bindings` table is retained only for database compatibility.
 
 ## Overlay routing
 

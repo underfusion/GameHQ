@@ -86,14 +86,17 @@ CREATE TABLE binding_overrides (
   slot           INTEGER NOT NULL DEFAULT 1 CHECK(slot IN (1,2)),  -- 1 = primary, 2 = secondary
   trigger_code   TEXT,                        -- canonical control id or key chord; NULL when unbound
   activation     TEXT NOT NULL DEFAULT 'press' CHECK(activation IN ('press','tap','hold','double_tap')),
-  hold_ms        INTEGER,
-  unbound        INTEGER NOT NULL DEFAULT 0 CHECK(unbound IN (0,1))
+  hold_ms        INTEGER,                     -- NULL/0 on a hold = use the configured default duration
+  unbound        INTEGER NOT NULL DEFAULT 0 CHECK(unbound IN (0,1)),
+  tap_count      INTEGER NOT NULL DEFAULT 1   -- v4: taps a 'tap' activation needs, 1-3
 );
 CREATE UNIQUE INDEX idx_binding_overrides_scope
   ON binding_overrides(device_group, device_profile, action_id, slot);
 ```
 
 Built-in trigger defaults live in `src/input/BindingResolver`, never in the database. `binding_overrides` only holds explicit user changes — one row per (device group, device profile, action, slot) — so an empty table means every action uses its code-side default. Schema v3 widens `device_group` to include safe extra mouse buttons. The legacy v1 `bindings` table remains untouched and is superseded by `binding_overrides`; its seeded rows represented defaults rather than user choices and are not migrated.
+
+**Schema v4 — tap counts.** `tap_count` is added with a plain `ALTER TABLE ADD COLUMN` (no rebuild: no CHECK constraint and no index changes), and its `NOT NULL DEFAULT 1` fills every existing row with the "one tap" they all meant. The same migration retires the `double_tap` spelling — those rows become `activation = 'tap'`, `tap_count = 2`, so the count lives in one place instead of being half in a string and half in a column. The `activation` CHECK still lists `double_tap` so a database written by an older build keeps opening; nothing writes that value any more. `trigger_code` additionally carries serialized chord triggers (`chord:v1:<first>><second>`) — see [controller-input.md](controller-input.md#binding-patterns-trigger--gesture-model). A row that cannot be parsed back into a valid pattern is skipped at load, never executed.
 
 ## Hard rules
 

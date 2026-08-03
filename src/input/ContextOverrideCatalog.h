@@ -1,5 +1,7 @@
 #pragma once
 
+#include "input/BindingPattern.h"
+
 #include <QString>
 #include <QVector>
 
@@ -22,14 +24,16 @@ public:
     struct Override {
         QString overridingActionId; // contextual action that wins
         QString shadowedActionId;   // Global action it replaces
-        QString activation;         // gesture the substitution applies to
+        GestureSpec gesture;        // gesture the substitution applies to
     };
 
     static const QVector<Override>& all();
 
     // True when shadowedActionId must be suppressed because overridingActionId
-    // resolved for the same trigger and activation in the active scope.
+    // resolved for the same trigger and gesture in the active scope. The
+    // gesture is matched by kind and tap count — a substitution declared for a
+    // single tap must not swallow the global action on a double tap.
     static bool shadows(const QString& overridingActionId,
                         const QString& shadowedActionId,
-                        const QString& activation);
+                        const GestureSpec& gesture);
 };

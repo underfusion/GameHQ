@@ -7,6 +7,7 @@
 #include "input/ControllerIdentity.h"
 #include "input/BindingEditorModel.h"
 #include "input/DualSenseDevice.h"
+#include "input/GestureTiming.h"
 #include "input/Gamepad.h"
 #include "input/HidCloakMonitor.h"
 #include "input/HotkeyManager.h"
@@ -74,17 +75,25 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
         });
 
     m_controllerClock.start();
-    m_runtime->setDefaultHoldMs(
-        m_config->value(ConfigKeys::InputShareHoldMs, 2000).toInt());
+    migrateLegacyHoldSetting();
+    applyGestureTiming();
     connect(m_config, &ConfigManager::valueChanged, this,
-            [this](const QString& key, const QVariant& value) {
-                if (key != ConfigKeys::InputShareHoldMs)
+            [this](const QString& key, const QVariant&) {
+                if (key != ConfigKeys::InputDefaultHoldMs
+                    && key != ConfigKeys::InputMultiTapIntervalMs
+                    && key != ConfigKeys::InputChordWindowMs)
                     return;
-                const int threshold = qBound(250, value.toInt(), 10000);
-                m_runtime->setDefaultHoldMs(threshold);
+                applyGestureTiming();
                 reloadBindings();
-                qInfo() << "Input: capture-button hold threshold" << threshold << "ms";
             });
+    // A group or all reset drops the overrides without naming a key.
+    connect(m_config, &ConfigManager::groupReset, this, [this](const QString& prefix) {
+        if (!prefix.isEmpty() && !QLatin1String("input.").startsWith(prefix)
+            && !prefix.startsWith(QLatin1String("input")))
+            return;
+        applyGestureTiming();
+        reloadBindings();
+    });
 
     connect(m_runtime.get(), &BindingRuntime::actionTriggered,
             this, &InputEngine::dispatchAction);
@@ -564,6 +573,11 @@ void InputEngine::deliverPress(Gamepad* source, const QString& controlId, int fa
                                const QString& fingerprint)
 {
     InputDiagnostics::instance().noteControl(controlId, backendDisplayName(source));
+    // Which controls the pad genuinely delivers is only knowable by observation:
+    // the editor uses it to warn about a button another app is intercepting.
+    m_bindingEditor->noteObservedControl(controlId);
+    if (controlId == ControlId::Guide)
+        InputDiagnostics::instance().setGuideObserved(true);
     setLastInput(ControlId::label(controlId, static_cast<ControlId::ControllerFamily>(family))
                  + QStringLiteral(" pressed"));
     if (m_bindingEditor->captureInput(
@@ -818,4 +832,38 @@ bool InputEngine::desktopCanReceiveInput() const
 bool InputEngine::anyBackendConnected() const
 {
     return m_sonyConnected || m_xinputConnected || m_winmmConnected;
+}
+
+// The pre-0.7.3 hold threshold lived under `input.share_hold_ms`. Carry a real
+// override across once and never look again; a user who never changed it has
+// nothing to carry, and inventing an override for them would freeze today's
+// default into their config.
+void InputEngine::migrateLegacyHoldSetting()
+{
+    const auto migrated = GestureTiming::migratedHoldMs(
+        !m_config->isDefault(ConfigKeys::InputDefaultHoldMs),
+        !m_config->isDefault(ConfigKeys::InputShareHoldMs),
+        m_config->value(ConfigKeys::InputShareHoldMs, 2000).toInt());
+    if (!migrated)
+        return;
+    m_config->setValue(ConfigKeys::InputDefaultHoldMs, *migrated);
+    m_config->resetValue(ConfigKeys::InputShareHoldMs);
+    qInfo() << "Input: migrated hold threshold" << *migrated
+            << "ms from input.share_hold_ms";
+}
+
+void InputEngine::applyGestureTiming()
+{
+    const auto timing = GestureTiming::fromValues(
+        m_config->value(ConfigKeys::InputDefaultHoldMs, 2000).toInt(),
+        m_config->value(ConfigKeys::InputMultiTapIntervalMs, 300).toInt(),
+        m_config->value(ConfigKeys::InputChordWindowMs, 300).toInt());
+    m_runtime->setDefaultHoldMs(timing.defaultHoldMs);
+    m_runtime->setTiming(timing);
+    const QString description = GestureTiming::describe(timing);
+    if (description == m_lastTimingDescription)
+        return;
+    m_lastTimingDescription = description;
+    qInfo() << "Input: gesture timing —" << description;
+    InputDiagnostics::instance().setGestureTiming(description);
 }

@@ -61,6 +61,8 @@ bool CaptureDatabase::migrate()
         return false;
     if (version < 3 && !applyV3())
         return false;
+    if (version < 4 && !applyV4())
+        return false;
     if (!ensureGameMetadataColumns())
         return false;
 
@@ -429,7 +431,7 @@ QVector<BindingOverrideRow> CaptureDatabase::listBindingOverrides() const
     QVector<BindingOverrideRow> out;
     QSqlQuery q(QStringLiteral(
         "SELECT device_group, device_profile, action_id, slot, trigger_code, "
-        "activation, hold_ms, unbound FROM binding_overrides ORDER BY id"), m_db);
+        "activation, hold_ms, unbound, tap_count FROM binding_overrides ORDER BY id"), m_db);
     while (q.next()) {
         BindingOverrideRow r;
         r.deviceGroup   = q.value(0).toString();
@@ -440,6 +442,7 @@ QVector<BindingOverrideRow> CaptureDatabase::listBindingOverrides() const
         r.activation    = q.value(5).toString();
         r.holdMs        = q.value(6).isNull() ? 0 : q.value(6).toInt();
         r.unbound       = q.value(7).toInt() != 0;
+        r.tapCount      = q.value(8).isNull() ? 1 : q.value(8).toInt();
         out.append(r);
     }
     return out;
@@ -450,11 +453,11 @@ bool CaptureDatabase::upsertBindingOverride(const BindingOverrideRow& row)
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
         "INSERT INTO binding_overrides "
-        "(device_group, device_profile, action_id, slot, trigger_code, activation, hold_ms, unbound) "
-        "VALUES (:group, :profile, :action, :slot, :trigger, :activation, :hold, :unbound) "
+        "(device_group, device_profile, action_id, slot, trigger_code, activation, hold_ms, unbound, tap_count) "
+        "VALUES (:group, :profile, :action, :slot, :trigger, :activation, :hold, :unbound, :taps) "
         "ON CONFLICT(device_group, device_profile, action_id, slot) DO UPDATE SET "
         "trigger_code = excluded.trigger_code, activation = excluded.activation, "
-        "hold_ms = excluded.hold_ms, unbound = excluded.unbound"));
+        "hold_ms = excluded.hold_ms, unbound = excluded.unbound, tap_count = excluded.tap_count"));
     q.bindValue(QStringLiteral(":group"), row.deviceGroup);
     q.bindValue(QStringLiteral(":profile"), row.deviceProfile.isEmpty()
                                               ? QStringLiteral("")
@@ -465,6 +468,7 @@ bool CaptureDatabase::upsertBindingOverride(const BindingOverrideRow& row)
     q.bindValue(QStringLiteral(":activation"), row.activation);
     q.bindValue(QStringLiteral(":hold"), row.holdMs > 0 ? QVariant(row.holdMs) : QVariant());
     q.bindValue(QStringLiteral(":unbound"), row.unbound ? 1 : 0);
+    q.bindValue(QStringLiteral(":taps"), row.tapCount > 0 ? row.tapCount : 1);
     if (!q.exec()) {
         qWarning() << "DB: upsertBindingOverride failed:" << q.lastError().text();
         return false;
@@ -868,5 +872,39 @@ bool CaptureDatabase::applyV3()
         }
     }
     QSqlQuery(QStringLiteral("PRAGMA user_version = 3"), m_db);
+    return m_db.commit();
+}
+
+bool CaptureDatabase::applyV4()
+{
+    // Tap counts become a column of their own so a triple tap can be stored at
+    // all. A plain ADD COLUMN is enough here — unlike v3 this changes no CHECK
+    // constraint and no index, and the NOT NULL DEFAULT 1 fills every existing
+    // row with "one tap", which is what all of them meant.
+    //
+    // The second statement retires the `double_tap` spelling: the gesture is
+    // now "tap, twice", so the count lives in one place instead of being half
+    // in a string and half in a column. The activation CHECK still accepts the
+    // old token (rewriting it would mean another table rebuild for no gain), so
+    // a database written by an older build keeps opening here; nothing writes
+    // it any more.
+    const QStringList statements = {
+        QStringLiteral("ALTER TABLE binding_overrides "
+                       "ADD COLUMN tap_count INTEGER NOT NULL DEFAULT 1"),
+        QStringLiteral("UPDATE binding_overrides SET activation = 'tap', tap_count = 2 "
+                       "WHERE activation = 'double_tap'"),
+    };
+
+    if (!m_db.transaction())
+        return false;
+    for (const QString& sql : statements) {
+        QSqlQuery q(m_db);
+        if (!q.exec(sql)) {
+            qCritical() << "DB: migration v4 failed:" << q.lastError().text();
+            m_db.rollback();
+            return false;
+        }
+    }
+    QSqlQuery(QStringLiteral("PRAGMA user_version = 4"), m_db);
     return m_db.commit();
 }

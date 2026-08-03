@@ -1,9 +1,12 @@
 #include "input/BindingResolver.h"
 
+#include "input/BindingPattern.h"
 #include "input/ContextOverrideCatalog.h"
 #include "input/ControlId.h"
+#include "input/InputDiagnostics.h"
 #include "storage/CaptureDatabase.h"
 
+#include <QDebug>
 #include <QHash>
 #include <QSet>
 #include <algorithm>
@@ -13,6 +16,31 @@ namespace {
 QString bindingKey(const QString& actionId, int slot)
 {
     return actionId + QLatin1Char('#') + QString::number(slot);
+}
+
+// The one place a persisted row becomes a live binding, and therefore the one
+// place that decides whether it may execute at all. A row that does not form a
+// valid pattern — a chord serialization this build does not know, two of the
+// same control, a gesture whose parts contradict each other, a value corrupted
+// outside the app — is skipped here, so the action falls back to its default
+// instead of firing something nobody asked for.
+bool validateRow(const BindingOverrideRow& row, QString* error)
+{
+    // A cleared slot deliberately keeps its gesture and has no trigger, so
+    // only the gesture half is meaningful. Validating the trigger here would
+    // reject every "unbound" sentinel the editor writes.
+    if (row.unbound || row.triggerCode.isEmpty()) {
+        const auto gesture = GestureSpec::parse(row.activation, row.tapCount, row.holdMs);
+        if (error)
+            *error = gesture.error;
+        return gesture.ok;
+    }
+
+    const auto pattern = BindingPattern::parse(row.deviceGroup, row.triggerCode,
+                                               row.activation, row.tapCount, row.holdMs);
+    if (error)
+        *error = pattern.error;
+    return pattern.ok;
 }
 }
 
@@ -42,9 +70,17 @@ void BindingResolver::reload()
     if (!m_database)
         return;
     for (const BindingOverrideRow& row : m_database->listBindingOverrides()) {
+        QString error;
+        if (!validateRow(row, &error)) {
+            const QString subject = QStringLiteral("%1 slot %2 (%3)")
+                                        .arg(row.actionId).arg(row.slot).arg(row.deviceGroup);
+            qWarning() << "Bindings: skipping stored override" << subject << "—" << error;
+            InputDiagnostics::instance().noteRejectedBinding(subject, error);
+            continue;
+        }
         m_overrides.append({row.deviceGroup, row.deviceProfile, row.actionId,
                             row.slot, row.triggerCode, row.activation,
-                            row.holdMs, row.unbound});
+                            row.holdMs, row.unbound, row.tapCount});
     }
 }
 
@@ -79,14 +115,14 @@ BindingResolver::Gesture BindingResolver::inheritedGesture(
     if (overrideRow
         && !(overrideRow->unbound && overrideRow->activation == QLatin1String("press")
              && overrideRow->holdMs == 0))
-        return {overrideRow->activation, overrideRow->holdMs};
+        return {overrideRow->activation, overrideRow->holdMs, overrideRow->tapCount};
 
     // 2) The default binding for this exact slot.
-    const QVector<Binding> defaults = defaultBindings(m_defaultHoldMs);
+    const QVector<Binding> defaults = defaultBindings();
     for (const Binding& binding : defaults) {
         if (binding.deviceGroup == deviceGroup && binding.actionId == actionId
             && binding.slot == slot)
-            return {binding.activation, binding.holdMs};
+            return {binding.activation, binding.holdMs, binding.tapCount};
     }
 
     // 3) Another live slot of the same action, lowest slot first.
@@ -99,34 +135,42 @@ BindingResolver::Gesture BindingResolver::inheritedGesture(
             sibling = &binding;
     }
     if (sibling)
-        return {sibling->activation, sibling->holdMs};
+        return {sibling->activation, sibling->holdMs, sibling->tapCount};
 
     // 4) The action's default semantics: this device group first, then any.
     for (const Binding& binding : defaults) {
         if (binding.deviceGroup == deviceGroup && binding.actionId == actionId)
-            return {binding.activation, binding.holdMs};
+            return {binding.activation, binding.holdMs, binding.tapCount};
     }
     for (const Binding& binding : defaults) {
         if (binding.actionId == actionId)
-            return {binding.activation, binding.holdMs};
+            return {binding.activation, binding.holdMs, binding.tapCount};
     }
 
     // 5) Nothing anywhere has ever given this slot a meaning.
     return {};
 }
 
-QVector<BindingResolver::Binding> BindingResolver::defaultBindings(int captureHoldMs)
+// Built-in defaults are written in the pattern model: `tap(n)` carries its own
+// count, and a `hold()` with no duration stores 0, which means "use whatever
+// hold duration is configured". Baking the configured value into every default
+// row instead would give the same setting two homes.
+QVector<BindingResolver::Binding> BindingResolver::defaultBindings()
 {
     using namespace ControlId;
     const auto c = [](const char* action, int slot, const QString& trigger,
-                      const char* activation = "press", int holdMs = 0) {
+                      const GestureSpec& gesture = GestureSpec::press()) {
         return Binding{QStringLiteral("controller"), {}, QString::fromLatin1(action),
-                       slot, trigger, QString::fromLatin1(activation), holdMs, false};
+                       slot, trigger, gesture.activationCode(), gesture.holdMs, false,
+                       gesture.tapCount};
     };
     const auto k = [](const char* action, int slot, const char* chord) {
         return Binding{QStringLiteral("keyboard"), {}, QString::fromLatin1(action),
-                       slot, QString::fromLatin1(chord), QStringLiteral("press"), 0, false};
+                       slot, QString::fromLatin1(chord), QStringLiteral("press"), 0, false, 1};
     };
+    const auto tap = [](int count) { return GestureSpec::tap(count); };
+    // No argument = the configured default hold duration.
+    const auto hold = [](int ms = 0) { return GestureSpec::hold(ms); };
 
     return {
         k("global.toggle_overlay", 1, "Ctrl+Shift+G"),
@@ -177,10 +221,10 @@ QVector<BindingResolver::Binding> BindingResolver::defaultBindings(int captureHo
         // never collides with the global Ctrl+Shift+S screenshot hotkey.
         k("playback.frame_grab", 1, "S"),
 
-        c("global.screenshot", 1, Capture, "tap"),
-        c("global.save_replay", 1, Capture, "hold", captureHoldMs),
+        c("global.screenshot", 1, Capture, tap(1)),
+        c("global.save_replay", 1, Capture, hold()),
         c("global.toggle_overlay", 1, Guide),
-        c("global.toggle_overlay", 2, Capture, "double_tap"),
+        c("global.toggle_overlay", 2, Capture, tap(2)),
 
         c("overlay.navigate_up", 1, DpadUp),
         c("overlay.navigate_down", 1, DpadDown),
@@ -203,7 +247,7 @@ QVector<BindingResolver::Binding> BindingResolver::defaultBindings(int captureHo
         // already fired. On "press" both would fire on a long press — opening
         // the capture *and* entering bulk mode. Same shape as Share's
         // screenshot-tap / save-replay-hold pair above.
-        c("desktop.confirm", 1, FaceSouth, "tap"),
+        c("desktop.confirm", 1, FaceSouth, tap(1)),
         c("desktop.back", 1, FaceEast),
         c("desktop.favorite", 1, FaceNorth),
         c("desktop.menu", 1, FaceWest),
@@ -218,7 +262,7 @@ QVector<BindingResolver::Binding> BindingResolver::defaultBindings(int captureHo
         // press binding (desktop.confirm) — the runtime only fires the hold
         // once the button has been down that long, so a normal tap still opens
         // the capture.
-        c("desktop.bulk_toggle", 1, FaceSouth, "hold", 1000),
+        c("desktop.bulk_toggle", 1, FaceSouth, hold(1000)),
 
         c("playback.play_pause", 1, FaceSouth),
         c("playback.seek_back", 1, DpadLeft),
@@ -229,7 +273,7 @@ QVector<BindingResolver::Binding> BindingResolver::defaultBindings(int captureHo
         // substitution for screenshot on the tap gesture, so a tap during
         // playback produces one capture, not two. Hold (save_replay) and
         // double-tap (toggle_overlay) are different activations and stay live.
-        c("playback.frame_grab", 1, Capture, "tap"),
+        c("playback.frame_grab", 1, Capture, tap(1)),
     };
 }
 
@@ -237,7 +281,7 @@ QVector<BindingResolver::Binding> BindingResolver::effectiveBindings(
     const QString& deviceGroup, const QString& deviceProfile) const
 {
     QHash<QString, Binding> merged;
-    for (const Binding& binding : defaultBindings(m_defaultHoldMs)) {
+    for (const Binding& binding : defaultBindings()) {
         if (binding.deviceGroup == deviceGroup)
             merged.insert(bindingKey(binding.actionId, binding.slot), binding);
     }
@@ -272,14 +316,19 @@ QVector<BindingResolver::Binding> BindingResolver::effectiveBindings(
 
 QVector<BindingResolver::Binding> BindingResolver::matching(
     const QString& deviceGroup, const QString& deviceProfile,
-    const QString& triggerCode, const QString& activation,
+    const QString& triggerCode, const GestureSpec& gesture,
     ActionCatalog::Scope primaryScope, ActionCatalog::Scope fallbackScope) const
 {
     QVector<Binding> globals;
     QVector<Binding> primary;
     QVector<Binding> fallback;
     for (const Binding& binding : effectiveBindings(deviceGroup, deviceProfile)) {
-        if (binding.triggerCode != triggerCode || binding.activation != activation)
+        // Kind AND tap count: "tap" alone would let a double-tap binding answer
+        // a single tap. Hold durations are deliberately not compared — the
+        // runtime decides which hold is due from elapsed time.
+        const GestureSpec candidate = binding.gesture();
+        if (binding.triggerCode != triggerCode || candidate.kind != gesture.kind
+            || candidate.tapCount != gesture.tapCount)
             continue;
         const ActionCatalog::Action* action = ActionCatalog::find(binding.actionId);
         if (!action)
@@ -303,7 +352,7 @@ QVector<BindingResolver::Binding> BindingResolver::matching(
         const bool shadowed = std::any_of(
             contextual.cbegin(), contextual.cend(), [&](const Binding& active) {
                 return ContextOverrideCatalog::shadows(active.actionId, global.actionId,
-                                                       activation);
+                                                       gesture);
             });
         if (!shadowed)
             result.append(global);

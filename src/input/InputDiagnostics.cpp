@@ -50,6 +50,32 @@ void InputDiagnostics::noteControl(const QString& controlId, const QString& back
          QStringLiteral("%1 (%2)").arg(controlId, backend));
 }
 
+void InputDiagnostics::noteRejectedBinding(const QString& subject, const QString& reason)
+{
+    push(m_rejectedBindings, kMaxRejectedBindings, m_clock.elapsed(),
+         QStringLiteral("%1: %2").arg(subject, reason));
+}
+
+void InputDiagnostics::setGestureTiming(const QString& description)
+{
+    m_gestureTiming = description;
+}
+
+void InputDiagnostics::notePattern(const QString& detail)
+{
+    push(m_patterns, kMaxPatterns, m_clock.elapsed(), detail);
+}
+
+void InputDiagnostics::setBoundPatterns(const QStringList& patterns)
+{
+    m_boundPatterns = patterns;
+}
+
+void InputDiagnostics::setGuideObserved(bool observed)
+{
+    m_guideObserved = observed;
+}
+
 void InputDiagnostics::noteForeground(const QString& phase, bool acquired)
 {
     push(m_foreground, kMaxForeground, m_clock.elapsed(),
@@ -173,6 +199,31 @@ QString InputDiagnostics::exportText() const
     for (const Stamped& entry : m_controls)
         lines << QStringLiteral("    %1").arg(stamp(entry));
 
+    if (!m_gestureTiming.isEmpty())
+        lines << QStringLiteral("  Gesture timing: %1").arg(m_gestureTiming);
+
+    lines << QStringLiteral("  Guide/PS button seen this session: %1")
+                 .arg(m_guideObserved ? QStringLiteral("yes")
+                                      : QStringLiteral("NO (another app may own it)"));
+
+    lines << QStringLiteral("  Recent patterns:");
+    if (m_patterns.isEmpty())
+        lines << QStringLiteral("    none");
+    for (const Stamped& entry : m_patterns)
+        lines << QStringLiteral("    %1").arg(stamp(entry));
+
+    if (!m_boundPatterns.isEmpty()) {
+        lines << QStringLiteral("  Controller assignments:");
+        for (const QString& pattern : m_boundPatterns)
+            lines << QStringLiteral("    %1").arg(pattern);
+    }
+
+    if (!m_rejectedBindings.isEmpty()) {
+        lines << QStringLiteral("  Rejected binding rows (defaults used instead):");
+        for (const Stamped& entry : m_rejectedBindings)
+            lines << QStringLiteral("    %1").arg(stamp(entry));
+    }
+
     lines << QStringLiteral("  Overlay foreground:");
     if (m_foreground.isEmpty())
         lines << QStringLiteral("    no overlay open/close this session");
@@ -199,6 +250,11 @@ void InputDiagnostics::clear()
     m_switches.clear();
     m_controls.clear();
     m_foreground.clear();
+    m_rejectedBindings.clear();
+    m_gestureTiming.clear();
+    m_patterns.clear();
+    m_boundPatterns.clear();
+    m_guideObserved = false;
     m_devices.clear();
     m_deviceOrder.clear();
     m_hiddenPads.clear();

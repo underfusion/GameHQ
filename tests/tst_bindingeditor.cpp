@@ -3,6 +3,7 @@
 #include "input/BindingRelation.h"
 #include "input/BindingRuntime.h"
 #include "input/ControlId.h"
+#include "input/InputDiagnostics.h"
 #include "storage/CaptureDatabase.h"
 
 #include <QSignalSpy>
@@ -72,6 +73,8 @@ private slots:
     void editsBothSlotsPersistsAndResets()
     {
         m_editor->setDeviceGroup(QStringLiteral("keyboard"));
+        QVERIFY(!rowFor(*m_editor, QStringLiteral("global.screenshot"))
+                     .value(QStringLiteral("modified")).toBool());
         m_editor->beginCapture(QStringLiteral("global.screenshot"), 2);
         QVERIFY(m_editor->captureInput(QStringLiteral("keyboard"),
                                        QStringLiteral("Ctrl+Alt+P"),
@@ -82,6 +85,7 @@ private slots:
                  QStringLiteral("Ctrl+Shift+S"));
         QCOMPARE(edited.value(QStringLiteral("secondary")).toString(),
                  QStringLiteral("Ctrl+Alt+P"));
+        QVERIFY(edited.value(QStringLiteral("modified")).toBool());
 
         BindingRuntime reloaded(m_database);
         reloaded.reload();
@@ -100,6 +104,8 @@ private slots:
         QCOMPARE(rowFor(*m_editor, QStringLiteral("global.screenshot"))
                      .value(QStringLiteral("secondary")).toString(),
                  QStringLiteral("Unassigned"));
+        QVERIFY(!rowFor(*m_editor, QStringLiteral("global.screenshot"))
+                     .value(QStringLiteral("modified")).toBool());
     }
 
     void conflictCanBeCanceledOrReplaced()
@@ -568,7 +574,9 @@ private slots:
         const auto rows = m_database->listBindingOverrides();
         QCOMPARE(rows.size(), 1);
         QCOMPARE(rows.first().activation, QStringLiteral("hold"));
-        QCOMPARE(rows.first().holdMs, 2000);
+        // 0 means "use the configured hold duration" — the built-in hold
+        // defaults deliberately do not copy the setting into every row.
+        QCOMPARE(rows.first().holdMs, 0);
     }
 
     void captureOntoSharedTriggerIsNotAnArtificialConflict()
@@ -595,7 +603,8 @@ private slots:
         auto rows = m_database->listBindingOverrides();
         QCOMPARE(rows.size(), 1);
         QVERIFY(rows.first().unbound);
-        QCOMPARE(rows.first().activation, QStringLiteral("double_tap"));
+        QCOMPARE(rows.first().activation, QStringLiteral("tap"));
+        QCOMPARE(rows.first().tapCount, 2);
 
         m_editor->beginCapture(QStringLiteral("global.toggle_overlay"), 2);
         QVERIFY(m_editor->capturePrompt().contains(QStringLiteral("· Double tap")));
@@ -606,7 +615,8 @@ private slots:
         rows = m_database->listBindingOverrides();
         QCOMPARE(rows.size(), 1);
         QVERIFY(!rows.first().unbound);
-        QCOMPARE(rows.first().activation, QStringLiteral("double_tap"));
+        QCOMPARE(rows.first().activation, QStringLiteral("tap"));
+        QCOMPARE(rows.first().tapCount, 2);
     }
 
     void clearRebindRoundTripPreservesHoldMs()
@@ -621,7 +631,7 @@ private slots:
         const auto rows = m_database->listBindingOverrides();
         QCOMPARE(rows.size(), 1);
         QCOMPARE(rows.first().activation, QStringLiteral("hold"));
-        QCOMPARE(rows.first().holdMs, 2000);
+        QCOMPARE(rows.first().holdMs, 0);
     }
 
     void legacyClearSentinelDoesNotResurrectPress()
@@ -753,7 +763,246 @@ private slots:
         QCOMPARE(padMenu, 1);         // promoted
         QCOMPARE(padFavorite34, 1);   // the pad's own row was not clobbered
     }
+
+    // A row that cannot be a valid pattern — a chord serialization this build
+    // does not know, a gesture whose parts contradict each other — must be
+    // skipped at load, leaving the action on its default. Executing a guess
+    // would fire an action the user never assigned.
+    void malformedStoredRowsAreSkippedAndReported()
+    {
+        InputDiagnostics::instance().clear();
+
+        // Valid, and must survive next to the broken ones.
+        QVERIFY(m_database->upsertBindingOverride(
+            {QStringLiteral("controller"), {}, QStringLiteral("desktop.favorite"), 2,
+             ControlId::genericButton(12), QStringLiteral("press"), 0, false}));
+        // Unknown chord serialization version: fails closed.
+        QVERIFY(m_database->upsertBindingOverride(
+            {QStringLiteral("controller"), {}, QStringLiteral("desktop.menu"), 2,
+             QStringLiteral("chord:v2:gamepad.capture>gamepad.guide"),
+             QStringLiteral("press"), 0, false}));
+        // Same control twice is not an ordered chord.
+        QVERIFY(m_database->upsertBindingOverride(
+            {QStringLiteral("controller"), {}, QStringLiteral("desktop.tab_next"), 2,
+             QStringLiteral("chord:v1:gamepad.capture>gamepad.capture"),
+             QStringLiteral("press"), 0, false}));
+        // A press gesture carrying a hold duration is a corrupted row.
+        QVERIFY(m_database->upsertBindingOverride(
+            {QStringLiteral("controller"), {}, QStringLiteral("desktop.tab_prev"), 2,
+             ControlId::genericButton(13), QStringLiteral("press"), 750, false}));
+
+        m_runtime->reload();
+
+        QVERIFY(hasBinding(*m_runtime, QStringLiteral("controller"), {},
+                           QStringLiteral("desktop.favorite"), 2,
+                           ControlId::genericButton(12)));
+        for (const auto& binding : m_runtime->effectiveBindings(QStringLiteral("controller"))) {
+            QVERIFY(!binding.triggerCode.startsWith(QLatin1String("chord:")));
+            QVERIFY2(!(binding.actionId == QLatin1String("desktop.tab_prev")
+                       && binding.slot == 2),
+                     "the contradictory press/hold row must not become a binding");
+        }
+
+        const QString diagnostics = InputDiagnostics::instance().exportText();
+        QVERIFY(diagnostics.contains(QStringLiteral("Rejected binding rows")));
+        QVERIFY(diagnostics.contains(QStringLiteral("desktop.menu slot 2")));
+        QVERIFY(diagnostics.contains(QStringLiteral("desktop.tab_next slot 2")));
+        QVERIFY(diagnostics.contains(QStringLiteral("desktop.tab_prev slot 2")));
+        QVERIFY(!diagnostics.contains(QStringLiteral("desktop.favorite slot 2")));
+    }
+
+    // ----------------------------------------------- Edit Assignment dialog
+
+    void theDialogOpensSeededFromTheSlotItEdits()
+    {
+        m_editor->openAssignmentEditor(QStringLiteral("global.save_replay"), 1);
+        QVERIFY(m_editor->editorOpen());
+        QCOMPARE(m_editor->editorSlot(), 1);
+        // Save Replay has Share-held as its controller default, so the draft
+        // opens on that gesture rather than on a blank form.
+        QCOMPARE(m_editor->editorGestureKind(), QStringLiteral("hold"));
+        QCOMPARE(m_editor->editorTriggerKind(), QStringLiteral("single"));
+        QVERIFY(m_editor->editorCanSave());
+        m_editor->closeAssignmentEditor();
+        QVERIFY(!m_editor->editorOpen());
+    }
+
+    void anEmptySlotInheritsItsGestureIntoTheDraft()
+    {
+        m_editor->openAssignmentEditor(QStringLiteral("global.screenshot"), 2);
+        QVERIFY(m_editor->editorOpen());
+        QCOMPARE(m_editor->editorGestureKind(), QStringLiteral("tap"));
+        // Nothing captured yet, so there is nothing to save.
+        QVERIFY(!m_editor->editorCanSave());
+        m_editor->closeAssignmentEditor();
+    }
+
+    void captureIsAnExplicitModeAndConsumesTheControl()
+    {
+        m_editor->openAssignmentEditor(QStringLiteral("global.screenshot"), 2);
+        // Not listening yet: a press must not be swallowed, or the pad could
+        // not navigate the dialog at all.
+        QVERIFY(!m_editor->captureInput(QStringLiteral("controller"),
+                                        ControlId::genericButton(25),
+                                        QStringLiteral("Button 25")));
+        m_editor->beginTriggerCapture(1);
+        QCOMPARE(m_editor->editorCaptureStep(), QStringLiteral("first"));
+        QVERIFY(m_editor->captureInput(QStringLiteral("controller"),
+                                       ControlId::genericButton(25),
+                                       QStringLiteral("Button 25")));
+        QCOMPARE(m_editor->editorCaptureStep(), QStringLiteral("idle"));
+        QVERIFY(m_editor->editorCanSave());
+
+        m_editor->saveAssignment();
+        QVERIFY(!m_editor->editorOpen());
+        QVERIFY(hasBinding(*m_runtime, QStringLiteral("controller"), {},
+                           QStringLiteral("global.screenshot"), 2,
+                           ControlId::genericButton(25)));
+    }
+
+    void aTripleTapCanBeChosenAndSaved()
+    {
+        // The gesture the old capture-only flow could never express.
+        m_editor->openAssignmentEditor(QStringLiteral("global.screenshot"), 2);
+        m_editor->beginTriggerCapture(1);
+        QVERIFY(m_editor->captureInput(QStringLiteral("controller"),
+                                       ControlId::genericButton(26),
+                                       QStringLiteral("Button 26")));
+        m_editor->setEditorGesture(QStringLiteral("tap"), 3, 0);
+        QCOMPARE(m_editor->editorTapCount(), 3);
+        m_editor->saveAssignment();
+
+        const auto rows = m_database->listBindingOverrides();
+        QCOMPARE(rows.size(), 1);
+        QCOMPARE(rows.first().activation, QStringLiteral("tap"));
+        QCOMPARE(rows.first().tapCount, 3);
+        const QVariantMap displayed = rowFor(*m_editor, QStringLiteral("global.screenshot"));
+        QVERIFY(displayed.value(QStringLiteral("secondaryAssigned")).toBool());
+        QCOMPARE(displayed.value(QStringLiteral("secondaryGesture")).toString(),
+                 QStringLiteral("Triple tap"));
+    }
+
+    void aCombinationIsCapturedStepwiseAndSavedAsAChord()
+    {
+        m_editor->openAssignmentEditor(QStringLiteral("global.save_replay"), 2);
+        m_editor->setEditorTriggerKind(QStringLiteral("combination"));
+        // Combinations are press-only in v1, so the gesture picker is fixed.
+        QVERIFY(m_editor->editorGestureLocked());
+        QCOMPARE(m_editor->editorGestureKind(), QStringLiteral("press"));
+
+        m_editor->beginTriggerCapture(1);
+        QVERIFY(m_editor->captureInput(QStringLiteral("controller"), ControlId::Capture,
+                                       QStringLiteral("Share")));
+        // One button is not a combination yet.
+        QCOMPARE(m_editor->editorCaptureStep(), QStringLiteral("second"));
+        QCOMPARE(m_editor->editorFirstControlLabel(), QStringLiteral("Capture"));
+        QVERIFY(m_editor->editorSecondControlLabel().isEmpty());
+        QVERIFY(!m_editor->editorCanSave());
+
+        // The same button twice is refused without leaving capture.
+        QVERIFY(m_editor->captureInput(QStringLiteral("controller"), ControlId::Capture,
+                                       QStringLiteral("Share")));
+        QCOMPARE(m_editor->editorCaptureStep(), QStringLiteral("second"));
+
+        QVERIFY(m_editor->captureInput(QStringLiteral("controller"), ControlId::Guide,
+                                       QStringLiteral("PS")));
+        QVERIFY(m_editor->editorCanSave());
+        m_editor->saveAssignment();
+
+        const auto rows = m_database->listBindingOverrides();
+        QCOMPARE(rows.size(), 1);
+        QCOMPARE(rows.first().triggerCode,
+                 QStringLiteral("chord:v1:gamepad.capture>gamepad.guide"));
+        QCOMPARE(rows.first().activation, QStringLiteral("press"));
+        const QVariantMap displayed = rowFor(*m_editor, QStringLiteral("global.save_replay"));
+        QCOMPARE(displayed.value(QStringLiteral("secondaryTrigger")).toString(),
+                 QStringLiteral("Capture + Guide"));
+        QCOMPARE(displayed.value(QStringLiteral("secondaryGesture")).toString(),
+                 QStringLiteral("Combination"));
+    }
+
+    void switchingBackToASingleButtonDropsTheSecondControl()
+    {
+        m_editor->openAssignmentEditor(QStringLiteral("global.save_replay"), 2);
+        m_editor->setEditorTriggerKind(QStringLiteral("combination"));
+        m_editor->beginTriggerCapture(1);
+        // Buttons nothing else is bound to, so the assertion is about the
+        // draft dropping its second control, not about a conflict modal.
+        m_editor->noteObservedControl(ControlId::genericButton(27));
+        m_editor->noteObservedControl(ControlId::genericButton(28));
+        m_editor->captureInput(QStringLiteral("controller"), ControlId::genericButton(27),
+                               QStringLiteral("Button 27"));
+        m_editor->captureInput(QStringLiteral("controller"), ControlId::genericButton(28),
+                               QStringLiteral("Button 28"));
+        m_editor->setEditorTriggerKind(QStringLiteral("single"));
+        QVERIFY(!m_editor->editorGestureLocked());
+        QVERIFY(m_editor->editorCanSave());
+        m_editor->saveAssignment();
+
+        const auto rows = m_database->listBindingOverrides();
+        QCOMPARE(rows.size(), 1);
+        QCOMPARE(rows.first().triggerCode, ControlId::genericButton(27));
+    }
+
+    void keyboardSlotsAreNeverOfferedACombination()
+    {
+        m_editor->setDeviceGroup(QStringLiteral("keyboard"));
+        m_editor->openAssignmentEditor(QStringLiteral("global.screenshot"), 2);
+        QVERIFY(!m_editor->editorCombinationAvailable());
+        m_editor->setEditorTriggerKind(QStringLiteral("combination"));
+        QCOMPARE(m_editor->editorTriggerKind(), QStringLiteral("single"));
+        m_editor->closeAssignmentEditor();
+    }
+
+    void theDraftWarnsAboutAButtonTheControllerHasNeverSent()
+    {
+        // The honest version of a "Guide may be unavailable" warning: based on
+        // what this session actually received, not on a hardware list.
+        m_editor->openAssignmentEditor(QStringLiteral("global.screenshot"), 2);
+        m_editor->beginTriggerCapture(1);
+        m_editor->captureInput(QStringLiteral("controller"), ControlId::Guide,
+                               QStringLiteral("PS"));
+        QCOMPARE(m_editor->editorNoticeKind(), QStringLiteral("unsupported_input"));
+        QVERIFY(m_editor->editorNotice().contains(QStringLiteral("has not received Guide")));
+
+        // Once the pad really delivers it, the warning goes away.
+        m_editor->noteObservedControl(ControlId::Guide);
+        QVERIFY(m_editor->editorNoticeKind() != QStringLiteral("unsupported_input"));
+        m_editor->closeAssignmentEditor();
+    }
+
+    void theDraftExplainsTheMultiTapDelayBeforeSaving()
+    {
+        m_editor->noteObservedControl(ControlId::Capture);
+        // Share already carries a screenshot tap; a triple tap on the same
+        // button is legal but makes that tap wait.
+        m_editor->openAssignmentEditor(QStringLiteral("overlay.favorite"), 2);
+        m_editor->beginTriggerCapture(1);
+        m_editor->captureInput(QStringLiteral("controller"), ControlId::Capture,
+                               QStringLiteral("Share"));
+        m_editor->setEditorGesture(QStringLiteral("tap"), 3, 0);
+        QCOMPARE(m_editor->editorNoticeKind(), QStringLiteral("higher_tap_count_delay"));
+        m_editor->closeAssignmentEditor();
+    }
+
+    void savingOverAnExistingAssignmentStillRaisesTheConflictModal()
+    {
+        m_editor->noteObservedControl(ControlId::Guide);
+        m_editor->openAssignmentEditor(QStringLiteral("global.screenshot"), 2);
+        m_editor->beginTriggerCapture(1);
+        m_editor->captureInput(QStringLiteral("controller"), ControlId::Guide,
+                               QStringLiteral("PS"));
+        m_editor->setEditorGesture(QStringLiteral("press"), 1, 0);
+        QCOMPARE(m_editor->editorNoticeKind(), QStringLiteral("hard_conflict"));
+        m_editor->saveAssignment();
+        QVERIFY(m_editor->conflictPending());
+        m_editor->confirmConflict();
+        QVERIFY(hasBinding(*m_runtime, QStringLiteral("controller"), {},
+                           QStringLiteral("global.screenshot"), 2, ControlId::Guide));
+        m_editor->closeAssignmentEditor();
+    }
 };
+
 
 QTEST_GUILESS_MAIN(BindingEditorTest)
 #include "tst_bindingeditor.moc"

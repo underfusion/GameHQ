@@ -16,7 +16,8 @@
 //
 // The decision order below is frozen: classify() walks it top to bottom and
 // returns on the first match. Reordering it changes user-visible verdicts, so
-// treat it as a contract, not an implementation detail.
+// treat it as a contract, not an implementation detail. Chord and tap-count
+// rules were APPENDED to it, never interleaved.
 class BindingRelation
 {
 public:
@@ -28,17 +29,43 @@ public:
         HardConflict     // same trigger, colliding gestures, different actions
     };
 
+    // A binding can be perfectly valid and still feel slow, which the user has
+    // no way to explain to themselves. These are the two reasons a press waits,
+    // surfaced so the editor can say so instead of leaving it a mystery.
+    enum class Notice {
+        None,
+        // Another action on the same button needs more taps, so this one has to
+        // wait out the multi-tap window before it can be sure.
+        HigherTapCountDelay,
+        // This button starts a combination, so its own gesture waits for the
+        // chord window before acting.
+        ChordStartDelay
+    };
+
     // Frozen decision order:
-    //  0) different device group or different trigger  -> None (precondition)
+    //  0) different device group, or triggers sharing no control -> None
     //  1) scopes that are never active together        -> None
     //  2) explicitly declared contextual override      -> ContextOverride
-    //  3) same action + trigger + activation + group + profile -> Redundant
-    //  4) overlapping scopes, compatible gestures      -> SharedGesture
-    //  5) overlapping scopes, a press gesture involved,
+    //  3) same action + trigger + gesture + group + profile -> Redundant
+    //  4) chord rules (appended): duplicate chord, press/repeat on a chord's
+    //     first control, chord sharing a control with a timed gesture
+    //  5) overlapping scopes, compatible gestures      -> SharedGesture
+    //  6) overlapping scopes, a press gesture involved,
     //     or the same gesture on different actions     -> HardConflict
-    //  6) otherwise                                    -> None
+    //  7) otherwise                                    -> None
     static Kind classify(const BindingResolver::Binding& left,
                          const BindingResolver::Binding& right);
+
+    // Why one of these two bindings waits before acting. Independent of Kind:
+    // a perfectly fine SharedGesture pair can still carry a delay notice, and
+    // that is exactly the case worth explaining.
+    static Notice noticeFor(const BindingResolver::Binding& left,
+                            const BindingResolver::Binding& right);
+
+    // Human-readable form of a notice, for the editor. `chordWindowMs` and
+    // `multiTapIntervalMs` are the live configured values, so the number the
+    // user reads is the number the runtime waits.
+    static QString noticeText(Notice notice, int chordWindowMs, int multiTapIntervalMs);
 
     // True when both bindings can dispatch at the same moment.
     //
@@ -50,11 +77,12 @@ public:
     // both playback.seek_back and desktop.navigate_left.
     static bool scopesOverlap(ActionCatalog::Scope left, ActionCatalog::Scope right);
 
-    // tap/hold, tap/double_tap and hold/double_tap coexist on one button
-    // because the runtime separates them in time. Anything involving "press"
-    // does not: press fires on the down edge, before a gesture is known.
-    static bool gesturesCompatible(const QString& left, const QString& right);
+    // Tap and hold, and two taps needing a different number of taps, coexist on
+    // one button because the runtime separates them in time. Anything involving
+    // press does not: press fires on the down edge, before a gesture is known.
+    static bool gesturesCompatible(const GestureSpec& left, const GestureSpec& right);
 
     // Stable lowercase identifier for QML and logs ("hard_conflict", ...).
     static QString kindId(Kind kind);
+    static QString noticeId(Notice notice);
 };

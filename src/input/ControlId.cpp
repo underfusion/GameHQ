@@ -12,6 +12,20 @@ bool isGenericButton(const QString& code)
     return code.startsWith(QStringLiteral("gamepad.button."));
 }
 
+bool isCanonical(const QString& code)
+{
+    if (isGenericButton(code)) {
+        bool numeric = false;
+        const int index = code.mid(QStringLiteral("gamepad.button.").size()).toInt(&numeric);
+        return numeric && index >= 0;
+    }
+    return code == FaceSouth || code == FaceEast || code == FaceNorth || code == FaceWest
+        || code == ShoulderLeft || code == ShoulderRight
+        || code == TriggerLeft || code == TriggerRight
+        || code == DpadUp || code == DpadDown || code == DpadLeft || code == DpadRight
+        || code == Menu || code == Guide || code == Capture;
+}
+
 QString label(const QString& code, ControllerFamily family)
 {
     if (isGenericButton(code))

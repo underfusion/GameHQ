@@ -51,9 +51,35 @@ gamehq_add_test(tst_sonyreportlayout
 gamehq_add_test(tst_bindingrelation
     tst_bindingrelation.cpp
     "${CMAKE_SOURCE_DIR}/src/input/ActionCatalog.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/BindingPattern.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/BindingRelation.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/ContextOverrideCatalog.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp")
+
+# Pure model test: the trigger/gesture specs, their canonical serialization and
+# the validation that guards the parse boundary. No database, no device.
+gamehq_add_test(tst_bindingpattern
+    tst_bindingpattern.cpp
+    "${CMAKE_SOURCE_DIR}/src/input/BindingPattern.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp")
+
+# The recognizer's timing state machine, driven through a fake facts provider:
+# no database, no device, no binding table.
+gamehq_add_test(tst_inputpattern
+    tst_inputpattern.cpp
+    "${CMAKE_SOURCE_DIR}/src/input/ActionCatalog.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/BindingPattern.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/InputPatternRecognizer.cpp")
+
+# Clamping and the one-release migration behind the gesture timing settings.
+gamehq_add_test(tst_gesturetiming
+    tst_gesturetiming.cpp
+    "${CMAKE_SOURCE_DIR}/src/input/ActionCatalog.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/BindingPattern.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/GestureTiming.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/InputPatternRecognizer.cpp")
 
 gamehq_add_test(tst_inputratemonitor
     tst_inputratemonitor.cpp
@@ -226,7 +252,10 @@ target_link_libraries(tst_capturedatabaserepair PRIVATE Qt6::Sql Qt6::Gui Qt6::W
 gamehq_add_test(tst_bindingeditor
     tst_bindingeditor.cpp
     "${CMAKE_SOURCE_DIR}/src/input/ActionCatalog.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/InputPatternRecognizer.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/BindingEditorModel.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/BindingPattern.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/InputDiagnostics.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/BindingResolver.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/BindingRelation.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/BindingRuntime.cpp"
@@ -242,6 +271,25 @@ gamehq_add_test(tst_bindingeditor
     "${CMAKE_SOURCE_DIR}/src/config/LegacyMigration.cpp"
     "${CMAKE_SOURCE_DIR}/src/core/GameIdentity.cpp")
 target_link_libraries(tst_bindingeditor PRIVATE Qt6::Sql Qt6::Gui Qt6::Widgets)
+
+# Schema v3 -> v4 compatibility: every stored activation keeps its meaning.
+gamehq_add_test(tst_bindingmigration
+    tst_bindingmigration.cpp
+    "${CMAKE_SOURCE_DIR}/src/input/ActionCatalog.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/BindingPattern.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/BindingResolver.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ContextOverrideCatalog.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/InputDiagnostics.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/CaptureDatabase.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/CaptureQueries.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameRowRepair.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameMetadataBackfill.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameIconCache.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/Paths.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/LegacyMigration.cpp"
+    "${CMAKE_SOURCE_DIR}/src/core/GameIdentity.cpp")
+target_link_libraries(tst_bindingmigration PRIVATE Qt6::Sql Qt6::Gui Qt6::Widgets)
 
 # Stand-in for app\GameHQ.exe: it reports the arguments Windows actually handed
 # it, so the launcher's pass-through can be checked against a real process.
