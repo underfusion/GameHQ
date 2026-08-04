@@ -5,6 +5,9 @@
 *.ps1 text eol=crlf
 *.rc text eol=crlf
 
+# Vendored upstream files stay byte-identical to their pinned hashes.
+third_party/gameinput/** -text
+
 *.ico binary
 *.png binary
 *.jpg binary
