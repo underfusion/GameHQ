@@ -31,6 +31,12 @@ public:
         : m_registry(registry) {}
 
     CapabilityRouteResult route(const CapabilityControlEdge& edge);
+    // Ends one logical-controller routing generation. Every held control is
+    // returned for a synthetic release, and all dedup/election memory is
+    // discarded so the first edge after reconnect cannot be mistaken for a
+    // duplicate from the previous device lifetime.
+    QStringList resetLogicalController(const QString& logicalId);
+    // Compatibility name for existing lifecycle callers.
     QStringList disconnect(const QString& logicalId);
     quint64 generation(const QString& logicalId) const;
 

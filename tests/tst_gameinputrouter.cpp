@@ -259,6 +259,12 @@ private slots:
         QTRY_COMPARE(connected.size(), 2);
         QCOMPARE(connected.at(1).at(0).toString(), logicalId);
         QVERIFY(connected.at(1).at(1).toBool());
+
+        // There was no physical release before removal. Router reset must
+        // forget the stale pressed edge so the first reconnect press routes.
+        raw->emitSystem(makeEvent(GameInputEventKind::SystemButtonPressed,
+                                  ControlId::Guide));
+        QTRY_COMPARE(pressed.size(), 2);
     }
 
     void sleepingOneOfTwoDevicesReleasesOnlyThatDevice()
@@ -376,14 +382,12 @@ private slots:
             raw->emitDevice(makeEvent(GameInputEventKind::DeviceAdded));
             raw->emitSystem(makeEvent(GameInputEventKind::SystemButtonPressed,
                                       ControlId::Capture));
-            raw->emitSystem(makeEvent(GameInputEventKind::SystemButtonReleased,
-                                      ControlId::Capture));
-            // Exactly one edge pair per cycle: duplicates would race ahead of
-            // the cycle count, lost edges would trail it.
+            // Deliberately do NOT send the physical release. Off must end the
+            // held generation and synthesize it before Auto starts again.
             QTRY_COMPARE(pressed.size(), cycle + 1);
-            QTRY_COMPARE(released.size(), cycle + 1);
 
             router.setMode(GameInputRouter::SupportMode::Off);
+            QTRY_COMPARE(released.size(), cycle + 1);
             // A late callback after Off must be swallowed, not queued for the
             // next session and not delivered as a duplicate action.
             raw->emitRetired(makeEvent(GameInputEventKind::SystemButtonPressed,

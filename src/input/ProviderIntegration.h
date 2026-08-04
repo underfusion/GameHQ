@@ -40,8 +40,10 @@ public:
     // root. Returns the logical controller id the attachment landed on.
     QString observeLegacy(ControllerProvider provider, const QString& providerDeviceId,
                           const QString& fingerprint, const QString& displayName,
-                          ControllerCapabilities capabilities);
-    void removeLegacy(ControllerProvider provider, const QString& providerDeviceId);
+                          ControllerCapabilities capabilities,
+                          QStringList* safeReleases = nullptr);
+    QStringList removeLegacy(ControllerProvider provider,
+                             const QString& providerDeviceId);
 
     // True while ANY legacy provider attachment (Sony Raw, XInput, WinMM) is
     // live. GameInput routing uses this as its safety gate: an edge whose
@@ -65,6 +67,7 @@ public:
     CapabilityRouteResult routeRawHidEdge(const QString& deviceIdentity,
                                           const QString& controlId, bool pressed,
                                           quint64 timestamp);
+    QStringList removeRawHid(const QString& deviceIdentity);
 
     static ControllerCapability systemCapabilityFor(const QString& controlId);
 

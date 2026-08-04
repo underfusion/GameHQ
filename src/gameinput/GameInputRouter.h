@@ -70,8 +70,7 @@ signals:
 private:
     void handleBatch(const GameInputEventBatch& batch);
     QString observeDevice(const GameInputDeviceDescriptor& device);
-    void detachFromRegistry();
-    void releaseHeldControls();
+    void detachFromRegistry(const QString& reason);
     void failSession(const QString& reason);
     void publishEdge(const QString& deviceId, const QString& logicalId,
                      const QString& controlId, bool pressed,

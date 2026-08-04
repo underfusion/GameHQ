@@ -66,19 +66,40 @@ CapabilityRouteResult CapabilityEventRouter::route(const CapabilityControlEdge& 
     return result;
 }
 
-QStringList CapabilityEventRouter::disconnect(const QString& logicalId)
+QStringList CapabilityEventRouter::resetLogicalController(const QString& logicalId)
 {
     QStringList releases;
+    if (logicalId.isEmpty())
+        return releases;
+    const QString controlPrefix = logicalId + QLatin1Char('\x1f');
     for (auto it = m_held.begin(); it != m_held.end();) {
-        if (it.key().startsWith(logicalId + QLatin1Char('\x1f'))) {
+        if (it.key().startsWith(controlPrefix)) {
             releases.push_back(it.key().section(QLatin1Char('\x1f'), 1));
             it = m_held.erase(it);
         } else {
             ++it;
         }
     }
+    for (auto it = m_lastEdges.begin(); it != m_lastEdges.end();) {
+        if (it.key().startsWith(controlPrefix))
+            it = m_lastEdges.erase(it);
+        else
+            ++it;
+    }
+    const QString capabilityPrefix = logicalId + QLatin1Char(':');
+    for (auto it = m_selectedProviders.begin(); it != m_selectedProviders.end();) {
+        if (it.key().startsWith(capabilityPrefix))
+            it = m_selectedProviders.erase(it);
+        else
+            ++it;
+    }
     ++m_generations[logicalId];
     return releases;
+}
+
+QStringList CapabilityEventRouter::disconnect(const QString& logicalId)
+{
+    return resetLogicalController(logicalId);
 }
 
 quint64 CapabilityEventRouter::generation(const QString& logicalId) const

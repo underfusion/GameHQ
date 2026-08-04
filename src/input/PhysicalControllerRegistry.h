@@ -68,7 +68,8 @@ struct LogicalController {
 class PhysicalControllerRegistry
 {
 public:
-    QString observe(const ProviderObservation& observation);
+    QString observe(const ProviderObservation& observation,
+                    QString* rekeyedFrom = nullptr);
     bool removeProvider(ControllerProvider provider, const QString& providerDeviceId);
     const LogicalController* controller(const QString& logicalId) const;
     QVector<LogicalController> controllers() const;

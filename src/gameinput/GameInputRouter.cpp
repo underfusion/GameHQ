@@ -97,12 +97,13 @@ bool GameInputRouter::start()
 
 void GameInputRouter::shutdown()
 {
-    if (!m_active && m_heldSystemControls.isEmpty())
+    if (!m_active && m_heldSystemControls.isEmpty() && m_deviceLogicalIds.isEmpty())
         return;
-    releaseHeldControls();
     m_wrapper->shutdown();
     m_active = false;
-    detachFromRegistry();
+    detachFromRegistry(m_mode == SupportMode::Off
+        ? QStringLiteral("modern controller support disabled")
+        : QStringLiteral("modern controller backend shutdown"));
     if (m_mode == SupportMode::Off)
         m_runtimeStatus = QStringLiteral("Off");
     emit statusChanged();
@@ -112,12 +113,23 @@ void GameInputRouter::shutdown()
 // attachments must leave the shared registry, otherwise preferredProvider()
 // keeps electing GameInput for Share/Guide and the shared router would
 // reject the legacy edges that are now the only live path.
-void GameInputRouter::detachFromRegistry()
+void GameInputRouter::detachFromRegistry(const QString& reason)
 {
+    QSet<QString> resetLogicalIds;
     for (auto it = m_deviceLogicalIds.cbegin(); it != m_deviceLogicalIds.cend(); ++it) {
-        routerRef().disconnect(it.value());
+        if (!resetLogicalIds.contains(it.value())) {
+            resetLogicalIds.insert(it.value());
+            const QStringList releases =
+                routerRef().resetLogicalController(it.value());
+            for (const QString& control : releases) {
+                emit systemControlReleased(control, it.value(),
+                                           m_deviceNames.value(it.key()));
+            }
+            emit lifecycleReset(it.value(), reason);
+        }
         registryRef().removeProvider(ControllerProvider::GameInput, it.key());
     }
+    m_heldSystemControls.clear();
     m_deviceLogicalIds.clear();
     m_deviceExtraStates.clear();
     m_deviceExtraControls.clear();
@@ -166,7 +178,21 @@ QString GameInputRouter::observeDevice(const GameInputDeviceDescriptor& device)
         observation.capabilities |= ControllerCapability::Guide;
     if (device.extraButtonCount > 0)
         observation.capabilities |= ControllerCapability::ExtraControls;
-    const QString logicalId = registryRef().observe(observation);
+    QString rekeyedFrom;
+    const QString logicalId = registryRef().observe(observation, &rekeyedFrom);
+    if (!rekeyedFrom.isEmpty()) {
+        const QStringList releases =
+            routerRef().resetLogicalController(rekeyedFrom);
+        routerRef().resetLogicalController(logicalId);
+        for (const QString& control : releases) {
+            emit systemControlReleased(control, rekeyedFrom, device.displayName);
+        }
+        for (auto it = m_deviceLogicalIds.begin(); it != m_deviceLogicalIds.end(); ++it) {
+            if (it.value() == rekeyedFrom)
+                it.value() = logicalId;
+        }
+        emit lifecycleReset(rekeyedFrom, QStringLiteral("controller identity changed"));
+    }
     m_deviceLogicalIds.insert(device.deviceId, logicalId);
     m_deviceNames.insert(device.deviceId, device.displayName);
     const bool firstObservation = !m_descriptors.contains(logicalId);
@@ -222,16 +248,14 @@ void GameInputRouter::handleBatch(const GameInputEventBatch& batch)
             break;
         case GameInputEventKind::DeviceRemoved:
         case GameInputEventKind::Sleep: {
-            const auto held = m_heldSystemControls.take(event.deviceId);
-            for (const QString& control : held)
-                emit systemControlReleased(control, logicalId, m_deviceNames.value(event.deviceId));
+            m_heldSystemControls.remove(event.deviceId);
             m_deviceExtraStates.remove(event.deviceId);
             m_deviceExtraControls.remove(event.deviceId);
             m_deviceStandardButtons.remove(event.deviceId);
-            for (const QString& control : routerRef().disconnect(logicalId)) {
-                if (!held.contains(control))
-                    emit systemControlReleased(control, logicalId,
-                                               m_deviceNames.value(event.deviceId));
+            for (const QString& control
+                 : routerRef().resetLogicalController(logicalId)) {
+                emit systemControlReleased(control, logicalId,
+                                           m_deviceNames.value(event.deviceId));
             }
             if (event.kind == GameInputEventKind::DeviceRemoved) {
                 m_removedDevices.insert(event.deviceId);
@@ -445,25 +469,14 @@ int GameInputRouter::confirmLayouts()
     return confirmed;
 }
 
-void GameInputRouter::releaseHeldControls()
-{
-    for (auto it = m_heldSystemControls.cbegin(); it != m_heldSystemControls.cend(); ++it) {
-        const QString logicalId = m_deviceLogicalIds.value(it.key());
-        for (const QString& control : it.value())
-            emit systemControlReleased(control, logicalId, m_deviceNames.value(it.key()));
-    }
-    m_heldSystemControls.clear();
-}
-
 void GameInputRouter::failSession(const QString& reason)
 {
     if (m_failedForSession)
         return;
-    releaseHeldControls();
     m_wrapper->shutdown();
     m_active = false;
     m_failedForSession = true;
-    detachFromRegistry();
+    detachFromRegistry(QStringLiteral("modern controller session fallback"));
     m_runtimeStatus = QStringLiteral("Legacy fallback: %1").arg(reason);
     InputDiagnostics::instance().noteBackendSwitch(QStringLiteral("Legacy controllers"), reason);
     emit statusChanged();

@@ -240,6 +240,13 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
                         stopNavRepeat();
                 }
             });
+    connect(m_sonyPad, &DualSenseDevice::rawHidDeviceRemoved, this,
+            [this](const QString& identity) {
+                const QStringList releases = m_providers.removeRawHid(identity);
+                for (const QString& control : releases) {
+                    m_runtime->release(QStringLiteral("controller"), identity, control);
+                }
+            });
 
     // Surface cloaked pads (present in Windows, hidden from apps by a HID
     // filter driver) in Settings instead of silently detecting nothing.
@@ -285,7 +292,14 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
     });
 }
 
-InputEngine::~InputEngine() = default;
+InputEngine::~InputEngine()
+{
+    // Run the final controller reset while BindingRuntime and the shared
+    // ProviderIntegration are still alive. GameInputRouter's destructor is a
+    // no-op after this ordered shutdown.
+    if (m_gameInput)
+        m_gameInput->shutdown();
+}
 
 QObject* InputEngine::bindingEditor() const
 {
@@ -430,8 +444,12 @@ void InputEngine::observeLegacyBackend(Gamepad* pad)
     const QString previous = m_legacyObservedIds.value(pad);
     if (previous == profile.fingerprint)
         return;
-    if (!previous.isEmpty())
-        m_providers.removeLegacy(providerFor(pad), previous);
+    if (!previous.isEmpty()) {
+        const QStringList releases =
+            m_providers.removeLegacy(providerFor(pad), previous);
+        for (const QString& control : releases)
+            m_runtime->release(QStringLiteral("controller"), previous, control);
+    }
 
     ModernInput::ControllerCapabilities capabilities =
         ModernInput::ControllerCapability::StandardControls;
@@ -447,16 +465,25 @@ void InputEngine::observeLegacyBackend(Gamepad* pad)
         capabilities |= ModernInput::ControllerCapability::SystemShare;
         capabilities |= ModernInput::ControllerCapability::Guide;
     }
+    QStringList rekeyReleases;
     m_providers.observeLegacy(providerFor(pad), profile.fingerprint,
-                              profile.fingerprint, profile.displayName, capabilities);
+                              profile.fingerprint, profile.displayName, capabilities,
+                              &rekeyReleases);
+    for (const QString& control : rekeyReleases) {
+        m_runtime->release(QStringLiteral("controller"), profile.fingerprint, control);
+    }
     m_legacyObservedIds.insert(pad, profile.fingerprint);
 }
 
 void InputEngine::removeLegacyBackend(Gamepad* pad)
 {
     const QString observed = m_legacyObservedIds.take(pad);
-    if (!observed.isEmpty())
-        m_providers.removeLegacy(providerFor(pad), observed);
+    if (!observed.isEmpty()) {
+        const QStringList releases =
+            m_providers.removeLegacy(providerFor(pad), observed);
+        for (const QString& control : releases)
+            m_runtime->release(QStringLiteral("controller"), observed, control);
+    }
 }
 
 bool InputEngine::routeLegacySystemEdge(Gamepad* source, const QString& controlId,

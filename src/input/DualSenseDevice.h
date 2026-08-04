@@ -96,6 +96,10 @@ signals:
     // binding runtime.
     void rawHidControl(const QString& deviceIdentity, const QString& controlId,
                        bool pressed);
+    // The final live Raw Input handle for this fallback identity disappeared;
+    // ProviderIntegration must evict the attachment after held releases have
+    // been synthesized.
+    void rawHidDeviceRemoved(const QString& deviceIdentity);
 
 private:
     struct DeviceState {

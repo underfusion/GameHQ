@@ -32,8 +32,11 @@ QString ProviderIntegration::observeLegacy(ControllerProvider provider,
                                            const QString& providerDeviceId,
                                            const QString& fingerprint,
                                            const QString& displayName,
-                                           ControllerCapabilities capabilities)
+                                           ControllerCapabilities capabilities,
+                                           QStringList* safeReleases)
 {
+    if (safeReleases)
+        safeReleases->clear();
     if (providerDeviceId.isEmpty())
         return {};
     ProviderObservation observation;
@@ -46,20 +49,27 @@ QString ProviderIntegration::observeLegacy(ControllerProvider provider,
     // registry's unique-match rule keeps two identical models apart.
     observation.topologyRoot = fingerprint.toLower();
     parseFingerprint(fingerprint, observation.vendorId, observation.productId);
-    const QString logicalId = m_registry.observe(observation);
+    QString rekeyedFrom;
+    const QString logicalId = m_registry.observe(observation, &rekeyedFrom);
+    if (!rekeyedFrom.isEmpty()) {
+        const QStringList releases = m_capabilityRouter.resetLogicalController(rekeyedFrom);
+        m_capabilityRouter.resetLogicalController(logicalId);
+        if (safeReleases)
+            *safeReleases = releases;
+    }
     m_legacyKeys.insert(legacyKey(provider, providerDeviceId));
     return logicalId;
 }
 
-void ProviderIntegration::removeLegacy(ControllerProvider provider,
-                                       const QString& providerDeviceId)
+QStringList ProviderIntegration::removeLegacy(ControllerProvider provider,
+                                              const QString& providerDeviceId)
 {
     if (!m_legacyKeys.remove(legacyKey(provider, providerDeviceId)))
-        return;
+        return {};
     const QString logicalId = m_registry.logicalIdFor(provider, providerDeviceId);
+    const QStringList releases = m_capabilityRouter.resetLogicalController(logicalId);
     m_registry.removeProvider(provider, providerDeviceId);
-    if (!logicalId.isEmpty())
-        m_capabilityRouter.disconnect(logicalId);
+    return releases;
 }
 
 bool ProviderIntegration::hasLegacyAttachment(const QString& logicalId) const
@@ -99,6 +109,7 @@ CapabilityRouteResult ProviderIntegration::routeRawHidEdge(const QString& device
                                                            const QString& controlId,
                                                            bool pressed, quint64 timestamp)
 {
+    CapabilityRouteResult resetResult;
     if (!m_rawHidObserved.contains(deviceIdentity)) {
         ProviderObservation observation;
         observation.provider = ControllerProvider::RawHid;
@@ -107,14 +118,33 @@ CapabilityRouteResult ProviderIntegration::routeRawHidEdge(const QString& device
         observation.displayName = QStringLiteral("Raw HID controller");
         observation.capabilities = ControllerCapability::ExtraControls;
         parseFingerprint(deviceIdentity, observation.vendorId, observation.productId);
-        m_registry.observe(observation);
+        QString rekeyedFrom;
+        const QString logicalId = m_registry.observe(observation, &rekeyedFrom);
+        if (!rekeyedFrom.isEmpty()) {
+            resetResult.safeReleases =
+                m_capabilityRouter.resetLogicalController(rekeyedFrom);
+            m_capabilityRouter.resetLogicalController(logicalId);
+        }
         m_rawHidObserved.insert(deviceIdentity);
     }
     const QString logicalId = m_registry.logicalIdFor(ControllerProvider::RawHid,
                                                       deviceIdentity);
-    return m_capabilityRouter.route({logicalId, ControllerProvider::RawHid,
-                                     ControllerCapability::ExtraControls,
-                                     controlId, pressed, timestamp});
+    CapabilityRouteResult routed = m_capabilityRouter.route(
+        {logicalId, ControllerProvider::RawHid, ControllerCapability::ExtraControls,
+         controlId, pressed, timestamp});
+    routed.safeReleases = resetResult.safeReleases + routed.safeReleases;
+    return routed;
+}
+
+QStringList ProviderIntegration::removeRawHid(const QString& deviceIdentity)
+{
+    if (!m_rawHidObserved.remove(deviceIdentity))
+        return {};
+    const QString logicalId = m_registry.logicalIdFor(ControllerProvider::RawHid,
+                                                      deviceIdentity);
+    const QStringList releases = m_capabilityRouter.resetLogicalController(logicalId);
+    m_registry.removeProvider(ControllerProvider::RawHid, deviceIdentity);
+    return releases;
 }
 
 } // namespace ModernInput

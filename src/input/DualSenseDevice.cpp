@@ -308,10 +308,14 @@ DualSenseDevice::DeviceState* DualSenseDevice::ignoreDevice(void* handle, const 
 // only valid while the handle is live.
 void DualSenseDevice::forgetClassification(void* handle)
 {
+    const QString rawHidIdentity = m_ignoredHandles.value(handle);
     dropRawHidState(handle);
     m_ignoredHandles.remove(handle);
     m_xinputClass.remove(handle);
     m_rates.forget(handle);
+    if (!rawHidIdentity.isEmpty()
+        && !m_ignoredHandles.values().contains(rawHidIdentity))
+        emit rawHidDeviceRemoved(rawHidIdentity);
 }
 
 // The device vanished (or its verdict is being re-evaluated): a raw-HID
@@ -470,16 +474,13 @@ void DualSenseDevice::reconcileDevices()
     // Prune classifications for handles Windows no longer lists. This is the
     // safety net for handle reuse: a value that comes back later is
     // re-classified from scratch instead of inheriting the old verdict.
-    for (auto it = m_ignoredHandles.begin(); it != m_ignoredHandles.end();) {
-        if (present.contains(it.key())) {
-            ++it;
-            continue;
-        }
-        dropRawHidState(it.key());
-        m_rates.forget(it.key());
-        m_xinputClass.remove(it.key());
-        it = m_ignoredHandles.erase(it);
+    QList<void*> staleIgnored;
+    for (auto it = m_ignoredHandles.cbegin(); it != m_ignoredHandles.cend(); ++it) {
+        if (!present.contains(it.key()))
+            staleIgnored.push_back(it.key());
     }
+    for (void* handle : staleIgnored)
+        forgetClassification(handle);
 
     bool lostActive = false;
     for (auto it = m_devices.begin(); it != m_devices.end();) {

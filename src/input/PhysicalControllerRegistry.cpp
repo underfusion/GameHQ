@@ -101,8 +101,11 @@ QString PhysicalControllerRegistry::findCorrelatedMatch(const ProviderObservatio
     return match;
 }
 
-QString PhysicalControllerRegistry::observe(const ProviderObservation& observation)
+QString PhysicalControllerRegistry::observe(const ProviderObservation& observation,
+                                            QString* rekeyedFrom)
 {
+    if (rekeyedFrom)
+        rekeyedFrom->clear();
     const QString key = attachmentKey(observation.provider, observation.providerDeviceId);
     if (const auto existing = m_attachmentToLogical.constFind(key);
         existing != m_attachmentToLogical.cend()) {
@@ -139,6 +142,7 @@ QString PhysicalControllerRegistry::observe(const ProviderObservation& observati
             && existing->appLocalDeviceId.isEmpty() && existing->containerId.isEmpty()) {
             const QString upgradedId = createLogicalId(observation, 0);
             if (upgradedId != logicalId && !m_controllers.contains(upgradedId)) {
+                const QString previousId = logicalId;
                 LogicalController moved = m_controllers.take(logicalId);
                 moved.logicalId = upgradedId;
                 m_controllers.insert(upgradedId, moved);
@@ -148,6 +152,8 @@ QString PhysicalControllerRegistry::observe(const ProviderObservation& observati
                         it.value() = upgradedId;
                 }
                 logicalId = upgradedId;
+                if (rekeyedFrom)
+                    *rekeyedFrom = previousId;
             }
         }
     }

@@ -62,7 +62,7 @@ private slots:
                                ControlId::FaceSouth, true, 201}).accepted);
     }
 
-    void repeatedEdgeIsDeduplicatedAndDisconnectReleases()
+    void fullResetClearsDedupAndFirstReconnectPressRoutes()
     {
         PhysicalControllerRegistry registry;
         ProviderObservation modern{ControllerProvider::GameInput, QStringLiteral("gi")};
@@ -77,8 +77,18 @@ private slots:
                                              ControllerCapability::ExtraControls,
                                              extra, true, 301});
         QVERIFY(duplicate.duplicate);
-        QCOMPARE(router.disconnect(id), QStringList{extra});
-        QVERIFY(router.generation(id) > 0);
+        const quint64 beforeReset = router.generation(id);
+        QCOMPARE(router.resetLogicalController(id), QStringList{extra});
+        QVERIFY(router.generation(id) > beforeReset);
+
+        // No physical release arrived before disconnect. The first press of
+        // the new device lifetime must not match the stale pressed edge.
+        const auto reconnectPress = router.route(
+            {id, ControllerProvider::GameInput,
+             ControllerCapability::ExtraControls, extra, true, 900});
+        QVERIFY(reconnectPress.accepted);
+        QVERIFY(!reconnectPress.duplicate);
+        QVERIFY(!reconnectPress.providerChanged);
     }
 
     void providerSwitchSynthesizesReleaseAndStartsANewGeneration()

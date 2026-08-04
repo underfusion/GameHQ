@@ -676,6 +676,7 @@ private slots:
         const QString control = ControlId::rawHidUsage(identity, 0x09, 0x15);
         fallback.setBoundControls({control});
         QSignalSpy edges(&pad, &DualSenseDevice::rawHidControl);
+        QSignalSpy removed(&pad, &DualSenseDevice::rawHidDeviceRemoved);
 
         api->devices[gamesir].pressedUsages = {(quint32(0x09) << 16) | 0x15};
         pad.onRawInput(gamesir);
@@ -687,6 +688,8 @@ private slots:
         pad.onDeviceChange(false, gamesir);
         QTRY_COMPARE(edges.size(), 2);
         QCOMPARE(edges.at(1).at(2).toBool(), false);
+        QTRY_COMPARE(removed.size(), 1);
+        QCOMPARE(removed.at(0).at(0).toString(), identity);
 
         fallback.setBoundControls({});
     }

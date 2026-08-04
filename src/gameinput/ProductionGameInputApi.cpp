@@ -211,6 +211,16 @@ public:
         }
         GameInputDeviceDescriptor descriptor = describeDevice(device);
         QMutexLocker lock(&descriptorMutex);
+        // GetDeviceInfo may fail after Windows has already detached the
+        // device. A removal must retain the last good identity long enough to
+        // evict the correct registry attachment; never poison that cache with
+        // an empty refresh result.
+        if (descriptor.deviceId.isEmpty()) {
+            if (const auto it = descriptorCache.find(device);
+                it != descriptorCache.end())
+                return it->second;
+            return descriptor;
+        }
         descriptorCache[device] = descriptor;
         return descriptor;
     }

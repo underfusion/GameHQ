@@ -216,6 +216,31 @@ private slots:
         QVERIFY(!integration.hasLegacyAttachment(logicalId));
     }
 
+    void legacyProviderReplacementReleasesHeldAndResetsDedup()
+    {
+        ProviderIntegration integration;
+        const QString device = QStringLiteral("xinput.slot0");
+        integration.observeLegacy(ControllerProvider::XInput, device,
+                                  QStringLiteral("045e:0b12"),
+                                  QStringLiteral("Xbox pad"),
+                                  ControllerCapability::StandardControls
+                                      | ControllerCapability::Guide);
+        QVERIFY(integration.routeLegacySystemEdge(ControllerProvider::XInput, device,
+                                                  ControlId::Guide, true, 10).accepted);
+        QCOMPARE(integration.removeLegacy(ControllerProvider::XInput, device),
+                 QStringList{ControlId::Guide});
+
+        integration.observeLegacy(ControllerProvider::XInput, device,
+                                  QStringLiteral("045e:0b12"),
+                                  QStringLiteral("Xbox pad"),
+                                  ControllerCapability::StandardControls
+                                      | ControllerCapability::Guide);
+        const auto firstAfterReplacement = integration.routeLegacySystemEdge(
+            ControllerProvider::XInput, device, ControlId::Guide, true, 1000);
+        QVERIFY(firstAfterReplacement.accepted);
+        QVERIFY(!firstAfterReplacement.duplicate);
+    }
+
     void rawHidEdgeObservesCorrelatesAndRoutes()
     {
         ProviderIntegration integration;
@@ -240,6 +265,24 @@ private slots:
         const auto release = integration.routeRawHidEdge(QStringLiteral("3537:1004"),
                                                          control, false, 40);
         QVERIFY(release.accepted);
+    }
+
+    void rawHidRemovalResetsStateAndEvictsAttachment()
+    {
+        ProviderIntegration integration;
+        const QString identity = QStringLiteral("3537:1004");
+        const QString control = ControlId::rawHidUsage(identity, 0x09, 0x15);
+        QVERIFY(integration.routeRawHidEdge(identity, control, true, 10).accepted);
+
+        QCOMPARE(integration.removeRawHid(identity), QStringList{control});
+        QVERIFY(integration.registry()
+                    .logicalIdFor(ControllerProvider::RawHid, identity).isEmpty());
+
+        // Re-observation starts a clean generation: the first press is not a
+        // duplicate of the held edge from before unplug.
+        const auto replug = integration.routeRawHidEdge(identity, control, true, 1000);
+        QVERIFY(replug.accepted);
+        QVERIFY(!replug.duplicate);
     }
 
     void weakIdentityUpgradesToDeterministicStrongId()
