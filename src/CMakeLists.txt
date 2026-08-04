@@ -24,6 +24,12 @@ qt_add_executable(GameHQ
     core/UpdateMaintenance.cpp core/UpdateMaintenance.h
     core/UpdaterHandshake.cpp core/UpdaterHandshake.h
     diagnostics/Logger.cpp diagnostics/Logger.h
+    gameinput/GameInputEvent.h
+    gameinput/IGameInputApi.h
+    gameinput/GameInputEventQueue.cpp gameinput/GameInputEventQueue.h
+    gameinput/GameInputQtDispatcher.cpp gameinput/GameInputQtDispatcher.h
+    gameinput/GameInputWrapper.cpp gameinput/GameInputWrapper.h
+    gameinput/ProductionGameInputApi.cpp gameinput/ProductionGameInputApi.h
     games/GameDetector.cpp games/GameDetector.h
     input/HotkeyManager.cpp input/HotkeyManager.h
     input/Gamepad.h
@@ -207,10 +213,12 @@ qt_add_resources(GameHQ "release_notes"
 target_include_directories(GameHQ PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_BINARY_DIR}/generated
+    ${CMAKE_SOURCE_DIR}/third_party/gameinput/include
 )
 
 target_compile_definitions(GameHQ PRIVATE
     GAMEHQ_VERSION="${GAMEHQ_VERSION_FULL}"
+    UNICODE _UNICODE
 )
 
 target_link_libraries(GameHQ PRIVATE

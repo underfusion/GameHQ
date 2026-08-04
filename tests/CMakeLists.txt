@@ -85,6 +85,18 @@ gamehq_add_test(tst_inputratemonitor
     tst_inputratemonitor.cpp
     "${CMAKE_SOURCE_DIR}/src/input/InputRateMonitor.cpp")
 
+# GameInput callback lifetime, bounded queue and Qt-thread handoff. Production
+# loading is compilation-covered by GameHQ; this target drives the same wrapper
+# through the deterministic fake API and never touches machine hardware.
+gamehq_add_test(tst_gameinputwrapper
+    tst_gameinputwrapper.cpp
+    "${CMAKE_SOURCE_DIR}/src/gameinput/FakeGameInputApi.cpp"
+    "${CMAKE_SOURCE_DIR}/src/gameinput/GameInputEventQueue.cpp"
+    "${CMAKE_SOURCE_DIR}/src/gameinput/GameInputQtDispatcher.cpp"
+    "${CMAKE_SOURCE_DIR}/src/gameinput/GameInputQtDispatcher.h"
+    "${CMAKE_SOURCE_DIR}/src/gameinput/GameInputWrapper.cpp"
+    "${CMAKE_SOURCE_DIR}/src/gameinput/GameInputWrapper.h")
+
 # Pure logic: bounded rings, probe window, privacy redaction, export layout.
 gamehq_add_test(tst_inputdiagnostics
     tst_inputdiagnostics.cpp

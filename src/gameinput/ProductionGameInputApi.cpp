@@ -1,0 +1,326 @@
+#include "gameinput/ProductionGameInputApi.h"
+
+#include "GameInput.h"
+
+#include <QCoreApplication>
+#include <QFileInfo>
+#include <QMutex>
+#include <QMutexLocker>
+
+#include <atomic>
+#include <memory>
+#include <unordered_map>
+#include <windows.h>
+
+namespace ModernInput {
+namespace GI = GameInput::v3;
+
+namespace {
+
+QString bytesId(const void* value, size_t size)
+{
+    return QString::fromLatin1(QByteArray(static_cast<const char*>(value),
+                                         qsizetype(size)).toHex());
+}
+
+GameInputDeviceDescriptor describeDevice(GI::IGameInputDevice* device)
+{
+    GameInputDeviceDescriptor result;
+    if (!device)
+        return result;
+
+    const GI::GameInputDeviceInfo* info = nullptr;
+    if (FAILED(device->GetDeviceInfo(&info)) || !info)
+        return result;
+
+    result.deviceId = bytesId(&info->deviceId, sizeof(info->deviceId));
+    result.rootId = bytesId(&info->deviceRootId, sizeof(info->deviceRootId));
+    result.containerId = bytesId(&info->containerId, sizeof(info->containerId));
+    result.displayName = info->displayName ? QString::fromUtf8(info->displayName) : QString();
+    result.vendorId = info->vendorId;
+    result.productId = info->productId;
+    result.supportedInput = quint32(info->supportedInput);
+    result.supportedSystemButtons = quint32(info->supportedSystemButtons);
+    if (info->controllerInfo) {
+        result.extraButtonCount = info->controllerInfo->controllerButtonCount;
+        result.buttonLabels.reserve(int(info->controllerInfo->controllerButtonCount));
+        for (quint32 i = 0; i < info->controllerInfo->controllerButtonCount; ++i)
+            result.buttonLabels.push_back(QString::number(
+                int(info->controllerInfo->controllerButtonLabels[i])));
+    }
+    return result;
+}
+
+} // namespace
+
+class ProductionGameInputApi::Impl
+{
+public:
+    enum class CallbackKind { Device, Reading, System };
+
+    struct CallbackContext
+    {
+        std::atomic_bool active{true};
+        EventSink sink;
+        CallbackKind kind = CallbackKind::Reading;
+    };
+
+    using InitializeFn = HRESULT (WINAPI*)(REFIID, void**);
+
+    explicit Impl(QString overridePath) : runtimeOverride(std::move(overridePath)) {}
+
+    ~Impl() { unload(); }
+
+    bool initialize(QString& error)
+    {
+        if (input)
+            return true;
+
+        const QString appLocal = QCoreApplication::applicationDirPath()
+            + QStringLiteral("/GameInputRedist.dll");
+        QString chosen;
+        if (!runtimeOverride.isEmpty())
+            chosen = QFileInfo(runtimeOverride).absoluteFilePath();
+        else if (QFileInfo::exists(appLocal))
+            chosen = appLocal;
+
+        if (!chosen.isEmpty()) {
+            module = LoadLibraryExW(reinterpret_cast<LPCWSTR>(chosen.utf16()), nullptr,
+                                    LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR
+                                        | LOAD_LIBRARY_SEARCH_SYSTEM32);
+            loadedPath = chosen;
+        } else {
+            module = LoadLibraryExW(L"GameInputRedist.dll", nullptr,
+                                    LOAD_LIBRARY_SEARCH_SYSTEM32);
+            loadedPath = QStringLiteral("system GameInputRedist.dll");
+        }
+        if (!module) {
+            error = QStringLiteral("GameInput runtime unavailable (Win32 %1).")
+                        .arg(GetLastError());
+            return false;
+        }
+
+        auto initialize = reinterpret_cast<InitializeFn>(
+            GetProcAddress(module, "GameInputInitialize"));
+        if (!initialize) {
+            error = QStringLiteral("GameInput runtime has no GameInputInitialize export.");
+            unload();
+            return false;
+        }
+
+        const HRESULT hr = initialize(GI::IID_IGameInput,
+                                      reinterpret_cast<void**>(&input));
+        if (FAILED(hr) || !input) {
+            error = QStringLiteral("GameInput v3 initialization failed (0x%1).")
+                        .arg(quint32(hr), 8, 16, QLatin1Char('0'));
+            unload();
+            return false;
+        }
+        return true;
+    }
+
+    CallbackToken registerCallback(CallbackKind kind, EventSink sink)
+    {
+        if (!input || !sink)
+            return 0;
+        auto context = std::make_unique<CallbackContext>();
+        context->sink = std::move(sink);
+        context->kind = kind;
+        GI::GameInputCallbackToken token = 0;
+        HRESULT hr = E_FAIL;
+        if (kind == CallbackKind::Device) {
+            const auto kinds = GI::GameInputKind(GI::GameInputKindController
+                | GI::GameInputKindGamepad | GI::GameInputKindArcadeStick
+                | GI::GameInputKindFlightStick | GI::GameInputKindRacingWheel);
+            hr = input->RegisterDeviceCallback(nullptr, kinds,
+                GI::GameInputDeviceAnyStatus, GI::GameInputBlockingEnumeration,
+                context.get(), &Impl::deviceCallback, &token);
+        } else if (kind == CallbackKind::Reading) {
+            const auto kinds = GI::GameInputKind(GI::GameInputKindController
+                | GI::GameInputKindGamepad | GI::GameInputKindArcadeStick
+                | GI::GameInputKindFlightStick | GI::GameInputKindRacingWheel);
+            hr = input->RegisterReadingCallback(nullptr, kinds, context.get(),
+                                                &Impl::readingCallback, &token);
+        } else {
+            const auto buttons = GI::GameInputSystemButtons(
+                GI::GameInputSystemButtonGuide | GI::GameInputSystemButtonShare);
+            hr = input->RegisterSystemButtonCallback(nullptr, buttons, context.get(),
+                                                      &Impl::systemButtonCallback,
+                                                      &token);
+        }
+        if (FAILED(hr) || token == 0)
+            return 0;
+
+        QMutexLocker lock(&mutex);
+        callbacks.emplace(quint64(token), std::move(context));
+        return quint64(token);
+    }
+
+    void stopCallback(CallbackToken token)
+    {
+        if (!input || token == 0)
+            return;
+        {
+            QMutexLocker lock(&mutex);
+            if (auto it = callbacks.find(token); it != callbacks.end())
+                it->second->active.store(false, std::memory_order_release);
+        }
+        input->StopCallback(GI::GameInputCallbackToken(token));
+    }
+
+    bool unregisterCallback(CallbackToken token)
+    {
+        if (!input || token == 0)
+            return false;
+        const bool result = input->UnregisterCallback(GI::GameInputCallbackToken(token));
+        QMutexLocker lock(&mutex);
+        callbacks.erase(token);
+        return result;
+    }
+
+    void releaseDevices()
+    {
+        // Device pointers are callback-local and released before returning;
+        // this explicit phase remains in the lifecycle for future retained
+        // device handles and is asserted by the fake implementation.
+    }
+
+    void unload()
+    {
+        QVector<CallbackToken> tokens;
+        {
+            QMutexLocker lock(&mutex);
+            tokens.reserve(callbacks.size());
+            for (const auto &[token, context] : callbacks) {
+                Q_UNUSED(context)
+                tokens.push_back(token);
+            }
+        }
+        for (CallbackToken token : tokens) {
+            stopCallback(token);
+            unregisterCallback(token);
+        }
+        releaseDevices();
+        if (input) {
+            input->Release();
+            input = nullptr;
+        }
+        if (module) {
+            FreeLibrary(module);
+            module = nullptr;
+        }
+        loadedPath.clear();
+    }
+
+    static void CALLBACK deviceCallback(GI::GameInputCallbackToken, void* opaque,
+        GI::IGameInputDevice* device, quint64 timestamp,
+        GI::GameInputDeviceStatus currentStatus, GI::GameInputDeviceStatus previousStatus)
+    {
+        auto* context = static_cast<CallbackContext*>(opaque);
+        if (!context || !context->active.load(std::memory_order_acquire))
+            return;
+        GameInputEvent event;
+        event.timestamp = timestamp;
+        event.device = describeDevice(device);
+        event.deviceId = event.device.deviceId;
+        const bool connected = (currentStatus & GI::GameInputDeviceConnected) != 0;
+        const bool wasConnected = (previousStatus & GI::GameInputDeviceConnected) != 0;
+        if (connected != wasConnected)
+            event.kind = connected ? GameInputEventKind::DeviceAdded
+                                   : GameInputEventKind::DeviceRemoved;
+        else
+            event.kind = GameInputEventKind::CapabilityChanged;
+        context->sink(std::move(event));
+    }
+
+    static void CALLBACK readingCallback(GI::GameInputCallbackToken, void* opaque,
+                                         GI::IGameInputReading* reading)
+    {
+        auto* context = static_cast<CallbackContext*>(opaque);
+        if (!context || !reading
+            || !context->active.load(std::memory_order_acquire))
+            return;
+
+        GameInputEvent event;
+        event.kind = GameInputEventKind::Reading;
+        event.timestamp = reading->GetTimestamp();
+        GI::IGameInputDevice* device = nullptr;
+        reading->GetDevice(&device);
+        event.device = describeDevice(device);
+        event.deviceId = event.device.deviceId;
+        if (device)
+            device->Release();
+
+        GI::GameInputGamepadState gamepad{};
+        if (reading->GetGamepadState(&gamepad))
+            event.standardButtons = quint32(gamepad.buttons);
+
+        const quint32 count = reading->GetControllerButtonCount();
+        if (count > 0) {
+            std::unique_ptr<bool[]> states(new bool[count]);
+            const quint32 written = reading->GetControllerButtonState(count, states.get());
+            event.buttonStates.reserve(int(written));
+            for (quint32 i = 0; i < written; ++i)
+                event.buttonStates.push_back(states[i] ? 1 : 0);
+        }
+        context->sink(std::move(event));
+    }
+
+    static void CALLBACK systemButtonCallback(GI::GameInputCallbackToken, void* opaque,
+        GI::IGameInputDevice* device, quint64 timestamp,
+        GI::GameInputSystemButtons currentButtons,
+        GI::GameInputSystemButtons previousButtons)
+    {
+        auto* context = static_cast<CallbackContext*>(opaque);
+        if (!context || !context->active.load(std::memory_order_acquire))
+            return;
+        const auto changed = GI::GameInputSystemButtons(currentButtons ^ previousButtons);
+        const GameInputDeviceDescriptor descriptor = describeDevice(device);
+        const auto publish = [&](GI::GameInputSystemButtons button, const QString& controlId) {
+            if ((changed & button) == 0)
+                return;
+            GameInputEvent event;
+            event.kind = (currentButtons & button)
+                ? GameInputEventKind::SystemButtonPressed
+                : GameInputEventKind::SystemButtonReleased;
+            event.timestamp = timestamp;
+            event.device = descriptor;
+            event.deviceId = descriptor.deviceId;
+            event.controlId = controlId;
+            context->sink(std::move(event));
+        };
+        publish(GI::GameInputSystemButtonGuide, QStringLiteral("gamepad.guide"));
+        publish(GI::GameInputSystemButtonShare, QStringLiteral("gamepad.capture"));
+    }
+
+    QString runtimeOverride;
+    QString loadedPath;
+    HMODULE module = nullptr;
+    GI::IGameInput* input = nullptr;
+    QMutex mutex;
+    std::unordered_map<CallbackToken, std::unique_ptr<CallbackContext>> callbacks;
+};
+
+ProductionGameInputApi::ProductionGameInputApi(QString runtimeOverride)
+    : m_impl(std::make_unique<Impl>(std::move(runtimeOverride)))
+{
+}
+
+ProductionGameInputApi::~ProductionGameInputApi() = default;
+
+bool ProductionGameInputApi::initialize(QString& error) { return m_impl->initialize(error); }
+IGameInputApi::CallbackToken ProductionGameInputApi::registerDeviceCallback(EventSink sink)
+{ return m_impl->registerCallback(Impl::CallbackKind::Device, std::move(sink)); }
+IGameInputApi::CallbackToken ProductionGameInputApi::registerReadingCallback(EventSink sink)
+{ return m_impl->registerCallback(Impl::CallbackKind::Reading, std::move(sink)); }
+IGameInputApi::CallbackToken ProductionGameInputApi::registerSystemButtonCallback(EventSink sink)
+{ return m_impl->registerCallback(Impl::CallbackKind::System, std::move(sink)); }
+void ProductionGameInputApi::stopCallback(CallbackToken token) { m_impl->stopCallback(token); }
+bool ProductionGameInputApi::unregisterCallback(CallbackToken token)
+{ return m_impl->unregisterCallback(token); }
+void ProductionGameInputApi::releaseDevices() { m_impl->releaseDevices(); }
+void ProductionGameInputApi::unload() { m_impl->unload(); }
+bool ProductionGameInputApi::loaded() const { return m_impl->input != nullptr; }
+QString ProductionGameInputApi::runtimeDescription() const { return m_impl->loadedPath; }
+
+} // namespace ModernInput
