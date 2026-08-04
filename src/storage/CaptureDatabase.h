@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QSqlDatabase>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 // SQLite metadata store (gamehq.db). Schema versioned via PRAGMA user_version;
@@ -63,6 +64,14 @@ struct BindingOverrideRow
     int tapCount = 1;       // taps a "tap" activation needs, 1-3
 };
 
+struct ControllerLayoutRow
+{
+    QString logicalId;
+    QString layoutSignature;
+    QStringList buttonLabels;
+    bool needsReconfirmation = false;
+};
+
 class CaptureDatabase : public QObject
 {
     Q_OBJECT
@@ -72,7 +81,7 @@ public:
 
     // Highest schema this build understands. A database stamped higher was
     // written by a newer GameHQ and must never be modified by this one.
-    static constexpr int kCurrentSchemaVersion = 5;
+    static constexpr int kCurrentSchemaVersion = 6;
 
     bool open();      // opens + runs pending migrations
     int schemaVersion() const;
@@ -116,6 +125,9 @@ public:
     bool clearBindingOverridesForGroup(const QString& deviceGroup);
     bool clearBindingOverridesForProfile(const QString& deviceGroup, const QString& deviceProfile);
     bool clearAllBindingOverrides();
+    ControllerLayoutRow controllerLayout(const QString& logicalId) const;
+    bool upsertControllerLayout(const ControllerLayoutRow& row);
+    bool confirmControllerLayout(const QString& logicalId);
 
     // Watched folders.
     QStringList watchedFolders() const;
@@ -129,6 +141,7 @@ private:
     bool applyV3();
     bool applyV4();
     bool applyV5();
+    bool applyV6();
     bool ensureGameMetadataColumns();
     bool repairsV1Done() const;
     bool markRepairsV1Done();

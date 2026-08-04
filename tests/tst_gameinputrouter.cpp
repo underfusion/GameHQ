@@ -79,6 +79,34 @@ private slots:
         QVERIFY(!router.active());
         QVERIFY(raw->callLog().contains(QStringLiteral("unload")));
     }
+
+    void extraButtonAbove32RoutesWithAStableDeviceLocalId()
+    {
+        auto api = std::make_unique<FakeGameInputApi>();
+        auto* raw = api.get();
+        GameInputRouter router(std::move(api));
+        QSignalSpy pressed(&router, &GameInputRouter::systemControlPressed);
+        QSignalSpy released(&router, &GameInputRouter::systemControlReleased);
+        QVERIFY(router.start());
+
+        auto reading = makeEvent(GameInputEventKind::Reading);
+        reading.buttonStates.fill(0, 40);
+        reading.device.extraButtonCount = 40;
+        raw->emitReading(reading);
+        QTRY_COMPARE(router.shadowReadingCount(), 1);
+        reading.buttonStates[39] = 1;
+        raw->emitReading(reading);
+        QTRY_COMPARE(pressed.size(), 1);
+        const QString control = pressed.at(0).at(0).toString();
+        QVERIFY(ControlId::isDeviceButton(control));
+        QCOMPARE(ControlId::label(control, ControlId::ControllerFamily::Generic),
+                 QStringLiteral("Extra Button 40"));
+
+        reading.buttonStates[39] = 0;
+        raw->emitReading(reading);
+        QTRY_COMPARE(released.size(), 1);
+        QCOMPARE(released.at(0).at(0).toString(), control);
+    }
 };
 
 QTEST_MAIN(GameInputRouterTest)

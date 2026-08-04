@@ -29,9 +29,11 @@ inline const QString ViewBack       = QStringLiteral("gamepad.view_back"); // XI
 
 // Unknown WinMM buttons stay bindable without a known position: "gamepad.button.3".
 QString genericButton(int index);
+QString deviceButton(const QString& logicalId, const QString& layoutSignature, int index);
 
 // True for any gamepad.button.N code produced by genericButton().
 bool isGenericButton(const QString& code);
+bool isDeviceButton(const QString& code);
 
 // True for a code this build can actually deliver from a controller backend:
 // one of the named positions above, or a well-formed generic button. Keyboard

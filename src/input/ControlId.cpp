@@ -1,5 +1,7 @@
 #include "input/ControlId.h"
 
+#include <QStringList>
+
 namespace ControlId {
 
 QString genericButton(int index)
@@ -7,13 +9,34 @@ QString genericButton(int index)
     return QStringLiteral("gamepad.button.%1").arg(index);
 }
 
+QString deviceButton(const QString& logicalId, const QString& layoutSignature, int index)
+{
+    return QStringLiteral("gamepad.device.%1.layout.%2.button.%3")
+        .arg(logicalId, layoutSignature).arg(index);
+}
+
 bool isGenericButton(const QString& code)
 {
     return code.startsWith(QStringLiteral("gamepad.button."));
 }
 
+bool isDeviceButton(const QString& code)
+{
+    const QStringList parts = code.split(QLatin1Char('.'));
+    if (parts.size() != 7 || parts.at(0) != QLatin1String("gamepad")
+        || parts.at(1) != QLatin1String("device") || parts.at(2).isEmpty()
+        || parts.at(3) != QLatin1String("layout") || parts.at(4).isEmpty()
+        || parts.at(5) != QLatin1String("button"))
+        return false;
+    bool numeric = false;
+    const int index = parts.at(6).toInt(&numeric);
+    return numeric && index >= 0;
+}
+
 bool isCanonical(const QString& code)
 {
+    if (isDeviceButton(code))
+        return true;
     if (isGenericButton(code)) {
         bool numeric = false;
         const int index = code.mid(QStringLiteral("gamepad.button.").size()).toInt(&numeric);
@@ -28,6 +51,12 @@ bool isCanonical(const QString& code)
 
 QString label(const QString& code, ControllerFamily family)
 {
+    if (isDeviceButton(code)) {
+        bool numeric = false;
+        const int index = code.section(QLatin1Char('.'), -1).toInt(&numeric);
+        return numeric ? QStringLiteral("Extra Button %1").arg(index + 1)
+                       : QStringLiteral("Extra Button");
+    }
     if (isGenericButton(code))
         return QStringLiteral("Button %1").arg(code.section(QLatin1Char('.'), -1));
 

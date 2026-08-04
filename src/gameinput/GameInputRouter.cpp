@@ -4,13 +4,16 @@
 #include "gameinput/IGameInputApi.h"
 #include "input/ControlId.h"
 #include "input/InputDiagnostics.h"
+#include "input/ExtraButtonCatalog.h"
 
 namespace ModernInput {
 
 GameInputRouter::GameInputRouter(std::unique_ptr<IGameInputApi> api, SupportMode mode,
+                                 CaptureDatabase* database,
                                  QObject* parent)
     : QObject(parent)
     , m_wrapper(std::make_unique<GameInputWrapper>(std::move(api)))
+    , m_extraButtons(std::make_unique<ExtraButtonCatalog>(database))
     , m_mode(mode)
 {
     connect(m_wrapper.get(), &GameInputWrapper::eventsReady,
@@ -126,6 +129,39 @@ void GameInputRouter::handleBatch(const GameInputEventBatch& batch)
         case GameInputEventKind::Reading:
             // Stage A: standard readings are diagnostic shadow traffic only.
             ++m_shadowReadingCount;
+            if (!event.buttonStates.isEmpty()) {
+                const auto layout = m_extraButtons->observe(
+                    logicalId, event.buttonStates.size(), event.device.buttonLabels);
+                const auto previous = m_deviceExtraStates.value(event.deviceId);
+                const auto oldControls = m_deviceExtraControls.value(event.deviceId);
+                if (layout.changed) {
+                    const auto held = m_heldSystemControls.value(event.deviceId);
+                    for (const QString& control : oldControls) {
+                        if (held.contains(control))
+                            emit systemControlReleased(control, logicalId,
+                                                       m_deviceNames.value(event.deviceId));
+                        m_heldSystemControls[event.deviceId].remove(control);
+                    }
+                }
+                for (int index = 0; index < event.buttonStates.size(); ++index) {
+                    const bool wasPressed = index < previous.size() && previous.at(index) != 0;
+                    const bool isPressed = event.buttonStates.at(index) != 0;
+                    if (wasPressed == isPressed)
+                        continue;
+                    const QString control = layout.controlIds.at(index);
+                    if (isPressed) {
+                        m_heldSystemControls[event.deviceId].insert(control);
+                        emit systemControlPressed(control, logicalId,
+                                                  m_deviceNames.value(event.deviceId));
+                    } else {
+                        m_heldSystemControls[event.deviceId].remove(control);
+                        emit systemControlReleased(control, logicalId,
+                                                   m_deviceNames.value(event.deviceId));
+                    }
+                }
+                m_deviceExtraStates.insert(event.deviceId, event.buttonStates);
+                m_deviceExtraControls.insert(event.deviceId, layout.controlIds);
+            }
             break;
         case GameInputEventKind::SystemButtonPressed:
             if (event.controlId != ControlId::Capture && event.controlId != ControlId::Guide)

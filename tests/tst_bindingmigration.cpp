@@ -12,6 +12,7 @@
 // the v3 column list ever drifts from what this test assumes.
 
 #include "input/BindingResolver.h"
+#include "input/ExtraButtonCatalog.h"
 #include "storage/CaptureDatabase.h"
 
 #include <QSqlDatabase>
@@ -162,7 +163,7 @@ private slots:
 
         CaptureDatabase database(m_path);
         QVERIFY(database.open());
-        QCOMPARE(database.schemaVersion(), 5);
+        QCOMPARE(database.schemaVersion(), 6);
 
         const auto rows = database.listBindingOverrides();
         QCOMPARE(rows.size(), 7);
@@ -257,7 +258,7 @@ private slots:
 
         CaptureDatabase migrated(m_path);
         QVERIFY(migrated.open());
-        QCOMPARE(migrated.schemaVersion(), 5);
+        QCOMPARE(migrated.schemaVersion(), 6);
         const auto rows = migrated.listBindingOverrides();
         QCOMPARE(find(rows, QStringLiteral("legacy.simple"), 1).triggerCode,
                  QStringLiteral("gamepad.view_back"));
@@ -267,6 +268,37 @@ private slots:
                  QStringLiteral("gamepad.capture"));
         QCOMPARE(find(rows, QStringLiteral("model.keep"), 1).triggerCode,
                  QStringLiteral("gamepad.capture"));
+    }
+
+    void extraButtonLayoutChangesRequireReconfirmation()
+    {
+        CaptureDatabase database(m_path);
+        QVERIFY(database.open());
+        ModernInput::ExtraButtonCatalog catalog(&database);
+
+        const auto first = catalog.observe(QStringLiteral("controller-a"), 3,
+                                           {QStringLiteral("P1"), QStringLiteral("P2"),
+                                            QStringLiteral("P3")});
+        QVERIFY(!first.changed);
+        QVERIFY(!first.needsReconfirmation);
+        QCOMPARE(first.controlIds.size(), 3);
+        QVERIFY(ControlId::isCanonical(first.controlIds.at(2)));
+
+        const auto same = catalog.observe(QStringLiteral("controller-a"), 3,
+                                          {QStringLiteral("P1"), QStringLiteral("P2"),
+                                           QStringLiteral("P3")});
+        QCOMPARE(same.signature, first.signature);
+        QVERIFY(!same.changed);
+
+        const auto changed = catalog.observe(QStringLiteral("controller-a"), 3,
+                                             {QStringLiteral("P2"), QStringLiteral("P1"),
+                                              QStringLiteral("P3")});
+        QVERIFY(changed.changed);
+        QVERIFY(changed.needsReconfirmation);
+        QVERIFY(changed.controlIds.at(0) != first.controlIds.at(0));
+        QVERIFY(database.controllerLayout(QStringLiteral("controller-a")).needsReconfirmation);
+        QVERIFY(catalog.confirm(QStringLiteral("controller-a")));
+        QVERIFY(!database.controllerLayout(QStringLiteral("controller-a")).needsReconfirmation);
     }
 
     void aNewerSchemaIsRefusedRatherThanMisread()
@@ -281,7 +313,7 @@ private slots:
                                                          QStringLiteral("fixture"));
             raw.setDatabaseName(m_path);
             QVERIFY(raw.open());
-            QSqlQuery(QStringLiteral("PRAGMA user_version = 6"), raw);
+            QSqlQuery(QStringLiteral("PRAGMA user_version = 7"), raw);
             raw.close();
         }
         QSqlDatabase::removeDatabase(QStringLiteral("fixture"));

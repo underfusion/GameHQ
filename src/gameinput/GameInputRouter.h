@@ -9,10 +9,13 @@
 
 #include <memory>
 
+class CaptureDatabase;
+
 namespace ModernInput {
 
 class GameInputWrapper;
 class IGameInputApi;
+class ExtraButtonCatalog;
 
 class GameInputRouter final : public QObject
 {
@@ -22,6 +25,7 @@ public:
 
     explicit GameInputRouter(std::unique_ptr<IGameInputApi> api,
                              SupportMode mode = SupportMode::Auto,
+                             CaptureDatabase* database = nullptr,
                              QObject* parent = nullptr);
     ~GameInputRouter() override;
 
@@ -50,6 +54,7 @@ private:
     void failSession(const QString& reason);
 
     std::unique_ptr<GameInputWrapper> m_wrapper;
+    std::unique_ptr<ExtraButtonCatalog> m_extraButtons;
     PhysicalControllerRegistry m_registry;
     SupportMode m_mode = SupportMode::Auto;
     bool m_active = false;
@@ -59,6 +64,8 @@ private:
     QHash<QString, QSet<QString>> m_heldSystemControls;
     QHash<QString, QString> m_deviceLogicalIds;
     QHash<QString, QString> m_deviceNames;
+    QHash<QString, QVector<quint8>> m_deviceExtraStates;
+    QHash<QString, QStringList> m_deviceExtraControls;
 };
 
 } // namespace ModernInput

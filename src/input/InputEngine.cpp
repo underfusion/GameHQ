@@ -145,7 +145,8 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
     m_gameInput = std::make_unique<ModernInput::GameInputRouter>(
         std::make_unique<ModernInput::ProductionGameInputApi>(),
         modernOff ? ModernInput::GameInputRouter::SupportMode::Off
-                  : ModernInput::GameInputRouter::SupportMode::Auto);
+                  : ModernInput::GameInputRouter::SupportMode::Auto,
+        m_db);
     connect(m_gameInput.get(), &ModernInput::GameInputRouter::systemControlPressed,
             this, [this](const QString& control, const QString& logicalId,
                          const QString& displayName) {

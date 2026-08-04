@@ -9,6 +9,8 @@
 #include <QDateTime>
 #include <QFileInfo>
 #include <QHash>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QStringList>
@@ -64,6 +66,8 @@ bool CaptureDatabase::migrate()
     if (version < 4 && !applyV4())
         return false;
     if (version < 5 && !applyV5())
+        return false;
+    if (version < 6 && !applyV6())
         return false;
     if (!ensureGameMetadataColumns())
         return false;
@@ -545,6 +549,55 @@ bool CaptureDatabase::clearAllBindingOverrides()
     return q.exec(QStringLiteral("DELETE FROM binding_overrides"));
 }
 
+ControllerLayoutRow CaptureDatabase::controllerLayout(const QString& logicalId) const
+{
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral(
+        "SELECT logical_id, layout_signature, button_labels_json, needs_reconfirmation "
+        "FROM controller_layouts WHERE logical_id = :id"));
+    query.bindValue(QStringLiteral(":id"), logicalId);
+    if (!query.exec() || !query.next())
+        return {};
+    ControllerLayoutRow row;
+    row.logicalId = query.value(0).toString();
+    row.layoutSignature = query.value(1).toString();
+    const auto array = QJsonDocument::fromJson(query.value(2).toByteArray()).array();
+    for (const auto& value : array)
+        row.buttonLabels.push_back(value.toString());
+    row.needsReconfirmation = query.value(3).toBool();
+    return row;
+}
+
+bool CaptureDatabase::upsertControllerLayout(const ControllerLayoutRow& row)
+{
+    QJsonArray labels;
+    for (const QString& label : row.buttonLabels)
+        labels.push_back(label);
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral(
+        "INSERT INTO controller_layouts "
+        "(logical_id, layout_signature, button_labels_json, needs_reconfirmation) "
+        "VALUES (:id, :signature, :labels, :reconfirm) "
+        "ON CONFLICT(logical_id) DO UPDATE SET layout_signature=excluded.layout_signature, "
+        "button_labels_json=excluded.button_labels_json, "
+        "needs_reconfirmation=excluded.needs_reconfirmation"));
+    query.bindValue(QStringLiteral(":id"), row.logicalId);
+    query.bindValue(QStringLiteral(":signature"), row.layoutSignature);
+    query.bindValue(QStringLiteral(":labels"),
+                    QString::fromUtf8(QJsonDocument(labels).toJson(QJsonDocument::Compact)));
+    query.bindValue(QStringLiteral(":reconfirm"), row.needsReconfirmation ? 1 : 0);
+    return query.exec();
+}
+
+bool CaptureDatabase::confirmControllerLayout(const QString& logicalId)
+{
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral(
+        "UPDATE controller_layouts SET needs_reconfirmation = 0 WHERE logical_id = :id"));
+    query.bindValue(QStringLiteral(":id"), logicalId);
+    return query.exec();
+}
+
 QStringList CaptureDatabase::watchedFolders() const
 {
     QStringList out;
@@ -956,5 +1009,23 @@ bool CaptureDatabase::applyV5()
         return false;
     }
     QSqlQuery(QStringLiteral("PRAGMA user_version = 5"), m_db);
+    return m_db.commit();
+}
+
+bool CaptureDatabase::applyV6()
+{
+    if (!m_db.transaction())
+        return false;
+    QSqlQuery create(m_db);
+    if (!create.exec(QStringLiteral(R"(CREATE TABLE IF NOT EXISTS controller_layouts (
+            logical_id             TEXT PRIMARY KEY,
+            layout_signature       TEXT NOT NULL,
+            button_labels_json     TEXT NOT NULL DEFAULT '[]',
+            needs_reconfirmation   INTEGER NOT NULL DEFAULT 0 CHECK(needs_reconfirmation IN (0,1))))"))) {
+        qCritical() << "DB: migration v6 failed:" << create.lastError().text();
+        m_db.rollback();
+        return false;
+    }
+    QSqlQuery(QStringLiteral("PRAGMA user_version = 6"), m_db);
     return m_db.commit();
 }
