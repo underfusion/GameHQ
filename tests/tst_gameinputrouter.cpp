@@ -108,6 +108,25 @@ private slots:
         QCOMPARE(released.at(0).at(0).toString(), control);
     }
 
+    void acceptedStageCStandardReadingPublishesOneLogicalEdge()
+    {
+        auto api = std::make_unique<FakeGameInputApi>();
+        auto* raw = api.get();
+        GameInputRouter router(std::move(api));
+        QSignalSpy pressed(&router, &GameInputRouter::systemControlPressed);
+        QSignalSpy released(&router, &GameInputRouter::systemControlReleased);
+        QVERIFY(router.start());
+        auto reading = makeEvent(GameInputEventKind::Reading);
+        reading.standardButtons = 0x00000004u; // GameInputGamepadA
+        raw->emitReading(reading);
+        QTRY_COMPARE(pressed.size(), 1);
+        QCOMPARE(pressed.at(0).at(0).toString(), ControlId::FaceSouth);
+        reading.standardButtons = 0;
+        raw->emitReading(reading);
+        QTRY_COMPARE(released.size(), 1);
+        QCOMPARE(released.at(0).at(0).toString(), ControlId::FaceSouth);
+    }
+
     void disconnectReleasesHeldStateAndStrongReconnectRestoresIdentity()
     {
         auto api = std::make_unique<FakeGameInputApi>();

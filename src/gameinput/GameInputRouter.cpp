@@ -5,6 +5,7 @@
 #include "input/ControlId.h"
 #include "input/InputDiagnostics.h"
 #include "input/ExtraButtonCatalog.h"
+#include "input/CapabilityEventRouter.h"
 
 namespace ModernInput {
 
@@ -16,6 +17,7 @@ GameInputRouter::GameInputRouter(std::unique_ptr<IGameInputApi> api, SupportMode
     , m_extraButtons(std::make_unique<ExtraButtonCatalog>(database))
     , m_mode(mode)
 {
+    m_capabilityRouter = std::make_unique<CapabilityEventRouter>(&m_registry);
     connect(m_wrapper.get(), &GameInputWrapper::eventsReady,
             this, &GameInputRouter::handleBatch);
 }
@@ -134,6 +136,12 @@ void GameInputRouter::handleBatch(const GameInputEventBatch& batch)
                 emit systemControlReleased(control, logicalId, m_deviceNames.value(event.deviceId));
             m_deviceExtraStates.remove(event.deviceId);
             m_deviceExtraControls.remove(event.deviceId);
+            m_deviceStandardButtons.remove(event.deviceId);
+            for (const QString& control : m_capabilityRouter->disconnect(logicalId)) {
+                if (!held.contains(control))
+                    emit systemControlReleased(control, logicalId,
+                                               m_deviceNames.value(event.deviceId));
+            }
             if (event.kind == GameInputEventKind::DeviceRemoved) {
                 m_registry.removeProvider(ControllerProvider::GameInput, event.deviceId);
                 emit deviceDisconnected(logicalId);
@@ -145,8 +153,31 @@ void GameInputRouter::handleBatch(const GameInputEventBatch& batch)
             break;
         }
         case GameInputEventKind::Reading:
-            // Stage A: standard readings are diagnostic shadow traffic only.
+            // Stage A diagnostics remain counted; after the t25 acceptance
+            // gate, Stage C also publishes preferred standard-control edges.
             ++m_shadowReadingCount;
+            {
+                struct StandardMapping { quint32 mask; const QString* control; };
+                const StandardMapping mappings[] = {
+                    {0x00000001u, &ControlId::Menu}, {0x00000002u, &ControlId::ViewBack},
+                    {0x00000004u, &ControlId::FaceSouth}, {0x00000008u, &ControlId::FaceEast},
+                    {0x00000010u, &ControlId::FaceWest}, {0x00000020u, &ControlId::FaceNorth},
+                    {0x00000040u, &ControlId::DpadUp}, {0x00000080u, &ControlId::DpadDown},
+                    {0x00000100u, &ControlId::DpadLeft}, {0x00000200u, &ControlId::DpadRight},
+                    {0x00000400u, &ControlId::ShoulderLeft}, {0x00000800u, &ControlId::ShoulderRight},
+                    {0x00010000u, &ControlId::TriggerLeft}, {0x00020000u, &ControlId::TriggerRight},
+                };
+                const quint32 previousButtons = m_deviceStandardButtons.value(event.deviceId);
+                const quint32 changed = previousButtons ^ event.standardButtons;
+                for (const auto& mapping : mappings) {
+                    if ((changed & mapping.mask) == 0)
+                        continue;
+                    publishEdge(event.deviceId, logicalId, *mapping.control,
+                                (event.standardButtons & mapping.mask) != 0,
+                                ControllerCapability::StandardControls, event.timestamp);
+                }
+                m_deviceStandardButtons.insert(event.deviceId, event.standardButtons);
+            }
             if (!event.buttonStates.isEmpty()) {
                 const auto layout = m_extraButtons->observe(
                     logicalId, event.buttonStates.size(), event.device.buttonLabels);
@@ -169,12 +200,12 @@ void GameInputRouter::handleBatch(const GameInputEventBatch& batch)
                     const QString control = layout.controlIds.at(index);
                     if (isPressed) {
                         m_heldSystemControls[event.deviceId].insert(control);
-                        emit systemControlPressed(control, logicalId,
-                                                  m_deviceNames.value(event.deviceId));
+                        publishEdge(event.deviceId, logicalId, control, true,
+                                    ControllerCapability::ExtraControls, event.timestamp);
                     } else {
                         m_heldSystemControls[event.deviceId].remove(control);
-                        emit systemControlReleased(control, logicalId,
-                                                   m_deviceNames.value(event.deviceId));
+                        publishEdge(event.deviceId, logicalId, control, false,
+                                    ControllerCapability::ExtraControls, event.timestamp);
                     }
                 }
                 m_deviceExtraStates.insert(event.deviceId, event.buttonStates);
@@ -184,19 +215,42 @@ void GameInputRouter::handleBatch(const GameInputEventBatch& batch)
         case GameInputEventKind::SystemButtonPressed:
             if (event.controlId != ControlId::Capture && event.controlId != ControlId::Guide)
                 break;
-            m_heldSystemControls[event.deviceId].insert(event.controlId);
-            emit systemControlPressed(event.controlId, logicalId,
-                                      m_deviceNames.value(event.deviceId));
+            publishEdge(event.deviceId, logicalId, event.controlId, true,
+                        event.controlId == ControlId::Capture
+                            ? ControllerCapability::SystemShare : ControllerCapability::Guide,
+                        event.timestamp);
             break;
         case GameInputEventKind::SystemButtonReleased:
-            m_heldSystemControls[event.deviceId].remove(event.controlId);
-            emit systemControlReleased(event.controlId, logicalId,
-                                       m_deviceNames.value(event.deviceId));
+            publishEdge(event.deviceId, logicalId, event.controlId, false,
+                        event.controlId == ControlId::Capture
+                            ? ControllerCapability::SystemShare : ControllerCapability::Guide,
+                        event.timestamp);
             break;
         case GameInputEventKind::RecoveryRequired:
             failSession(QStringLiteral("GameInput state became uncertain"));
             return;
         }
+    }
+}
+
+void GameInputRouter::publishEdge(const QString& deviceId, const QString& logicalId,
+                                  const QString& controlId, bool pressed,
+                                  ControllerCapability capability, quint64 timestamp)
+{
+    const auto result = m_capabilityRouter->route(
+        {logicalId, ControllerProvider::GameInput, capability, controlId, pressed, timestamp});
+    for (const QString& release : result.safeReleases) {
+        m_heldSystemControls[deviceId].remove(release);
+        emit systemControlReleased(release, logicalId, m_deviceNames.value(deviceId));
+    }
+    if (!result.accepted)
+        return;
+    if (pressed) {
+        m_heldSystemControls[deviceId].insert(controlId);
+        emit systemControlPressed(controlId, logicalId, m_deviceNames.value(deviceId));
+    } else {
+        m_heldSystemControls[deviceId].remove(controlId);
+        emit systemControlReleased(controlId, logicalId, m_deviceNames.value(deviceId));
     }
 }
 

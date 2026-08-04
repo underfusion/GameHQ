@@ -108,6 +108,7 @@ gamehq_add_test(tst_gameinputrouter
     "${CMAKE_SOURCE_DIR}/src/gameinput/GameInputRouter.cpp"
     "${CMAKE_SOURCE_DIR}/src/gameinput/GameInputRouter.h"
     "${CMAKE_SOURCE_DIR}/src/input/PhysicalControllerRegistry.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/CapabilityEventRouter.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/ExtraButtonCatalog.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/InputDiagnostics.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp"
@@ -129,6 +130,12 @@ gamehq_add_test(tst_gamepadcontrols
 gamehq_add_test(tst_physicalcontrollerregistry
     tst_physicalcontrollerregistry.cpp
     "${CMAKE_SOURCE_DIR}/src/input/PhysicalControllerRegistry.cpp")
+
+gamehq_add_test(tst_capabilityeventrouter
+    tst_capabilityeventrouter.cpp
+    "${CMAKE_SOURCE_DIR}/src/input/CapabilityEventRouter.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/PhysicalControllerRegistry.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp")
 
 # Pure logic: bounded rings, probe window, privacy redaction, export layout.
 gamehq_add_test(tst_inputdiagnostics

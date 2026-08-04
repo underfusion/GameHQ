@@ -16,6 +16,7 @@ namespace ModernInput {
 class GameInputWrapper;
 class IGameInputApi;
 class ExtraButtonCatalog;
+class CapabilityEventRouter;
 
 class GameInputRouter final : public QObject
 {
@@ -55,10 +56,14 @@ private:
     QString observeDevice(const GameInputDeviceDescriptor& device);
     void releaseHeldControls();
     void failSession(const QString& reason);
+    void publishEdge(const QString& deviceId, const QString& logicalId,
+                     const QString& controlId, bool pressed,
+                     ControllerCapability capability, quint64 timestamp);
 
     std::unique_ptr<GameInputWrapper> m_wrapper;
     std::unique_ptr<ExtraButtonCatalog> m_extraButtons;
     PhysicalControllerRegistry m_registry;
+    std::unique_ptr<CapabilityEventRouter> m_capabilityRouter;
     SupportMode m_mode = SupportMode::Auto;
     bool m_active = false;
     bool m_failedForSession = false;
@@ -69,6 +74,7 @@ private:
     QHash<QString, QString> m_deviceNames;
     QHash<QString, QVector<quint8>> m_deviceExtraStates;
     QHash<QString, QStringList> m_deviceExtraControls;
+    QHash<QString, quint32> m_deviceStandardButtons;
     QSet<QString> m_seenLogicalIds;
 };
 
