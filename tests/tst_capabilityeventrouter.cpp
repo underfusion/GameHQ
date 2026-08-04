@@ -62,6 +62,67 @@ private slots:
                                ControlId::FaceSouth, true, 201}).accepted);
     }
 
+    void silentPreferredProviderDoesNotBlockWorkingFallback()
+    {
+        PhysicalControllerRegistry registry;
+        ProviderObservation modern{ControllerProvider::GameInput, QStringLiteral("gi")};
+        modern.containerId = QStringLiteral("silent-same");
+        modern.capabilities = ControllerCapability::StandardControls;
+        modern.controls.insert(ControlId::FaceSouth);
+        ProviderObservation legacy{ControllerProvider::XInput, QStringLiteral("xi")};
+        legacy.containerId = modern.containerId;
+        legacy.capabilities = ControllerCapability::StandardControls;
+        legacy.controls.insert(ControlId::FaceSouth);
+        const QString id = registry.observe(modern);
+        registry.observe(legacy);
+
+        CapabilityEventRouter router(&registry);
+        const auto fallbackPress = router.route(
+            {id, ControllerProvider::XInput, ControllerCapability::StandardControls,
+             ControlId::FaceSouth, true, 200});
+        QVERIFY(fallbackPress.accepted);
+
+        // A late preferred mirror transfers release ownership without a
+        // second action, even outside the short timestamp dedup window.
+        const auto modernMirror = router.route(
+            {id, ControllerProvider::GameInput, ControllerCapability::StandardControls,
+             ControlId::FaceSouth, true, 500});
+        QVERIFY(modernMirror.duplicate);
+        QVERIFY(!modernMirror.accepted);
+        QVERIFY(router.route(
+            {id, ControllerProvider::GameInput, ControllerCapability::StandardControls,
+             ControlId::FaceSouth, false, 550}).accepted);
+    }
+
+    void ownershipIsIndependentForEachExtraControl()
+    {
+        PhysicalControllerRegistry registry;
+        const QString gameExtra = QStringLiteral("controller.device_button:gi-layout:1");
+        const QString rawExtra = ControlId::rawHidUsage(
+            QStringLiteral("hid.endpoint.pad"), 0x09, 0x15);
+        ProviderObservation modern{ControllerProvider::GameInput, QStringLiteral("gi")};
+        modern.endpointId = QStringLiteral("hid.endpoint.pad");
+        modern.capabilities = ControllerCapability::ExtraControls;
+        modern.controls.insert(gameExtra);
+        ProviderObservation raw{ControllerProvider::RawHid, QStringLiteral("raw")};
+        raw.endpointId = modern.endpointId;
+        raw.capabilities = ControllerCapability::ExtraControls;
+        raw.controls.insert(rawExtra);
+        const QString id = registry.observe(modern);
+        QCOMPARE(registry.observe(raw), id);
+
+        CapabilityEventRouter router(&registry);
+        QVERIFY(router.route({id, ControllerProvider::RawHid,
+                              ControllerCapability::ExtraControls,
+                              rawExtra, true, 100}).accepted);
+        QVERIFY(router.route({id, ControllerProvider::GameInput,
+                              ControllerCapability::ExtraControls,
+                              gameExtra, true, 101}).accepted);
+        QVERIFY(router.route({id, ControllerProvider::RawHid,
+                              ControllerCapability::ExtraControls,
+                              rawExtra, false, 150}).accepted);
+    }
+
     void fullResetClearsDedupAndFirstReconnectPressRoutes()
     {
         PhysicalControllerRegistry registry;

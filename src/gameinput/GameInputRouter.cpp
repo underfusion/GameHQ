@@ -175,12 +175,18 @@ QString GameInputRouter::observeDevice(const GameInputDeviceDescriptor& device)
             .arg(device.productId, 4, 16, QLatin1Char('0'));
     }
     observation.capabilities = ControllerCapability::StandardControls;
+    for (const QString& control : StandardControlMap::controlsFor(0xFFFFFFFFu))
+        observation.controls.insert(control);
     // Each system button is granted individually: a Guide-only pad must not
     // be reported (or routed) as Share-capable, and vice versa.
     if (device.supportedSystemButtons & SystemControlMap::Share)
         observation.capabilities |= ControllerCapability::SystemShare;
+    if (device.supportedSystemButtons & SystemControlMap::Share)
+        observation.controls.insert(ControlId::Capture);
     if (device.supportedSystemButtons & SystemControlMap::Guide)
         observation.capabilities |= ControllerCapability::Guide;
+    if (device.supportedSystemButtons & SystemControlMap::Guide)
+        observation.controls.insert(ControlId::Guide);
     if (device.extraButtonCount > 0)
         observation.capabilities |= ControllerCapability::ExtraControls;
     QString rekeyedFrom;
@@ -343,6 +349,9 @@ void GameInputRouter::handleBatch(const GameInputEventBatch& batch)
                 }
                 m_deviceExtraStates.insert(event.deviceId, event.buttonStates);
                 m_deviceExtraControls.insert(event.deviceId, layout.controlIds);
+                for (const QString& control : layout.controlIds)
+                    registryRef().addProviderControl(
+                        ControllerProvider::GameInput, event.deviceId, control);
             }
             break;
         case GameInputEventKind::SystemButtonPressed:

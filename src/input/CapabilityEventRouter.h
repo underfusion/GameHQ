@@ -41,7 +41,6 @@ public:
     quint64 generation(const QString& logicalId) const;
 
 private:
-    static QString capabilityKey(const QString& logicalId, ControllerCapability capability);
     static QString controlKey(const QString& logicalId, const QString& controlId);
 
     struct LastEdge { bool pressed = false; quint64 timestamp = 0; ControllerProvider provider; };

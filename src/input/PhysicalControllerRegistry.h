@@ -4,6 +4,7 @@
 #include <QHash>
 #include <QString>
 #include <QStringList>
+#include <QSet>
 #include <QVector>
 
 namespace ModernInput {
@@ -43,12 +44,14 @@ struct ProviderObservation {
     quint16 vendorId = 0;
     quint16 productId = 0;
     ControllerCapabilities capabilities;
+    QSet<QString> controls;
 };
 
 struct ProviderAttachment {
     ControllerProvider provider = ControllerProvider::WinMM;
     QString providerDeviceId;
     ControllerCapabilities capabilities;
+    QSet<QString> controls;
 };
 
 struct LogicalController {
@@ -79,7 +82,11 @@ public:
     QVector<LogicalController> controllers() const;
     QString logicalIdFor(ControllerProvider provider, const QString& providerDeviceId) const;
     ControllerProvider preferredProvider(const QString& logicalId,
-                                         ControllerCapability capability) const;
+                                         ControllerCapability capability,
+                                         const QString& controlId = {}) const;
+    bool addProviderControl(ControllerProvider provider,
+                            const QString& providerDeviceId,
+                            const QString& controlId);
 
 private:
     QString findStrongMatch(const ProviderObservation& observation) const;

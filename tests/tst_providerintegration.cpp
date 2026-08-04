@@ -78,6 +78,14 @@ class ProviderIntegrationTest : public QObject
             .arg(productId, 4, 16, QLatin1Char('0'));
         observation.capabilities = ControllerCapability::StandardControls
             | ControllerCapability::SystemShare | ControllerCapability::Guide;
+        observation.controls = {
+            ControlId::FaceSouth, ControlId::FaceEast, ControlId::FaceNorth,
+            ControlId::FaceWest, ControlId::ShoulderLeft, ControlId::ShoulderRight,
+            ControlId::TriggerLeft, ControlId::TriggerRight, ControlId::ThumbLeft,
+            ControlId::ThumbRight, ControlId::DpadUp, ControlId::DpadDown,
+            ControlId::DpadLeft, ControlId::DpadRight, ControlId::Menu,
+            ControlId::ViewBack, ControlId::Capture, ControlId::Guide,
+        };
         return observation;
     }
 
@@ -134,6 +142,31 @@ private slots:
             {logicalId, ControllerProvider::GameInput, ControllerCapability::SystemShare,
              ControlId::Capture, false, 180});
         QVERIFY(modernRelease.accepted);
+    }
+
+    void legacyFirstThenGameInputMirrorStillFiresOnce()
+    {
+        ProviderIntegration integration;
+        integration.observeLegacy(ControllerProvider::SonyRaw,
+                                  QStringLiteral("054c:0ce6"), QStringLiteral("054c:0ce6"),
+                                  QStringLiteral("DualSense"), sonyCapabilities(), nullptr,
+                                  {}, {}, QStringLiteral("pnp.root.legacy-first"));
+        const QString logicalId = integration.registry().observe(
+            gameInputObservation(QStringLiteral("gi-legacy-first"), 0x054C, 0x0CE6,
+                                 QStringLiteral("pnp.root.legacy-first")));
+
+        const auto legacy = integration.routeLegacySystemEdge(
+            ControllerProvider::SonyRaw, QStringLiteral("054c:0ce6"),
+            ControlId::Capture, true, 100);
+        QVERIFY(legacy.accepted);
+        const auto modernMirror = integration.capabilityRouter().route(
+            {logicalId, ControllerProvider::GameInput, ControllerCapability::SystemShare,
+             ControlId::Capture, true, 250});
+        QVERIFY(modernMirror.duplicate);
+        QVERIFY(!modernMirror.accepted);
+        QVERIFY(integration.capabilityRouter().route(
+            {logicalId, ControllerProvider::GameInput, ControllerCapability::SystemShare,
+             ControlId::Capture, false, 300}).accepted);
     }
 
     void legacyOwnsShareOnceGameInputDetaches()
@@ -314,6 +347,27 @@ private slots:
         const auto release = integration.routeRawHidEdge(endpoint,
                                                          control, false, 40);
         QVERIFY(release.accepted);
+    }
+
+    void gameInputExtraDoesNotSuppressDifferentRawHidUsage()
+    {
+        ProviderIntegration integration;
+        const QString endpoint = QStringLiteral("hid.endpoint.gamesir-extra");
+        const QString gameExtra = ControlId::deviceButton(
+            QStringLiteral("controller-placeholder"), QStringLiteral("layout"), 1);
+        const QString rawExtra = ControlId::rawHidUsage(endpoint, 0x09, 0x15);
+        auto modern = gameInputObservation(QStringLiteral("gi-gamesir"), 0x3537, 0x1004,
+                                           QStringLiteral("pnp.root.gamesir-extra"));
+        modern.endpointId = endpoint;
+        modern.capabilities |= ControllerCapability::ExtraControls;
+        modern.controls.insert(gameExtra);
+        const QString logicalId = integration.registry().observe(modern);
+
+        const auto rawPress = integration.routeRawHidEdge(endpoint, rawExtra, true, 10);
+        QVERIFY(rawPress.accepted);
+        QCOMPARE(integration.registry().logicalIdFor(ControllerProvider::RawHid, endpoint),
+                 logicalId);
+        QVERIFY(integration.routeRawHidEdge(endpoint, rawExtra, false, 20).accepted);
     }
 
     void rawHidRemovalResetsStateAndEvictsAttachment()

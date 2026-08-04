@@ -148,8 +148,10 @@ QString PhysicalControllerRegistry::observe(const ProviderObservation& observati
         if (const auto it = m_controllers.find(currentId); it != m_controllers.end()) {
             for (auto& attachment : it->providers) {
                 if (attachment.provider == observation.provider
-                    && attachment.providerDeviceId == observation.providerDeviceId)
+                    && attachment.providerDeviceId == observation.providerDeviceId) {
                     attachment.capabilities = observation.capabilities;
+                    attachment.controls.unite(observation.controls);
+                }
             }
             if (it->displayName.isEmpty())
                 it->displayName = observation.displayName;
@@ -263,7 +265,7 @@ QString PhysicalControllerRegistry::observe(const ProviderObservation& observati
         controller.modelFingerprint = observation.modelFingerprint;
     controller.confidence = std::max(controller.confidence, confidence);
     controller.providers.push_back({observation.provider, observation.providerDeviceId,
-                                    observation.capabilities});
+                                    observation.capabilities, observation.controls});
     m_attachmentToLogical.insert(key, logicalId);
     return logicalId;
 }
@@ -308,17 +310,25 @@ QString PhysicalControllerRegistry::logicalIdFor(ControllerProvider provider,
 }
 
 ControllerProvider PhysicalControllerRegistry::preferredProvider(
-    const QString& logicalId, ControllerCapability capability) const
+    const QString& logicalId, ControllerCapability capability,
+    const QString& controlId) const
 {
     const auto* logical = controller(logicalId);
     if (!logical)
         return ControllerProvider::WinMM;
 
+    const bool hasExplicitOwner = !controlId.isEmpty()
+        && std::any_of(logical->providers.cbegin(), logical->providers.cend(),
+                       [&](const auto& item) {
+                           return item.capabilities.testFlag(capability)
+                               && item.controls.contains(controlId);
+                       });
     const auto supports = [&](ControllerProvider provider) {
         return std::any_of(logical->providers.cbegin(), logical->providers.cend(),
                            [&](const auto& item) {
                                return item.provider == provider
-                                   && item.capabilities.testFlag(capability);
+                                   && item.capabilities.testFlag(capability)
+                                   && (!hasExplicitOwner || item.controls.contains(controlId));
                            });
     };
     const QVector<ControllerProvider> order = capability == ControllerCapability::StandardControls
@@ -332,6 +342,26 @@ ControllerProvider PhysicalControllerRegistry::preferredProvider(
             return provider;
     }
     return ControllerProvider::WinMM;
+}
+
+bool PhysicalControllerRegistry::addProviderControl(
+    ControllerProvider provider, const QString& providerDeviceId,
+    const QString& controlId)
+{
+    if (controlId.isEmpty())
+        return false;
+    const QString logicalId = logicalIdFor(provider, providerDeviceId);
+    auto logical = m_controllers.find(logicalId);
+    if (logical == m_controllers.end())
+        return false;
+    for (auto& attachment : logical->providers) {
+        if (attachment.provider == provider
+            && attachment.providerDeviceId == providerDeviceId) {
+            attachment.controls.insert(controlId);
+            return true;
+        }
+    }
+    return false;
 }
 
 } // namespace ModernInput

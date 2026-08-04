@@ -20,6 +20,18 @@ bool parseFingerprint(const QString& fingerprint, quint16& vendorId, quint16& pr
     productId = quint16(product);
     return true;
 }
+
+QSet<QString> standardControls()
+{
+    return {
+        ControlId::FaceSouth, ControlId::FaceEast, ControlId::FaceNorth,
+        ControlId::FaceWest, ControlId::ShoulderLeft, ControlId::ShoulderRight,
+        ControlId::TriggerLeft, ControlId::TriggerRight, ControlId::ThumbLeft,
+        ControlId::ThumbRight, ControlId::DpadUp, ControlId::DpadDown,
+        ControlId::DpadLeft, ControlId::DpadRight, ControlId::Menu,
+        ControlId::ViewBack,
+    };
+}
 } // namespace
 
 QString ProviderIntegration::legacyKey(ControllerProvider provider,
@@ -47,9 +59,15 @@ QString ProviderIntegration::observeLegacy(ControllerProvider provider,
     observation.providerDeviceId = providerDeviceId;
     observation.displayName = displayName;
     observation.capabilities = capabilities;
-    // The lowercase "vvvv:pppp" fingerprint is the only identity legacy APIs
-    // share with GameInput, so it is the topology correlation root. The
-    // registry's unique-match rule keeps two identical models apart.
+    if (capabilities.testFlag(ControllerCapability::StandardControls))
+        observation.controls.unite(standardControls());
+    if (capabilities.testFlag(ControllerCapability::SystemShare))
+        observation.controls.insert(ControlId::Capture);
+    if (capabilities.testFlag(ControllerCapability::Guide))
+        observation.controls.insert(ControlId::Guide);
+    // VID/PID remains a weak model fingerprint only. Cross-provider merging
+    // requires the explicit endpoint, container, or device-root evidence
+    // supplied by the backend.
     observation.modelFingerprint = fingerprint.toLower();
     observation.endpointId = endpointId;
     observation.containerId = containerId;
@@ -135,6 +153,7 @@ CapabilityRouteResult ProviderIntegration::routeRawHidEdge(const QString& device
         observation.endpointId = deviceIdentity.toLower();
         observation.displayName = QStringLiteral("Raw HID controller");
         observation.capabilities = ControllerCapability::ExtraControls;
+        observation.controls.insert(controlId);
         parseFingerprint(deviceIdentity, observation.vendorId, observation.productId);
         QString rekeyedFrom;
         const QString logicalId = m_registry.observe(observation, &rekeyedFrom);
@@ -145,6 +164,8 @@ CapabilityRouteResult ProviderIntegration::routeRawHidEdge(const QString& device
         }
         m_rawHidObserved.insert(deviceIdentity);
     }
+    m_registry.addProviderControl(ControllerProvider::RawHid,
+                                  deviceIdentity, controlId);
     const QString logicalId = m_registry.logicalIdFor(ControllerProvider::RawHid,
                                                       deviceIdentity);
     CapabilityRouteResult routed = m_capabilityRouter.route(

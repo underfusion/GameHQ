@@ -2,12 +2,6 @@
 
 namespace ModernInput {
 
-QString CapabilityEventRouter::capabilityKey(const QString& logicalId,
-                                             ControllerCapability capability)
-{
-    return logicalId + QLatin1Char(':') + QString::number(static_cast<quint32>(capability));
-}
-
 QString CapabilityEventRouter::controlKey(const QString& logicalId, const QString& controlId)
 {
     return logicalId + QLatin1Char('\x1f') + controlId;
@@ -19,34 +13,62 @@ CapabilityRouteResult CapabilityEventRouter::route(const CapabilityControlEdge& 
     if (edge.logicalId.isEmpty() || edge.controlId.isEmpty())
         return result;
     const ControllerProvider preferred = m_registry
-        ? m_registry->preferredProvider(edge.logicalId, edge.capability)
+        ? m_registry->preferredProvider(edge.logicalId, edge.capability, edge.controlId)
         : edge.provider;
-    if (edge.provider != preferred)
-        return result;
-
-    const QString capKey = capabilityKey(edge.logicalId, edge.capability);
-    const auto selected = m_selectedProviders.constFind(capKey);
+    const QString key = controlKey(edge.logicalId, edge.controlId);
+    const auto selected = m_selectedProviders.constFind(key);
     if (selected == m_selectedProviders.cend() || *selected != edge.provider) {
         result.providerChanged = selected != m_selectedProviders.cend();
         if (result.providerChanged) {
-            for (auto it = m_held.begin(); it != m_held.end();) {
-                if (it.key().startsWith(edge.logicalId + QLatin1Char('\x1f'))
-                    && it->capability == edge.capability && it->provider != edge.provider) {
-                    result.safeReleases.push_back(it.key().section(QLatin1Char('\x1f'), 1));
-                    m_lastEdges.remove(it.key());
-                    it = m_held.erase(it);
-                } else {
-                    ++it;
+            auto held = m_held.constFind(key);
+            if (edge.pressed && held != m_held.cend()) {
+                const auto* logical = m_registry
+                    ? m_registry->controller(edge.logicalId) : nullptr;
+                const bool previousProviderStillLive = logical
+                    && logical->hasProvider(*selected);
+                if (!previousProviderStillLive) {
+                    // A failed/detached owner cannot retain a held control.
+                    // Release its state once, then allow the working fallback
+                    // source to establish a fresh down edge below.
+                    result.safeReleases.push_back(edge.controlId);
+                    m_held.remove(key);
+                    m_lastEdges.remove(key);
+                    held = m_held.cend();
+                }
+                // A mirrored provider cannot create a second down edge while
+                // the canonical control is already held. A newly preferred
+                // provider may take ownership silently so its release wins.
+                if (held != m_held.cend() && edge.provider == preferred) {
+                    m_selectedProviders.insert(key, edge.provider);
+                    m_held[key].provider = edge.provider;
+                    result.generation = ++m_generations[edge.logicalId];
+                }
+                if (held != m_held.cend()) {
+                    result.duplicate = true;
+                    return result;
                 }
             }
+            if (edge.provider != preferred)
+                return result;
+            if (!edge.pressed && held != m_held.cend()) {
+                result.safeReleases.push_back(edge.controlId);
+                m_held.remove(key);
+                m_lastEdges.insert(key, {false, edge.timestamp, edge.provider});
+                m_selectedProviders.insert(key, edge.provider);
+                result.generation = ++m_generations[edge.logicalId];
+                result.duplicate = true;
+                return result;
+            }
         }
-        m_selectedProviders.insert(capKey, edge.provider);
+        // No provider has proved it can deliver this exact control yet. Accept
+        // the first working source even when a higher-ranked registered
+        // provider is silent; a later preferred mirror transfers ownership.
+        m_selectedProviders.insert(key, edge.provider);
         result.generation = ++m_generations[edge.logicalId];
     } else {
         result.generation = m_generations.value(edge.logicalId);
     }
 
-    const QString key = controlKey(edge.logicalId, edge.controlId);
     const auto last = m_lastEdges.constFind(key);
     if (last != m_lastEdges.cend() && last->pressed == edge.pressed) {
         const quint64 delta = edge.timestamp >= last->timestamp
@@ -86,9 +108,8 @@ QStringList CapabilityEventRouter::resetLogicalController(const QString& logical
         else
             ++it;
     }
-    const QString capabilityPrefix = logicalId + QLatin1Char(':');
     for (auto it = m_selectedProviders.begin(); it != m_selectedProviders.end();) {
-        if (it.key().startsWith(capabilityPrefix))
+        if (it.key().startsWith(controlPrefix))
             it = m_selectedProviders.erase(it);
         else
             ++it;
