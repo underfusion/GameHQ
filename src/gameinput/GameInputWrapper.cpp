@@ -16,6 +16,11 @@ GameInputWrapper::~GameInputWrapper()
     shutdown();
 }
 
+QString GameInputWrapper::runtimeDescription() const
+{
+    return m_api ? m_api->runtimeDescription() : QStringLiteral("Unavailable");
+}
+
 bool GameInputWrapper::start(QString& error)
 {
     if (m_running)
@@ -68,10 +73,4 @@ void GameInputWrapper::shutdown()
     m_running = false;
 }
 
-QString GameInputWrapper::runtimeDescription() const
-{
-    return m_api ? m_api->runtimeDescription() : QString();
-}
-
 } // namespace ModernInput
-

@@ -15,6 +15,8 @@
 #include "input/MouseHookDevice.h"
 #include "input/WinMMDevice.h"
 #include "input/XInputDevice.h"
+#include "gameinput/GameInputRouter.h"
+#include "gameinput/ProductionGameInputApi.h"
 #include "storage/CaptureDatabase.h"
 
 #include <QDebug>
@@ -79,6 +81,13 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
     applyGestureTiming();
     connect(m_config, &ConfigManager::valueChanged, this,
             [this](const QString& key, const QVariant&) {
+                if (key == ConfigKeys::InputModernControllerSupport) {
+                    const bool off = m_config->value(key).toString() == QLatin1String("off");
+                    m_gameInput->setMode(off
+                        ? ModernInput::GameInputRouter::SupportMode::Off
+                        : ModernInput::GameInputRouter::SupportMode::Auto);
+                    return;
+                }
                 if (key != ConfigKeys::InputDefaultHoldMs
                     && key != ConfigKeys::InputMultiTapIntervalMs
                     && key != ConfigKeys::InputChordWindowMs)
@@ -130,6 +139,36 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
     auto winmmPad = std::make_unique<WinMMDevice>();
     m_winmmPad = winmmPad.get();
     attachGamepad(std::move(winmmPad), QStringLiteral("WinMM joystick"));
+
+    const bool modernOff = m_config->value(ConfigKeys::InputModernControllerSupport).toString()
+        == QLatin1String("off");
+    m_gameInput = std::make_unique<ModernInput::GameInputRouter>(
+        std::make_unique<ModernInput::ProductionGameInputApi>(),
+        modernOff ? ModernInput::GameInputRouter::SupportMode::Off
+                  : ModernInput::GameInputRouter::SupportMode::Auto);
+    connect(m_gameInput.get(), &ModernInput::GameInputRouter::systemControlPressed,
+            this, [this](const QString& control, const QString& logicalId,
+                         const QString& displayName) {
+                InputDiagnostics::instance().noteControl(control, QStringLiteral("GameInput"));
+                m_bindingEditor->noteObservedControl(control);
+                const auto family = ControlId::ControllerFamily::Generic;
+                if (m_bindingEditor->captureInput(QStringLiteral("controller"), control,
+                                                  ControlId::label(control, family)))
+                    return;
+                m_runtime->press(QStringLiteral("controller"), logicalId, control,
+                                 primaryScope(), fallbackScope());
+                setLastInput((displayName.isEmpty() ? QStringLiteral("Controller") : displayName)
+                             + QStringLiteral(": ") + ControlId::label(control, family));
+            });
+    connect(m_gameInput.get(), &ModernInput::GameInputRouter::systemControlReleased,
+            this, [this](const QString& control, const QString& logicalId, const QString&) {
+                m_runtime->release(QStringLiteral("controller"), logicalId, control);
+            });
+    connect(m_gameInput.get(), &ModernInput::GameInputRouter::sessionFallback,
+            this, [this](const QString&) {
+                stopNavRepeat();
+                m_runtime->cancelAll();
+            });
 
     // The Raw Input backend sees every HID arrival/removal (debounced),
     // including XInput and DirectInput devices. Use it as the hot-plug
@@ -201,6 +240,7 @@ void InputEngine::start()
     m_mouse->start();
     for (const auto& pad : m_pads)
         pad->start();
+    m_gameInput->start();
 }
 
 void InputEngine::reloadBindings()

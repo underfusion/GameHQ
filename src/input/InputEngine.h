@@ -19,6 +19,7 @@ class BindingEditorModel;
 class HotkeyManager;
 class MouseHookDevice;
 class QTimer;
+namespace ModernInput { class GameInputRouter; }
 
 // Owns the controller backends (Sony Raw Input, XInput, WinMM) + Share
 // tap/hold detector and maps buttons onto GameHQ actions
@@ -226,6 +227,7 @@ private:
     std::unique_ptr<BindingRuntime> m_runtime;
     std::unique_ptr<BindingEditorModel> m_bindingEditor;
     std::unique_ptr<MouseHookDevice> m_mouse;
+    std::unique_ptr<ModernInput::GameInputRouter> m_gameInput;
     std::vector<std::unique_ptr<Gamepad>> m_pads;
     DualSenseDevice* m_sonyPad = nullptr;
     XInputDevice* m_xinputPad = nullptr;

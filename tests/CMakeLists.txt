@@ -97,6 +97,20 @@ gamehq_add_test(tst_gameinputwrapper
     "${CMAKE_SOURCE_DIR}/src/gameinput/GameInputWrapper.cpp"
     "${CMAKE_SOURCE_DIR}/src/gameinput/GameInputWrapper.h")
 
+gamehq_add_test(tst_gameinputrouter
+    tst_gameinputrouter.cpp
+    "${CMAKE_SOURCE_DIR}/src/gameinput/FakeGameInputApi.cpp"
+    "${CMAKE_SOURCE_DIR}/src/gameinput/GameInputEventQueue.cpp"
+    "${CMAKE_SOURCE_DIR}/src/gameinput/GameInputQtDispatcher.cpp"
+    "${CMAKE_SOURCE_DIR}/src/gameinput/GameInputQtDispatcher.h"
+    "${CMAKE_SOURCE_DIR}/src/gameinput/GameInputWrapper.cpp"
+    "${CMAKE_SOURCE_DIR}/src/gameinput/GameInputWrapper.h"
+    "${CMAKE_SOURCE_DIR}/src/gameinput/GameInputRouter.cpp"
+    "${CMAKE_SOURCE_DIR}/src/gameinput/GameInputRouter.h"
+    "${CMAKE_SOURCE_DIR}/src/input/PhysicalControllerRegistry.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/InputDiagnostics.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp")
+
 gamehq_add_test(tst_gamepadcontrols
     tst_gamepadcontrols.cpp
     "${CMAKE_SOURCE_DIR}/src/input/Gamepad.h"

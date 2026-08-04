@@ -40,6 +40,7 @@ inline constexpr QLatin1StringView InputShareHoldMs{ "input.share_hold_ms" };   
 inline constexpr QLatin1StringView InputDefaultHoldMs{ "input.default_hold_ms" };
 inline constexpr QLatin1StringView InputMultiTapIntervalMs{ "input.multi_tap_interval_ms" };
 inline constexpr QLatin1StringView InputChordWindowMs{ "input.chord_window_ms" };
+inline constexpr QLatin1StringView InputModernControllerSupport{ "input.modern_controller_support" }; // auto | off
 inline constexpr QLatin1StringView AudioEnabled{ "audio.enabled" };
 
 // storage.* — empty means "use the managed default root" (see CaptureLocations).

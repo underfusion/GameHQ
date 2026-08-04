@@ -44,6 +44,7 @@ QJsonObject ConfigManager::defaults()
         { ConfigKeys::InputDefaultHoldMs,      2000 },   // 250-10000
         { ConfigKeys::InputMultiTapIntervalMs, 300 },    // 120-800
         { ConfigKeys::InputChordWindowMs,      300 },    // 120-1000
+        { ConfigKeys::InputModernControllerSupport, "auto" },
         { ConfigKeys::AudioEnabled,            false },
         { ConfigKeys::StorageScreenshotsRoot,  "" },
         { ConfigKeys::StorageClipsRoot,        "" },
