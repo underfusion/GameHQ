@@ -181,6 +181,22 @@ private slots:
                  router.registry().logicalIdFor(ControllerProvider::GameInput,
                                                 QStringLiteral("device-a")));
     }
+
+    void compatibilityReportIsUsefulAndRedacted()
+    {
+        auto api = std::make_unique<FakeGameInputApi>();
+        auto* raw = api.get();
+        GameInputRouter router(std::move(api));
+        QVERIFY(router.start());
+        raw->emitDevice(makeEvent(GameInputEventKind::DeviceAdded));
+        QTRY_VERIFY(router.controllerSummary().contains(QStringLiteral("Modern test pad")));
+        const QString report = router.compatibilityReport();
+        QVERIFY(report.contains(QStringLiteral("Anonymous ID:")));
+        QVERIFY(report.contains(QStringLiteral("Providers: GameInput")));
+        QVERIFY(report.contains(QStringLiteral("Share: Available")));
+        QVERIFY(!report.contains(QStringLiteral("container-a")));
+        QVERIFY(!report.contains(QStringLiteral("device-a")));
+    }
 };
 
 QTEST_MAIN(GameInputRouterTest)

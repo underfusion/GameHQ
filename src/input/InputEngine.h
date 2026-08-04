@@ -51,6 +51,9 @@ class InputEngine : public QObject
     // ignores — are summarized into probeStatus and the diagnostics export.
     Q_PROPERTY(QString probeStatus READ probeStatus NOTIFY probeStatusChanged)
     Q_PROPERTY(bool probeRunning READ probeRunning NOTIFY probeStatusChanged)
+    Q_PROPERTY(QString modernControllerStatus READ modernControllerStatus NOTIFY modernControllerChanged)
+    Q_PROPERTY(QString modernControllerSummary READ modernControllerSummary NOTIFY modernControllerChanged)
+    Q_PROPERTY(bool modernLayoutWarning READ modernLayoutWarning NOTIFY modernControllerChanged)
 public:
     InputEngine(ConfigManager* config, CaptureDatabase* db, HotkeyManager* hotkeys,
                 QObject* parent = nullptr);
@@ -72,6 +75,10 @@ public:
     QString probeStatus() const { return m_probeStatus; }
     bool probeRunning() const { return m_probeRunning; }
     Q_INVOKABLE void startButtonProbe();
+    QString modernControllerStatus() const;
+    QString modernControllerSummary() const;
+    bool modernLayoutWarning() const;
+    Q_INVOKABLE void copyControllerCompatibilityReport() const;
 
 public slots:
     void setOverlayVisible(bool visible);
@@ -126,6 +133,7 @@ signals:
     void controllerStatusChanged();
     void controllerWarningChanged();
     void probeStatusChanged();
+    void modernControllerChanged();
 
 private:
     void migrateLegacyHoldSetting();

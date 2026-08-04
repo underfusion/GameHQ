@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls.Basic as QC
 import GameHQ
+import "components"
 
 // Help page — keyboard shortcuts, controller bindings, and quick feature reference.
 Item {
@@ -128,8 +129,10 @@ Item {
 
                 Repeater {
                     model: [
-                        { binding: "Share (tap)",      act: "Take screenshot" },
-                        { binding: "Share (hold 1s)",  act: "Save replay clip (last N seconds)" },
+                        { binding: "System Share (tap)", act: "Take screenshot; distinct from Xbox View / Back" },
+                        { binding: "Share (hold)",     act: "Save replay clip; hold consumes the tap" },
+                        { binding: "Share (2× / 3×)",  act: "Exact double/triple tap; lower counts wait only for the configured interval" },
+                        { binding: "Button combination",act: "Press the ordered pair within the configured combination window" },
                         { binding: "PS button",        act: "Open / close overlay" },
                         { binding: "L1 / R1",          act: "Switch panel: sidebar ↔ grid (app) / flip captures (overlay)" },
                         { binding: "D-pad / Left Stick",act: "Navigate gallery grid" },
@@ -165,6 +168,11 @@ Item {
                             Layout.fillWidth: true
                         }
                     }
+                }
+                TextLink {
+                    label: "Open the controller compatibility guide"
+                    suffix: "↗"
+                    onClicked: Qt.openUrlExternally(Brand.repositoryUrl + "/blob/dev/docs/controller-compatibility.md")
                 }
             }
         }

@@ -39,6 +39,9 @@ public:
     QString runtimeStatus() const { return m_runtimeStatus; }
     int shadowReadingCount() const { return m_shadowReadingCount; }
     const PhysicalControllerRegistry& registry() const { return m_registry; }
+    QString controllerSummary() const;
+    QString compatibilityReport() const;
+    bool layoutWarning() const { return !m_layoutWarnings.isEmpty(); }
 
 signals:
     void systemControlPressed(const QString& controlId, const QString& logicalId,
@@ -76,6 +79,8 @@ private:
     QHash<QString, QStringList> m_deviceExtraControls;
     QHash<QString, quint32> m_deviceStandardButtons;
     QSet<QString> m_seenLogicalIds;
+    QHash<QString, GameInputDeviceDescriptor> m_descriptors;
+    QSet<QString> m_layoutWarnings;
 };
 
 } // namespace ModernInput

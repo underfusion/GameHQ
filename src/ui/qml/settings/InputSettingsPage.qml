@@ -417,6 +417,52 @@ SettingsPage {
         }
     }
 
+    SettingsSection {
+        eyebrow: "Modern controllers"
+        title: "GameInput support"
+        description: input.modernLayoutWarning
+                     ? "A controller layout changed. Review its extra-button assignments before using them."
+                     : input.modernControllerSummary
+        variant: input.modernLayoutWarning ? "warning" : "status"
+        SettingsRow {
+            label: "Modern controller support"
+            description: "Auto uses app-local GameInput with safe legacy fallback; Off keeps only the legacy providers."
+            SettingsCombo {
+                configKey: "input.modern_controller_support"; defaultValue: "auto"
+                options: [
+                    { label: "Auto", value: "auto" },
+                    { label: "Off", value: "off" }
+                ]
+            }
+        }
+        SettingsRow {
+            label: "GameInput runtime"
+            description: input.modernControllerStatus
+            Text {
+                text: input.modernControllerStatus.indexOf("fallback") >= 0 ? "Legacy fallback" : "Ready"
+                color: input.modernControllerStatus.indexOf("fallback") >= 0 ? Theme.warning : Theme.accent
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontCaption
+            }
+        }
+        SettingsRow {
+            label: "Compatibility report"
+            description: "Copies anonymous identity, providers, Share/Guide availability, extra buttons, and layout state—never serials or full device paths."
+            AccentButton {
+                label: "Copy report"
+                quiet: true
+                onClicked: input.copyControllerCompatibilityReport()
+            }
+        }
+        SettingsLinkRow {
+            icon: "?"
+            label: "Controller compatibility guide"
+            description: "View versus true Share, probe results, reconnects, gestures, and combinations"
+            showDivider: false
+            onClicked: Qt.openUrlExternally(Brand.repositoryUrl + "/blob/dev/docs/controller-compatibility.md")
+        }
+    }
+
     BindingCompatibilityDialog {
         id: compatibilityDialog
         parent: root

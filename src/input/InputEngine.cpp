@@ -21,6 +21,8 @@
 #include "storage/CaptureDatabase.h"
 
 #include <QDebug>
+#include <QClipboard>
+#include <QGuiApplication>
 #include <QKeySequence>
 #include <QSet>
 #include <QTimer>
@@ -176,6 +178,12 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
                 stopNavRepeat();
                 m_runtime->cancelAll();
             });
+    connect(m_gameInput.get(), &ModernInput::GameInputRouter::statusChanged,
+            this, &InputEngine::modernControllerChanged);
+    connect(m_gameInput.get(), &ModernInput::GameInputRouter::deviceConnected,
+            this, [this](const QString&, bool) { emit modernControllerChanged(); });
+    connect(m_gameInput.get(), &ModernInput::GameInputRouter::deviceDisconnected,
+            this, [this](const QString&) { emit modernControllerChanged(); });
 
     // The Raw Input backend sees every HID arrival/removal (debounced),
     // including XInput and DirectInput devices. Use it as the hot-plug
@@ -830,6 +838,28 @@ void InputEngine::startButtonProbe()
             : backendSummary + QStringLiteral("; ") + rawSummary;
         emit probeStatusChanged();
     });
+}
+
+QString InputEngine::modernControllerStatus() const
+{
+    return m_gameInput ? m_gameInput->runtimeStatus() : QStringLiteral("Unavailable");
+}
+
+QString InputEngine::modernControllerSummary() const
+{
+    return m_gameInput ? m_gameInput->controllerSummary()
+                       : QStringLiteral("No modern controller reported");
+}
+
+bool InputEngine::modernLayoutWarning() const
+{
+    return m_gameInput && m_gameInput->layoutWarning();
+}
+
+void InputEngine::copyControllerCompatibilityReport() const
+{
+    if (m_gameInput && QGuiApplication::clipboard())
+        QGuiApplication::clipboard()->setText(m_gameInput->compatibilityReport());
 }
 
 void InputEngine::fixHiddenController()

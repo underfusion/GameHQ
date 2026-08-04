@@ -7,7 +7,23 @@
 #include "input/ExtraButtonCatalog.h"
 #include "input/CapabilityEventRouter.h"
 
+#include <algorithm>
+
 namespace ModernInput {
+
+namespace {
+QString providerLabel(ControllerProvider provider)
+{
+    switch (provider) {
+    case ControllerProvider::SonyRaw: return QStringLiteral("Sony Raw Input");
+    case ControllerProvider::GameInput: return QStringLiteral("GameInput");
+    case ControllerProvider::XInput: return QStringLiteral("XInput");
+    case ControllerProvider::WinMM: return QStringLiteral("WinMM");
+    case ControllerProvider::RawHid: return QStringLiteral("Raw HID");
+    }
+    return QStringLiteral("Unknown");
+}
+}
 
 GameInputRouter::GameInputRouter(std::unique_ptr<IGameInputApi> api, SupportMode mode,
                                  CaptureDatabase* database,
@@ -96,10 +112,14 @@ QString GameInputRouter::observeDevice(const GameInputDeviceDescriptor& device)
     const QString logicalId = m_registry.observe(observation);
     m_deviceLogicalIds.insert(device.deviceId, logicalId);
     m_deviceNames.insert(device.deviceId, device.displayName);
+    const bool firstObservation = !m_descriptors.contains(logicalId);
+    m_descriptors.insert(logicalId, device);
     InputDiagnostics::instance().noteDevice(
         QStringLiteral("%1:%2").arg(device.vendorId, 4, 16, QLatin1Char('0'))
                                   .arg(device.productId, 4, 16, QLatin1Char('0')),
         device.displayName, QStringLiteral("GameInput shadow; system buttons routed"));
+    if (firstObservation)
+        emit statusChanged();
     return logicalId;
 }
 
@@ -184,6 +204,10 @@ void GameInputRouter::handleBatch(const GameInputEventBatch& batch)
                 const auto previous = m_deviceExtraStates.value(event.deviceId);
                 const auto oldControls = m_deviceExtraControls.value(event.deviceId);
                 if (layout.changed) {
+                    if (!m_layoutWarnings.contains(logicalId)) {
+                        m_layoutWarnings.insert(logicalId);
+                        emit statusChanged();
+                    }
                     const auto held = m_heldSystemControls.value(event.deviceId);
                     for (const QString& control : oldControls) {
                         if (held.contains(control))
@@ -231,6 +255,71 @@ void GameInputRouter::handleBatch(const GameInputEventBatch& batch)
             return;
         }
     }
+}
+
+QString GameInputRouter::controllerSummary() const
+{
+    QStringList rows;
+    auto logicalControllers = m_registry.controllers();
+    std::sort(logicalControllers.begin(), logicalControllers.end(),
+              [](const auto& left, const auto& right) { return left.logicalId < right.logicalId; });
+    for (const auto& logical : logicalControllers) {
+        QStringList providers;
+        for (const auto& attachment : logical.providers)
+            providers.push_back(providerLabel(attachment.provider));
+        providers.removeDuplicates();
+        const auto descriptor = m_descriptors.value(logical.logicalId);
+        rows.push_back(QStringLiteral("%1 · %2 · Share %3 · Guide %4 · %5 extra")
+            .arg(logical.displayName.isEmpty() ? QStringLiteral("Controller") : logical.displayName,
+                 providers.isEmpty() ? QStringLiteral("Disconnected") : providers.join(QStringLiteral(" + ")),
+                 logical.capabilities().testFlag(ControllerCapability::SystemShare)
+                     ? QStringLiteral("available") : QStringLiteral("not reported"),
+                 logical.capabilities().testFlag(ControllerCapability::Guide)
+                     ? QStringLiteral("available") : QStringLiteral("not reported"))
+            .arg(descriptor.extraButtonCount));
+    }
+    return rows.isEmpty() ? QStringLiteral("No modern controller reported")
+                          : rows.join(QStringLiteral("\n"));
+}
+
+QString GameInputRouter::compatibilityReport() const
+{
+    QStringList report{
+        QStringLiteral("GameHQ controller compatibility report"),
+        QStringLiteral("GameInput runtime: %1").arg(m_runtimeStatus),
+        QStringLiteral("Modern support: %1").arg(m_mode == SupportMode::Off
+                                                    ? QStringLiteral("Off")
+                                                    : QStringLiteral("Auto"))
+    };
+    auto logicalControllers = m_registry.controllers();
+    std::sort(logicalControllers.begin(), logicalControllers.end(),
+              [](const auto& left, const auto& right) { return left.logicalId < right.logicalId; });
+    for (const auto& logical : logicalControllers) {
+        const auto descriptor = m_descriptors.value(logical.logicalId);
+        QStringList providers;
+        for (const auto& attachment : logical.providers)
+            providers.push_back(providerLabel(attachment.provider));
+        providers.removeDuplicates();
+        report << QStringLiteral("Device: %1").arg(
+                      logical.displayName.isEmpty() ? QStringLiteral("Controller") : logical.displayName)
+               << QStringLiteral("Anonymous ID: %1").arg(logical.logicalId)
+               << QStringLiteral("VID/PID: %1:%2")
+                      .arg(descriptor.vendorId, 4, 16, QLatin1Char('0'))
+                      .arg(descriptor.productId, 4, 16, QLatin1Char('0'))
+               << QStringLiteral("Providers: %1").arg(
+                      providers.isEmpty() ? QStringLiteral("Disconnected")
+                                          : providers.join(QStringLiteral(", ")))
+               << QStringLiteral("Share: %1; Guide: %2; Extra buttons: %3")
+                      .arg(logical.capabilities().testFlag(ControllerCapability::SystemShare)
+                               ? QStringLiteral("Available") : QStringLiteral("Not reported"),
+                           logical.capabilities().testFlag(ControllerCapability::Guide)
+                               ? QStringLiteral("Available") : QStringLiteral("Not reported"))
+                      .arg(descriptor.extraButtonCount)
+               << QStringLiteral("Layout reconfirmation: %1")
+                      .arg(m_layoutWarnings.contains(logical.logicalId)
+                               ? QStringLiteral("Required") : QStringLiteral("No"));
+    }
+    return report.join(QStringLiteral("\n"));
 }
 
 void GameInputRouter::publishEdge(const QString& deviceId, const QString& logicalId,
