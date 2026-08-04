@@ -137,6 +137,11 @@ gamehq_add_test(tst_capabilityeventrouter
     "${CMAKE_SOURCE_DIR}/src/input/PhysicalControllerRegistry.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp")
 
+gamehq_add_test(tst_selectiverawhid
+    tst_selectiverawhid.cpp
+    "${CMAKE_SOURCE_DIR}/src/input/SelectiveRawHidFallback.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp")
+
 # Pure logic: bounded rings, probe window, privacy redaction, export layout.
 gamehq_add_test(tst_inputdiagnostics
     tst_inputdiagnostics.cpp

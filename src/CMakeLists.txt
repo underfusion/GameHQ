@@ -50,6 +50,7 @@ qt_add_executable(GameHQ
     input/PhysicalControllerRegistry.cpp input/PhysicalControllerRegistry.h
     input/ExtraButtonCatalog.cpp input/ExtraButtonCatalog.h
     input/CapabilityEventRouter.cpp input/CapabilityEventRouter.h
+    input/SelectiveRawHidFallback.cpp input/SelectiveRawHidFallback.h
     input/InputDiagnostics.cpp input/InputDiagnostics.h
     input/InputRateMonitor.cpp input/InputRateMonitor.h
     input/RawInputApi.cpp input/RawInputApi.h

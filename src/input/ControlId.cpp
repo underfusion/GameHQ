@@ -1,6 +1,7 @@
 #include "input/ControlId.h"
 
 #include <QStringList>
+#include <QCryptographicHash>
 
 namespace ControlId {
 
@@ -33,9 +34,33 @@ bool isDeviceButton(const QString& code)
     return numeric && index >= 0;
 }
 
+QString rawHidUsage(const QString& deviceIdentity, quint16 usagePage, quint16 usage)
+{
+    const QString anonymous = QString::fromLatin1(QCryptographicHash::hash(
+        deviceIdentity.toUtf8(), QCryptographicHash::Sha256).toHex().left(16));
+    return QStringLiteral("gamepad.raw.%1.usage.%2.%3")
+        .arg(anonymous).arg(usagePage, 0, 16).arg(usage, 0, 16);
+}
+
+bool isRawHidUsage(const QString& code)
+{
+    const QStringList parts = code.split(QLatin1Char('.'));
+    if (parts.size() != 6 || parts.at(0) != QLatin1String("gamepad")
+        || parts.at(1) != QLatin1String("raw") || parts.at(2).isEmpty()
+        || parts.at(3) != QLatin1String("usage"))
+        return false;
+    bool pageOk = false;
+    bool usageOk = false;
+    parts.at(4).toUInt(&pageOk, 16);
+    parts.at(5).toUInt(&usageOk, 16);
+    return pageOk && usageOk;
+}
+
 bool isCanonical(const QString& code)
 {
     if (isDeviceButton(code))
+        return true;
+    if (isRawHidUsage(code))
         return true;
     if (isGenericButton(code)) {
         bool numeric = false;
@@ -56,6 +81,11 @@ QString label(const QString& code, ControllerFamily family)
         const int index = code.section(QLatin1Char('.'), -1).toInt(&numeric);
         return numeric ? QStringLiteral("Extra Button %1").arg(index + 1)
                        : QStringLiteral("Extra Button");
+    }
+    if (isRawHidUsage(code)) {
+        return QStringLiteral("Raw HID %1:%2")
+            .arg(code.section(QLatin1Char('.'), -2, -2).toUpper(),
+                 code.section(QLatin1Char('.'), -1).toUpper());
     }
     if (isGenericButton(code))
         return QStringLiteral("Button %1").arg(code.section(QLatin1Char('.'), -1));

@@ -15,6 +15,7 @@
 #include "input/MouseHookDevice.h"
 #include "input/WinMMDevice.h"
 #include "input/XInputDevice.h"
+#include "input/SelectiveRawHidFallback.h"
 #include "gameinput/GameInputRouter.h"
 #include "gameinput/ProductionGameInputApi.h"
 #include "storage/CaptureDatabase.h"
@@ -252,6 +253,12 @@ void InputEngine::start()
 void InputEngine::reloadBindings()
 {
     m_runtime->reload();
+    QStringList rawHidBindings;
+    for (const auto& binding : m_runtime->effectiveBindings(QStringLiteral("controller"))) {
+        if (ControlId::isRawHidUsage(binding.triggerCode))
+            rawHidBindings.push_back(binding.triggerCode);
+    }
+    ModernInput::SelectiveRawHidFallback::instance().setBoundControls(rawHidBindings);
     if (!m_hotkeys)
         return;
 
@@ -290,6 +297,8 @@ bool InputEngine::handleKeyPressed(int key, int modifiers, bool autoRepeat)
     const QString trigger = keyboardTrigger(key, modifiers);
     if (trigger.isEmpty())
         return false;
+    if (!autoRepeat)
+        ModernInput::SelectiveRawHidFallback::instance().observeKeyboard(trigger);
     if (!autoRepeat && m_bindingEditor->captureInput(
             QStringLiteral("keyboard"), trigger, trigger))
         return true;
@@ -802,6 +811,7 @@ void InputEngine::setControllerWarning(const QString& text, bool fixAvailable)
 void InputEngine::startButtonProbe()
 {
     InputDiagnostics::instance().startProbe();
+    ModernInput::SelectiveRawHidFallback::instance().beginProbe();
     if (m_sonyPad)
         m_sonyPad->beginButtonProbe();
     m_probeRunning = true;
@@ -811,7 +821,13 @@ void InputEngine::startButtonProbe()
     // are in; the backends notice expiry themselves on their next event.
     QTimer::singleShot(InputDiagnostics::kProbeDurationMs + 200, this, [this] {
         m_probeRunning = false;
-        m_probeStatus = InputDiagnostics::instance().probeSummary();
+        auto& rawFallback = ModernInput::SelectiveRawHidFallback::instance();
+        rawFallback.endProbe();
+        const QString rawSummary = rawFallback.probeSummary();
+        const QString backendSummary = InputDiagnostics::instance().probeSummary();
+        m_probeStatus = rawSummary.startsWith(QLatin1String("No event was received"))
+            ? backendSummary + QStringLiteral(" ") + rawSummary
+            : backendSummary + QStringLiteral("; ") + rawSummary;
         emit probeStatusChanged();
     });
 }

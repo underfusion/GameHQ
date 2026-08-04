@@ -34,6 +34,8 @@ QString deviceButton(const QString& logicalId, const QString& layoutSignature, i
 // True for any gamepad.button.N code produced by genericButton().
 bool isGenericButton(const QString& code);
 bool isDeviceButton(const QString& code);
+QString rawHidUsage(const QString& deviceIdentity, quint16 usagePage, quint16 usage);
+bool isRawHidUsage(const QString& code);
 
 // True for a code this build can actually deliver from a controller backend:
 // one of the named positions above, or a well-formed generic button. Keyboard
