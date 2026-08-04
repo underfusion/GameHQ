@@ -313,10 +313,14 @@ private slots:
         const TriggerSpec chord = TriggerSpec::orderedChord(ControlId::Capture, ControlId::Guide);
         QCOMPARE(chord.label(ControlId::ControllerFamily::PlayStation),
                  QStringLiteral("Share + PS"));
-        QCOMPARE(chord.label(ControlId::ControllerFamily::Xbox), QStringLiteral("View + Guide"));
+        QCOMPARE(chord.label(ControlId::ControllerFamily::Xbox),
+                 QStringLiteral("System Share + Guide"));
         QCOMPARE(TriggerSpec::single(ControlId::Capture)
                      .label(ControlId::ControllerFamily::PlayStation),
                  QStringLiteral("Share"));
+        QCOMPARE(TriggerSpec::single(ControlId::ViewBack)
+                     .label(ControlId::ControllerFamily::Xbox),
+                 QStringLiteral("View / Back"));
     }
 
     void canonicalControlsAreRecognized()
