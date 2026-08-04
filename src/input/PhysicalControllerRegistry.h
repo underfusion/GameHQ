@@ -62,6 +62,7 @@ struct LogicalController {
 
     ControllerCapabilities capabilities() const;
     bool hasProvider(ControllerProvider provider) const;
+    bool connected() const { return !providers.isEmpty(); }
 };
 
 class PhysicalControllerRegistry

@@ -46,6 +46,9 @@ signals:
                                const QString& displayName);
     void statusChanged();
     void sessionFallback(const QString& reason);
+    void lifecycleReset(const QString& logicalId, const QString& reason);
+    void deviceConnected(const QString& logicalId, bool profileRestored);
+    void deviceDisconnected(const QString& logicalId);
 
 private:
     void handleBatch(const GameInputEventBatch& batch);
@@ -66,6 +69,7 @@ private:
     QHash<QString, QString> m_deviceNames;
     QHash<QString, QVector<quint8>> m_deviceExtraStates;
     QHash<QString, QStringList> m_deviceExtraControls;
+    QSet<QString> m_seenLogicalIds;
 };
 
 } // namespace ModernInput

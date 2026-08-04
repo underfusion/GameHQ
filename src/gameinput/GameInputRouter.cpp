@@ -115,15 +115,33 @@ void GameInputRouter::handleBatch(const GameInputEventBatch& batch)
         if (!event.device.deviceId.isEmpty())
             logicalId = observeDevice(event.device);
         switch (event.kind) {
-        case GameInputEventKind::DeviceAdded:
+        case GameInputEventKind::DeviceAdded: {
+            const bool restored = m_seenLogicalIds.contains(logicalId);
+            m_seenLogicalIds.insert(logicalId);
+            emit deviceConnected(logicalId, restored);
+            break;
+        }
         case GameInputEventKind::CapabilityChanged:
+            break;
         case GameInputEventKind::Wake:
+            emit deviceConnected(logicalId, m_seenLogicalIds.contains(logicalId));
+            m_seenLogicalIds.insert(logicalId);
             break;
         case GameInputEventKind::DeviceRemoved:
         case GameInputEventKind::Sleep: {
             const auto held = m_heldSystemControls.take(event.deviceId);
             for (const QString& control : held)
                 emit systemControlReleased(control, logicalId, m_deviceNames.value(event.deviceId));
+            m_deviceExtraStates.remove(event.deviceId);
+            m_deviceExtraControls.remove(event.deviceId);
+            if (event.kind == GameInputEventKind::DeviceRemoved) {
+                m_registry.removeProvider(ControllerProvider::GameInput, event.deviceId);
+                emit deviceDisconnected(logicalId);
+            }
+            emit lifecycleReset(logicalId,
+                                event.kind == GameInputEventKind::Sleep
+                                    ? QStringLiteral("controller sleep")
+                                    : QStringLiteral("controller disconnected"));
             break;
         }
         case GameInputEventKind::Reading:

@@ -141,8 +141,9 @@ bool PhysicalControllerRegistry::removeProvider(ControllerProvider provider,
                                        return item.provider == provider
                                            && item.providerDeviceId == providerDeviceId;
                                    }), providers.end());
-    if (providers.isEmpty())
-        m_controllers.erase(it);
+    // Retain the logical identity while disconnected. A later observation
+    // carrying the same strong ID restores this controller's profile; weak
+    // observations still create a separate logical controller.
     return true;
 }
 

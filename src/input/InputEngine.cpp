@@ -170,6 +170,11 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
                 stopNavRepeat();
                 m_runtime->cancelAll();
             });
+    connect(m_gameInput.get(), &ModernInput::GameInputRouter::lifecycleReset,
+            this, [this](const QString&, const QString&) {
+                stopNavRepeat();
+                m_runtime->cancelAll();
+            });
 
     // The Raw Input backend sees every HID arrival/removal (debounced),
     // including XInput and DirectInput devices. Use it as the hot-plug

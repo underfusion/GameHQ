@@ -107,6 +107,61 @@ private slots:
         QTRY_COMPARE(released.size(), 1);
         QCOMPARE(released.at(0).at(0).toString(), control);
     }
+
+    void disconnectReleasesHeldStateAndStrongReconnectRestoresIdentity()
+    {
+        auto api = std::make_unique<FakeGameInputApi>();
+        auto* raw = api.get();
+        GameInputRouter router(std::move(api));
+        QSignalSpy connected(&router, &GameInputRouter::deviceConnected);
+        QSignalSpy disconnected(&router, &GameInputRouter::deviceDisconnected);
+        QSignalSpy reset(&router, &GameInputRouter::lifecycleReset);
+        QSignalSpy pressed(&router, &GameInputRouter::systemControlPressed);
+        QSignalSpy released(&router, &GameInputRouter::systemControlReleased);
+        QVERIFY(router.start());
+
+        raw->emitDevice(makeEvent(GameInputEventKind::DeviceAdded));
+        QTRY_COMPARE(connected.size(), 1);
+        const QString logicalId = connected.at(0).at(0).toString();
+        QVERIFY(!connected.at(0).at(1).toBool());
+        raw->emitSystem(makeEvent(GameInputEventKind::SystemButtonPressed, ControlId::Guide));
+        QTRY_COMPARE(pressed.size(), 1);
+        raw->emitDevice(makeEvent(GameInputEventKind::DeviceRemoved));
+        QTRY_COMPARE(disconnected.size(), 1);
+        QCOMPARE(reset.size(), 1);
+        QCOMPARE(released.size(), 1);
+        QVERIFY(!router.registry().controller(logicalId)->connected());
+
+        raw->emitDevice(makeEvent(GameInputEventKind::DeviceAdded));
+        QTRY_COMPARE(connected.size(), 2);
+        QCOMPARE(connected.at(1).at(0).toString(), logicalId);
+        QVERIFY(connected.at(1).at(1).toBool());
+    }
+
+    void sleepingOneOfTwoDevicesReleasesOnlyThatDevice()
+    {
+        auto api = std::make_unique<FakeGameInputApi>();
+        auto* raw = api.get();
+        GameInputRouter router(std::move(api));
+        QSignalSpy pressed(&router, &GameInputRouter::systemControlPressed);
+        QSignalSpy released(&router, &GameInputRouter::systemControlReleased);
+        QVERIFY(router.start());
+        auto first = makeEvent(GameInputEventKind::SystemButtonPressed, ControlId::Guide);
+        auto second = first;
+        second.deviceId = QStringLiteral("device-b");
+        second.device.deviceId = second.deviceId;
+        second.device.containerId = QStringLiteral("container-b");
+        raw->emitSystem(first);
+        raw->emitSystem(second);
+        QTRY_COMPARE(pressed.size(), 2);
+
+        first.kind = GameInputEventKind::Sleep;
+        raw->emitDevice(first);
+        QTRY_COMPARE(released.size(), 1);
+        QCOMPARE(released.at(0).at(1).toString(),
+                 router.registry().logicalIdFor(ControllerProvider::GameInput,
+                                                QStringLiteral("device-a")));
+    }
 };
 
 QTEST_MAIN(GameInputRouterTest)
