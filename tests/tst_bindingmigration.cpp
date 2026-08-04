@@ -44,6 +44,12 @@ GestureSpec gestureOf(const BindingOverrideRow& row)
     return parsed.ok ? parsed.gesture : GestureSpec{GestureSpec::Kind::Press, -1, -1};
 }
 
+ModernInput::GameInputButtonDescriptor extraButton(const char* label)
+{
+    return {-1, QString::fromLatin1(label),
+            ModernInput::GameInputButtonClassification::Extra};
+}
+
 struct LegacyRow {
     const char* group;
     const char* profile;
@@ -277,22 +283,22 @@ private slots:
         ModernInput::ExtraButtonCatalog catalog(&database);
 
         const auto first = catalog.observe(QStringLiteral("controller-a"), 3,
-                                           {QStringLiteral("P1"), QStringLiteral("P2"),
-                                            QStringLiteral("P3")});
+                                           {extraButton("P1"), extraButton("P2"),
+                                            extraButton("P3")});
         QVERIFY(!first.changed);
         QVERIFY(!first.needsReconfirmation);
         QCOMPARE(first.controlIds.size(), 3);
         QVERIFY(ControlId::isCanonical(first.controlIds.at(2)));
 
         const auto same = catalog.observe(QStringLiteral("controller-a"), 3,
-                                          {QStringLiteral("P1"), QStringLiteral("P2"),
-                                           QStringLiteral("P3")});
+                                          {extraButton("P1"), extraButton("P2"),
+                                           extraButton("P3")});
         QCOMPARE(same.signature, first.signature);
         QVERIFY(!same.changed);
 
         const auto changed = catalog.observe(QStringLiteral("controller-a"), 3,
-                                             {QStringLiteral("P2"), QStringLiteral("P1"),
-                                              QStringLiteral("P3")});
+                                             {extraButton("P2"), extraButton("P1"),
+                                              extraButton("P3")});
         QVERIFY(changed.changed);
         QVERIFY(changed.needsReconfirmation);
         QVERIFY(changed.controlIds.at(0) != first.controlIds.at(0));
