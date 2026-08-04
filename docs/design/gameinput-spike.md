@@ -101,4 +101,19 @@ degrade to the existing backends when neither resolves.
   Share/Guide callbacks and raw extra buttons) is a separate, later decision
   with its own pad-in-hand verification.
 
+## Addendum (2026-08-04, Phase 5 t17): licensing resolved, vendoring landed
+
+The open legal item is closed: package 3.5 changed the public header and the
+loader source/static library to the **MIT license** (in-file banners verified
+in the 3.5.262 payload). Both MIT files are now vendored at
+`third_party/gameinput/` with pinned hashes and provenance; the runtime
+redistributable stays under the Microsoft Software License Terms and is
+recorded in `THIRD_PARTY_NOTICES.md`. `GameInputRuntimeProbe.exe`
+(`src/gameinput/GameInputRuntimeProbe.cpp`) proved all three resolution
+outcomes on this machine: official loader against the installed runtime,
+app-local (side-by-side) `GameInputRedist.dll` next to the executable —
+which Microsoft's loader then prefers over the older System32 copy — and a
+clean fail-soft report with exit code 2 when no app-local runtime exists.
+Production backend work continues in the Phase 5 plan items.
+
 Sources: [GameInput API versioning](https://learn.microsoft.com/en-us/gaming/gdk/docs/features/common/input/overviews/input-versioning?view=gdk-2510) · [GameInput for PC with NuGet](https://learn.microsoft.com/en-us/gaming/gdk/docs/features/common/input/overviews/input-nuget?view=gdk-2510) · [Microsoft.GameInput package](https://www.nuget.org/packages/Microsoft.GameInput) · [RegisterSystemButtonCallback](https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/interfaces/igameinput/methods/igameinput_registersystembuttoncallback) · [GameInput devices (app-local device ID)](https://learn.microsoft.com/en-us/gaming/gdk/docs/features/common/input/overviews/input-devices?view=gdk-2510)

@@ -8,6 +8,12 @@ All notable public releases of GameHQ are documented here. The format follows
 
 ### Added
 
+- Groundwork for modern controller support: GameHQ now pins Microsoft's
+  GameInput 3.5.262, ships the MIT-licensed header and loader in-tree, and a
+  small probe tool verifies that the runtime can be found — bundled next to
+  the app, installed system-wide, or not at all, in which case the existing
+  controller support simply keeps working.
+
 - **Button combinations.** A controller action can now be assigned to two
   buttons: hold the first, press the second. Several combinations can share the
   same first button — the second one decides which action runs. Combinations are

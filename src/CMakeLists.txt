@@ -262,3 +262,16 @@ target_link_libraries(GameHQUpdater PRIVATE gamehq_release_trust)
 target_link_options(GameHQUpdater PRIVATE -static -municode)
 target_compile_definitions(GameHQUpdater PRIVATE
     GAMEHQ_UPDATER_VERSION="${GAMEHQ_VERSION_FULL}")
+
+# Minimal GameInput runtime probe (Phase 5 t17, docs/design/gameinput-spike.md).
+# Links the vendored MIT loader from the Microsoft.GameInput package and proves
+# app-local side-by-side resolution plus clean fail-soft when the runtime is
+# absent. Never shipped as a startup dependency.
+add_executable(GameInputRuntimeProbe
+    gameinput/GameInputRuntimeProbe.cpp
+    ${CMAKE_SOURCE_DIR}/third_party/gameinput/src/GameInput.cpp
+)
+target_include_directories(GameInputRuntimeProbe PRIVATE
+    ${CMAKE_SOURCE_DIR}/third_party/gameinput/include)
+target_compile_definitions(GameInputRuntimeProbe PRIVATE UNICODE _UNICODE)
+target_link_options(GameInputRuntimeProbe PRIVATE -static)
