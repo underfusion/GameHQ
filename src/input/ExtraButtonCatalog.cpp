@@ -55,6 +55,8 @@ ExtraButtonCatalog::Layout ExtraButtonCatalog::observe(
     if (!m_database || logicalId.isEmpty())
         return result;
     const ControllerLayoutRow previous = m_database->controllerLayout(logicalId);
+    result.previousSignature = previous.layoutSignature;
+    result.previousLabels = previous.buttonLabels;
     result.changed = !previous.logicalId.isEmpty()
         && previous.layoutSignature != result.signature;
     result.needsReconfirmation = result.changed || previous.needsReconfirmation;

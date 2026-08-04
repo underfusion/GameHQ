@@ -6,6 +6,8 @@
 #include <QObject>
 #include <QHash>
 #include <QSet>
+#include <QStringList>
+#include <QVector>
 
 #include <memory>
 
@@ -24,6 +26,11 @@ class GameInputRouter final : public QObject
     Q_OBJECT
 public:
     enum class SupportMode { Auto, Off };
+    struct LayoutWarningInfo {
+        QString logicalId;
+        QString displayName;
+        QStringList staleAssignments;
+    };
 
     explicit GameInputRouter(std::unique_ptr<IGameInputApi> api,
                              SupportMode mode = SupportMode::Auto,
@@ -43,9 +50,8 @@ public:
     // Number of system-button edges withheld because an uncorrelated legacy
     // provider was live (dedup could not be guaranteed). Diagnostics only.
     int shadowedSystemEdgeCount() const { return m_shadowedSystemEdges; }
-    // The user confirmed the currently observed extra-button layout of every
-    // controller carrying a layout warning. Returns how many were confirmed.
-    int confirmLayouts();
+    bool confirmLayout(const QString& logicalId);
+    QVector<LayoutWarningInfo> layoutWarnings() const;
     SupportMode mode() const { return m_mode; }
     bool active() const { return m_active; }
     bool failedForSession() const { return m_failedForSession; }
@@ -77,11 +83,15 @@ private:
     void publishEdge(const QString& deviceId, const QString& logicalId,
                      const QString& controlId, bool pressed,
                      ControllerCapability capability, quint64 timestamp);
+    QStringList staleAssignmentsFor(const QString& logicalId,
+                                    const QStringList& currentControls,
+                                    const QStringList& oldControls = {}) const;
     PhysicalControllerRegistry& registryRef();
     CapabilityEventRouter& routerRef();
 
     std::unique_ptr<GameInputWrapper> m_wrapper;
     std::unique_ptr<ExtraButtonCatalog> m_extraButtons;
+    CaptureDatabase* m_database = nullptr;
     // Shared t25 integration when installed, private fallback otherwise. The
     // registry and capability router are always reached through these.
     ProviderIntegration* m_integration = nullptr;
@@ -102,6 +112,7 @@ private:
     QSet<QString> m_removedDevices;
     QHash<QString, GameInputDeviceDescriptor> m_descriptors;
     QSet<QString> m_layoutWarnings;
+    QHash<QString, QStringList> m_staleLayoutAssignments;
 };
 
 } // namespace ModernInput

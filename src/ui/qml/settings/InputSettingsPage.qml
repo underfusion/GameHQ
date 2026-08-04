@@ -435,18 +435,21 @@ SettingsPage {
                 ]
             }
         }
-        SettingsRow {
-            visible: input.modernLayoutWarning
-            label: "Controller button layout changed"
-            description: "Old extra-button bindings stay disabled until you confirm. Review buttons runs the 3-second probe so you can check what each button reports, then confirm to re-enable the current layout."
-            AccentButton {
-                label: "Review buttons"
-                quiet: true
-                onClicked: input.startButtonProbe()
-            }
-            AccentButton {
-                label: "Confirm current layout"
-                onClicked: input.confirmModernControllerLayout()
+        Repeater {
+            model: input.modernLayoutWarnings
+            delegate: SettingsRow {
+                required property var modelData
+                label: modelData.displayName + " button layout changed"
+                description: modelData.description
+                AccentButton {
+                    label: "Review buttons"
+                    quiet: true
+                    onClicked: input.startButtonProbe()
+                }
+                AccentButton {
+                    label: "Use current layout"
+                    onClicked: input.confirmModernControllerLayout(modelData.logicalId)
+                }
             }
         }
         SettingsRow {

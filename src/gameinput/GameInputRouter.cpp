@@ -4,10 +4,13 @@
 #include "gameinput/IGameInputApi.h"
 #include "gameinput/StandardControlMap.h"
 #include "input/ControlId.h"
+#include "input/ActionCatalog.h"
+#include "input/BindingPattern.h"
 #include "input/InputDiagnostics.h"
 #include "input/ExtraButtonCatalog.h"
 #include "input/CapabilityEventRouter.h"
 #include "input/ProviderIntegration.h"
+#include "storage/CaptureDatabase.h"
 
 #include <algorithm>
 
@@ -33,6 +36,7 @@ GameInputRouter::GameInputRouter(std::unique_ptr<IGameInputApi> api, SupportMode
     : QObject(parent)
     , m_wrapper(std::make_unique<GameInputWrapper>(std::move(api)))
     , m_extraButtons(std::make_unique<ExtraButtonCatalog>(database))
+    , m_database(database)
     , m_mode(mode)
 {
     m_ownedIntegration = std::make_unique<ProviderIntegration>();
@@ -286,17 +290,28 @@ void GameInputRouter::handleBatch(const GameInputEventBatch& batch)
                 const auto layout = m_extraButtons->observe(
                     logicalId, event.buttonStates.size(), event.device.buttons);
                 auto previous = m_deviceExtraStates.value(event.deviceId);
+                if (layout.needsReconfirmation
+                    && !m_layoutWarnings.contains(logicalId)) {
+                    m_layoutWarnings.insert(logicalId);
+                    emit statusChanged();
+                }
                 if (layout.changed) {
-                    if (!m_layoutWarnings.contains(logicalId)) {
-                        m_layoutWarnings.insert(logicalId);
-                        emit statusChanged();
-                    }
                     // Release the old layout's held controls through the
                     // capability router so its own held/generation state
                     // stays consistent, then forget the old index states —
                     // an old index must never lend its meaning to a new
                     // layout's button.
-                    const auto oldControls = m_deviceExtraControls.value(event.deviceId);
+                    QStringList oldControls = m_deviceExtraControls.value(event.deviceId);
+                    if (!layout.previousSignature.isEmpty()) {
+                        for (int index = 0; index < layout.previousLabels.size(); ++index) {
+                            const QString oldControl = ControlId::deviceButton(
+                                logicalId, layout.previousSignature, index);
+                            if (!oldControls.contains(oldControl))
+                                oldControls.append(oldControl);
+                        }
+                    }
+                    m_staleLayoutAssignments.insert(logicalId,
+                        staleAssignmentsFor(logicalId, layout.controlIds, oldControls));
                     const auto held = m_heldSystemControls.value(event.deviceId);
                     for (const QString& control : oldControls) {
                         if (held.contains(control))
@@ -305,6 +320,11 @@ void GameInputRouter::handleBatch(const GameInputEventBatch& batch)
                                         event.timestamp);
                     }
                     previous = QVector<quint8>(event.buttonStates.size(), 0);
+                }
+                if (layout.needsReconfirmation
+                    && !m_staleLayoutAssignments.contains(logicalId)) {
+                    m_staleLayoutAssignments.insert(
+                        logicalId, staleAssignmentsFor(logicalId, layout.controlIds));
                 }
                 // A changed layout routes nothing until the user reconfirms
                 // it; state keeps tracking so confirmation resumes cleanly.
@@ -456,19 +476,70 @@ void GameInputRouter::publishEdge(const QString& deviceId, const QString& logica
     }
 }
 
-int GameInputRouter::confirmLayouts()
+QStringList GameInputRouter::staleAssignmentsFor(
+    const QString& logicalId, const QStringList& currentControls,
+    const QStringList& oldControls) const
 {
-    int confirmed = 0;
-    const auto warned = m_layoutWarnings;
-    for (const QString& logicalId : warned) {
-        if (m_extraButtons->confirm(logicalId)) {
-            m_layoutWarnings.remove(logicalId);
-            ++confirmed;
+    QStringList assignments;
+    if (!m_database)
+        return assignments;
+    for (const BindingOverrideRow& row : m_database->listBindingOverrides()) {
+        if (row.deviceGroup != QLatin1String("controller") || row.unbound)
+            continue;
+        const auto parsed = TriggerSpec::parse(row.triggerCode);
+        if (!parsed.ok)
+            continue;
+        bool stale = false;
+        for (const QString& control : parsed.trigger.controls) {
+            const bool belongsToController = ControlId::isDeviceButton(control)
+                && control.startsWith(QStringLiteral("gamepad.device.%1.layout.")
+                                          .arg(logicalId));
+            if (oldControls.contains(control)
+                || (belongsToController && !currentControls.contains(control))) {
+                stale = true;
+                break;
+            }
         }
+        if (!stale)
+            continue;
+        const auto* action = ActionCatalog::find(row.actionId);
+        const QString label = action ? action->label : row.actionId;
+        const QString slot = row.slot == 2 ? QStringLiteral("Secondary")
+                                           : QStringLiteral("Primary");
+        const QString item = QStringLiteral("%1 (%2)").arg(label, slot);
+        if (!assignments.contains(item))
+            assignments.append(item);
     }
-    if (confirmed > 0)
-        emit statusChanged();
-    return confirmed;
+    assignments.sort(Qt::CaseInsensitive);
+    return assignments;
+}
+
+QVector<GameInputRouter::LayoutWarningInfo> GameInputRouter::layoutWarnings() const
+{
+    QVector<LayoutWarningInfo> result;
+    QStringList ids = m_layoutWarnings.values();
+    ids.sort();
+    for (const QString& logicalId : ids) {
+        const auto* logical = registry().controller(logicalId);
+        result.push_back({
+            logicalId,
+            logical && !logical->displayName.isEmpty()
+                ? logical->displayName : QStringLiteral("Controller"),
+            m_staleLayoutAssignments.value(logicalId),
+        });
+    }
+    return result;
+}
+
+bool GameInputRouter::confirmLayout(const QString& logicalId)
+{
+    if (!m_layoutWarnings.contains(logicalId)
+        || !m_extraButtons->confirm(logicalId))
+        return false;
+    m_layoutWarnings.remove(logicalId);
+    m_staleLayoutAssignments.remove(logicalId);
+    emit statusChanged();
+    return true;
 }
 
 void GameInputRouter::failSession(const QString& reason)

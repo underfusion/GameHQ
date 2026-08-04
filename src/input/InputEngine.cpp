@@ -26,6 +26,7 @@
 #include <QKeySequence>
 #include <QSet>
 #include <QTimer>
+#include <QVariantMap>
 
 #include <windows.h>
 
@@ -1107,19 +1108,41 @@ bool InputEngine::modernLayoutWarning() const
     return m_gameInput && m_gameInput->layoutWarning();
 }
 
+QVariantList InputEngine::modernLayoutWarnings() const
+{
+    QVariantList result;
+    if (!m_gameInput)
+        return result;
+    for (const auto& warning : m_gameInput->layoutWarnings()) {
+        QVariantMap item;
+        item.insert(QStringLiteral("logicalId"), warning.logicalId);
+        item.insert(QStringLiteral("displayName"), warning.displayName);
+        item.insert(QStringLiteral("assignments"), warning.staleAssignments);
+        item.insert(QStringLiteral("description"), warning.staleAssignments.isEmpty()
+            ? QStringLiteral("No saved assignments use the previous extra-button layout. "
+                             "Confirmation enables the current layout without remapping buttons.")
+            : QStringLiteral("Reassign after confirmation: %1. Confirmation does not remap "
+                             "these old button IDs.")
+                  .arg(warning.staleAssignments.join(QStringLiteral(", "))));
+        result.append(item);
+    }
+    return result;
+}
+
 void InputEngine::copyControllerCompatibilityReport() const
 {
     if (m_gameInput && QGuiApplication::clipboard())
         QGuiApplication::clipboard()->setText(m_gameInput->compatibilityReport());
 }
 
-void InputEngine::confirmModernControllerLayout()
+void InputEngine::confirmModernControllerLayout(const QString& logicalId)
 {
     if (!m_gameInput)
         return;
-    const int confirmed = m_gameInput->confirmLayouts();
-    qInfo() << "Input: extra-button layout confirmed for" << confirmed << "controller(s)";
-    emit modernControllerChanged();
+    if (m_gameInput->confirmLayout(logicalId)) {
+        qInfo() << "Input: extra-button layout confirmed for" << logicalId;
+        emit modernControllerChanged();
+    }
 }
 
 void InputEngine::fixHiddenController()

@@ -119,6 +119,8 @@ gamehq_add_test(tst_gameinputrouter
     "${CMAKE_SOURCE_DIR}/src/input/CapabilityEventRouter.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/ProviderIntegration.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/ExtraButtonCatalog.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ActionCatalog.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/BindingPattern.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/InputDiagnostics.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp"
     "${CMAKE_SOURCE_DIR}/src/storage/CaptureDatabase.cpp"

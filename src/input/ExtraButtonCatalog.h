@@ -17,6 +17,8 @@ public:
         QString signature;
         QStringList controlIds;
         QStringList labels;
+        QString previousSignature;
+        QStringList previousLabels;
         bool changed = false;
         bool needsReconfirmation = false;
     };

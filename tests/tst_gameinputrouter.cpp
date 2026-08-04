@@ -2,6 +2,7 @@
 #include "gameinput/GameInputLabelMap.h"
 #include "gameinput/GameInputRouter.h"
 #include "input/ControlId.h"
+#include "input/BindingPattern.h"
 #include "input/ExtraButtonCatalog.h"
 #include "input/ProviderIntegration.h"
 #include "storage/CaptureDatabase.h"
@@ -12,6 +13,7 @@
 
 #include "GameInput.h"
 
+#include <algorithm>
 using namespace ModernInput;
 
 namespace GI = GameInput::v3;
@@ -24,6 +26,7 @@ GameInputEvent makeEvent(GameInputEventKind kind, const QString& control = {})
     result.deviceId = QStringLiteral("device-a");
     result.controlId = control;
     result.device.deviceId = result.deviceId;
+    result.device.rootId = QStringLiteral("pnp.root.device-a");
     result.device.containerId = QStringLiteral("container-a");
     result.device.displayName = QStringLiteral("Modern test pad");
     result.device.vendorId = 0x1234;
@@ -231,6 +234,84 @@ private slots:
         QCOMPARE(pressed.size(), 1);
     }
 
+    void layoutConfirmationIsPerControllerAndListsStaleAssignments()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        CaptureDatabase db(dir.filePath(QStringLiteral("layout-multi.db")));
+        QVERIFY(db.open());
+        auto api = std::make_unique<FakeGameInputApi>();
+        auto* raw = api.get();
+        GameInputRouter router(std::move(api), GameInputRouter::SupportMode::Auto, &db);
+        QVERIFY(router.start());
+
+        auto padA = makeEvent(GameInputEventKind::Reading);
+        padA.device.extraButtonCount = 2;
+        padA.buttonStates = {0, 0};
+        raw->emitReading(padA);
+        auto padB = padA;
+        padB.deviceId = QStringLiteral("device-b");
+        padB.device.deviceId = padB.deviceId;
+        padB.device.containerId = QStringLiteral("container-b");
+        padB.device.displayName = QStringLiteral("Second test pad");
+        raw->emitReading(padB);
+        QTRY_COMPARE(router.shadowReadingCount(), 2);
+
+        const QString logicalA = router.registry().logicalIdFor(
+            ControllerProvider::GameInput, padA.deviceId);
+        const QString logicalB = router.registry().logicalIdFor(
+            ControllerProvider::GameInput, padB.deviceId);
+        QVERIFY(!logicalA.isEmpty());
+        QVERIFY(!logicalB.isEmpty());
+        const QString oldA = ControlId::deviceButton(
+            logicalA, ExtraButtonCatalog::signatureFor(2, {}), 0);
+        const QString oldB = ControlId::deviceButton(
+            logicalB, ExtraButtonCatalog::signatureFor(2, {}), 1);
+        QVERIFY(db.upsertBindingOverride(
+            {QStringLiteral("controller"), logicalA,
+             QStringLiteral("desktop.favorite"), 2,
+             TriggerSpec::orderedChord(oldA, ControlId::Guide).serialize(),
+             QStringLiteral("press"), 0, false}));
+        QVERIFY(db.upsertBindingOverride(
+            {QStringLiteral("controller"), logicalB,
+             QStringLiteral("desktop.menu"), 2, oldB,
+             QStringLiteral("press"), 0, false}));
+
+        padA.device.extraButtonCount = 3;
+        padA.buttonStates = {0, 0, 0};
+        raw->emitReading(padA);
+        padB.device.extraButtonCount = 4;
+        padB.buttonStates = {0, 0, 0, 0};
+        raw->emitReading(padB);
+        QTRY_COMPARE(router.layoutWarnings().size(), 2);
+
+        const auto warnings = router.layoutWarnings();
+        const auto warningA = std::find_if(warnings.cbegin(), warnings.cend(),
+            [&](const auto& warning) { return warning.logicalId == logicalA; });
+        const auto warningB = std::find_if(warnings.cbegin(), warnings.cend(),
+            [&](const auto& warning) { return warning.logicalId == logicalB; });
+        QVERIFY(warningA != warnings.cend());
+        QVERIFY(warningB != warnings.cend());
+        QVERIFY(warningA->staleAssignments.join(QLatin1Char(' '))
+                    .contains(QStringLiteral("Favorite")));
+        QVERIFY(warningB->staleAssignments.join(QLatin1Char(' '))
+                    .contains(QStringLiteral("Menu")));
+
+        QVERIFY(router.confirmLayout(logicalA));
+        QCOMPARE(router.layoutWarnings().size(), 1);
+        QCOMPARE(router.layoutWarnings().front().logicalId, logicalB);
+        QVERIFY(router.layoutWarning());
+        QVERIFY(!router.confirmLayout(logicalA));
+
+        // Confirmation enables the new namespace; it never rewrites the old
+        // binding row, which therefore still requires explicit reassignment.
+        const auto rows = db.listBindingOverrides();
+        QVERIFY(std::any_of(rows.cbegin(), rows.cend(),
+            [&](const auto& row) { return row.triggerCode.contains(oldA); }));
+        QVERIFY(router.confirmLayout(logicalB));
+        QVERIFY(!router.layoutWarning());
+    }
+
     void disconnectReleasesHeldStateAndStrongReconnectRestoresIdentity()
     {
         auto api = std::make_unique<FakeGameInputApi>();
@@ -300,7 +381,8 @@ private slots:
                                   QStringLiteral("DualSense"),
                                   ControllerCapability::StandardControls
                                       | ControllerCapability::SystemShare
-                                      | ControllerCapability::Guide);
+                                      | ControllerCapability::Guide, nullptr,
+                                  {}, {}, QStringLiteral("pnp.root.device-a"));
         auto api = std::make_unique<FakeGameInputApi>();
         auto* raw = api.get();
         GameInputRouter router(std::move(api));

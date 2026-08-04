@@ -7,6 +7,7 @@
 #include <QSet>
 #include <QObject>
 #include <QString>
+#include <QVariantList>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -57,6 +58,7 @@ class InputEngine : public QObject
     Q_PROPERTY(QString modernControllerStatus READ modernControllerStatus NOTIFY modernControllerChanged)
     Q_PROPERTY(QString modernControllerSummary READ modernControllerSummary NOTIFY modernControllerChanged)
     Q_PROPERTY(bool modernLayoutWarning READ modernLayoutWarning NOTIFY modernControllerChanged)
+    Q_PROPERTY(QVariantList modernLayoutWarnings READ modernLayoutWarnings NOTIFY modernControllerChanged)
 public:
     InputEngine(ConfigManager* config, CaptureDatabase* db, HotkeyManager* hotkeys,
                 QObject* parent = nullptr);
@@ -81,12 +83,13 @@ public:
     QString modernControllerStatus() const;
     QString modernControllerSummary() const;
     bool modernLayoutWarning() const;
+    QVariantList modernLayoutWarnings() const;
     Q_INVOKABLE void copyControllerCompatibilityReport() const;
     // "Confirm current layout" in Settings → Input: accepts the observed
     // extra-button layout of every controller carrying a layout warning, so
     // extra buttons resume routing after a firmware/mode change. The user
     // reviews the detected buttons via the 3 s probe / summary first.
-    Q_INVOKABLE void confirmModernControllerLayout();
+    Q_INVOKABLE void confirmModernControllerLayout(const QString& logicalId);
 
 public slots:
     void setOverlayVisible(bool visible);
