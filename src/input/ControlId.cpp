@@ -23,7 +23,7 @@ bool isCanonical(const QString& code)
         || code == ShoulderLeft || code == ShoulderRight
         || code == TriggerLeft || code == TriggerRight
         || code == DpadUp || code == DpadDown || code == DpadLeft || code == DpadRight
-        || code == Menu || code == Guide || code == Capture;
+        || code == Menu || code == Guide || code == Capture || code == ViewBack;
 }
 
 QString label(const QString& code, ControllerFamily family)
@@ -44,6 +44,7 @@ QString label(const QString& code, ControllerFamily family)
         if (code == Menu)          return QStringLiteral("Options");
         if (code == Guide)         return QStringLiteral("PS");
         if (code == Capture)       return QStringLiteral("Share");
+        if (code == ViewBack)      return QStringLiteral("View / Back");
         break;
     case ControllerFamily::Xbox:
         if (code == FaceSouth)     return QStringLiteral("A");
@@ -56,7 +57,8 @@ QString label(const QString& code, ControllerFamily family)
         if (code == TriggerRight)  return QStringLiteral("RT");
         if (code == Menu)          return QStringLiteral("Menu");
         if (code == Guide)         return QStringLiteral("Guide");
-        if (code == Capture)       return QStringLiteral("View");
+        if (code == Capture)       return QStringLiteral("System Share");
+        if (code == ViewBack)      return QStringLiteral("View / Back");
         break;
     case ControllerFamily::Nintendo:
         // Face buttons are mirrored versus Xbox at the same physical positions.
@@ -71,6 +73,7 @@ QString label(const QString& code, ControllerFamily family)
         if (code == Menu)          return QStringLiteral("+");
         if (code == Guide)         return QStringLiteral("Home");
         if (code == Capture)       return QStringLiteral("Capture");
+        if (code == ViewBack)      return QStringLiteral("View / Back");
         break;
     case ControllerFamily::Generic:
         break;
@@ -91,6 +94,7 @@ QString label(const QString& code, ControllerFamily family)
     if (code == Menu)          return QStringLiteral("Menu");
     if (code == Guide)         return QStringLiteral("Guide");
     if (code == Capture)       return QStringLiteral("Capture");
+    if (code == ViewBack)      return QStringLiteral("View / Back");
     return QStringLiteral("?");
 }
 

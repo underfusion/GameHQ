@@ -72,7 +72,7 @@ public:
 
     // Highest schema this build understands. A database stamped higher was
     // written by a newer GameHQ and must never be modified by this one.
-    static constexpr int kCurrentSchemaVersion = 4;
+    static constexpr int kCurrentSchemaVersion = 5;
 
     bool open();      // opens + runs pending migrations
     int schemaVersion() const;
@@ -128,6 +128,7 @@ private:
     bool applyV2();
     bool applyV3();
     bool applyV4();
+    bool applyV5();
     bool ensureGameMetadataColumns();
     bool repairsV1Done() const;
     bool markRepairsV1Done();

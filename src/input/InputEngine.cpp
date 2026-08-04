@@ -584,8 +584,15 @@ void InputEngine::deliverPress(Gamepad* source, const QString& controlId, int fa
             QStringLiteral("controller"), controlId,
             ControlId::label(controlId, static_cast<ControlId::ControllerFamily>(family))))
         return;
-    m_runtime->press(QStringLiteral("controller"), fingerprint, controlId,
-                     primaryScope(), fallbackScope());
+    const bool handled = m_runtime->press(QStringLiteral("controller"), fingerprint, controlId,
+                                          primaryScope(), fallbackScope());
+    // XInput Back/View is now independently bindable. For profiles that have
+    // no explicit View/Back pattern yet, preserve the historic built-in
+    // Capture gestures as a capability fallback. As soon as the user binds
+    // View/Back itself, that stable meaning wins and the alias is not entered.
+    if (!handled && controlId == ControlId::ViewBack)
+        m_runtime->press(QStringLiteral("controller"), fingerprint, ControlId::Capture,
+                         primaryScope(), fallbackScope());
 }
 
 void InputEngine::onControlReleased(const QString& controlId, int, const QString&,
@@ -604,7 +611,9 @@ void InputEngine::onControlReleased(const QString& controlId, int, const QString
     }
     if (source != m_activeBackend)
         return;
-    m_runtime->release(QStringLiteral("controller"), fingerprint, controlId);
+    const bool handled = m_runtime->release(QStringLiteral("controller"), fingerprint, controlId);
+    if (!handled && controlId == ControlId::ViewBack)
+        m_runtime->release(QStringLiteral("controller"), fingerprint, ControlId::Capture);
     if (controlId == m_repeatTrigger)
         stopNavRepeat();
 }

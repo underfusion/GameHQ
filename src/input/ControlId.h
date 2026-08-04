@@ -24,7 +24,8 @@ inline const QString DpadLeft       = QStringLiteral("gamepad.dpad_left");
 inline const QString DpadRight      = QStringLiteral("gamepad.dpad_right");
 inline const QString Menu           = QStringLiteral("gamepad.menu");    // Options / Menu / +
 inline const QString Guide          = QStringLiteral("gamepad.guide");   // PS / Xbox Guide / Home
-inline const QString Capture        = QStringLiteral("gamepad.capture"); // Share / View / Capture
+inline const QString Capture        = QStringLiteral("gamepad.capture"); // true Share / Create / Capture
+inline const QString ViewBack       = QStringLiteral("gamepad.view_back"); // XInput View / Back legacy control
 
 // Unknown WinMM buttons stay bindable without a known position: "gamepad.button.3".
 QString genericButton(int index);

@@ -175,10 +175,11 @@ void XInputDevice::setSlotState(int slot, quint32 buttons, bool connected)
         const quint32 mask = 1u << b;
         if (!(changed & mask))
             continue;
+        const QString control = b == Share ? ControlId::ViewBack : controlIdFor(b);
         if (buttons & mask)
-            publishButtonPressed(b);
+            publishControlPressed(control);
         else
-            publishButtonReleased(b);
+            publishControlReleased(control);
     }
     m_prevButtons[slot] = buttons;
 

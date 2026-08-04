@@ -162,7 +162,7 @@ private slots:
 
         CaptureDatabase database(m_path);
         QVERIFY(database.open());
-        QCOMPARE(database.schemaVersion(), 4);
+        QCOMPARE(database.schemaVersion(), 5);
 
         const auto rows = database.listBindingOverrides();
         QCOMPARE(rows.size(), 7);
@@ -230,6 +230,45 @@ private slots:
         QCOMPARE(matches.first().actionId, QStringLiteral("global.toggle_overlay"));
     }
 
+    void viewBackMigrationTouchesOnlyProvenLegacyXInputProfiles()
+    {
+        {
+            CaptureDatabase current(m_path);
+            QVERIFY(current.open());
+        }
+        QSqlDatabase::removeDatabase(QStringLiteral("gamehq"));
+        {
+            QSqlDatabase raw = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"),
+                                                         QStringLiteral("fixture"));
+            raw.setDatabaseName(m_path);
+            QVERIFY(raw.open());
+            QSqlQuery insert(raw);
+            QVERIFY(insert.exec(QStringLiteral(
+                "INSERT INTO binding_overrides "
+                "(device_group,device_profile,action_id,slot,trigger_code,activation,hold_ms,unbound,tap_count) VALUES "
+                "('controller','xinput.slot0','legacy.simple',1,'gamepad.capture','tap',0,0,1),"
+                "('controller','xinput.slot1','legacy.chord',1,'chord:v1:gamepad.capture>gamepad.guide','press',0,0,1),"
+                "('controller','','shared.keep',1,'gamepad.capture','tap',0,0,1),"
+                "('controller','054C:0CE6','model.keep',1,'gamepad.capture','tap',0,0,1)")));
+            QVERIFY(QSqlQuery(QStringLiteral("PRAGMA user_version = 4"), raw).isActive());
+            raw.close();
+        }
+        QSqlDatabase::removeDatabase(QStringLiteral("fixture"));
+
+        CaptureDatabase migrated(m_path);
+        QVERIFY(migrated.open());
+        QCOMPARE(migrated.schemaVersion(), 5);
+        const auto rows = migrated.listBindingOverrides();
+        QCOMPARE(find(rows, QStringLiteral("legacy.simple"), 1).triggerCode,
+                 QStringLiteral("gamepad.view_back"));
+        QCOMPARE(find(rows, QStringLiteral("legacy.chord"), 1).triggerCode,
+                 QStringLiteral("chord:v1:gamepad.view_back>gamepad.guide"));
+        QCOMPARE(find(rows, QStringLiteral("shared.keep"), 1).triggerCode,
+                 QStringLiteral("gamepad.capture"));
+        QCOMPARE(find(rows, QStringLiteral("model.keep"), 1).triggerCode,
+                 QStringLiteral("gamepad.capture"));
+    }
+
     void aNewerSchemaIsRefusedRatherThanMisread()
     {
         {
@@ -242,7 +281,7 @@ private slots:
                                                          QStringLiteral("fixture"));
             raw.setDatabaseName(m_path);
             QVERIFY(raw.open());
-            QSqlQuery(QStringLiteral("PRAGMA user_version = 5"), raw);
+            QSqlQuery(QStringLiteral("PRAGMA user_version = 6"), raw);
             raw.close();
         }
         QSqlDatabase::removeDatabase(QStringLiteral("fixture"));

@@ -204,10 +204,12 @@ void WinMMDevice::emitEdges(quint32 buttons)
         const quint32 mask = 1u << b;
         if (!(changed & mask))
             continue;
+        const QString control = (b == Share && !m_ds4Layout)
+            ? ControlId::ViewBack : controlIdFor(b);
         if (buttons & mask)
-            publishButtonPressed(b);
+            publishControlPressed(control);
         else
-            publishButtonReleased(b);
+            publishControlReleased(control);
     }
     m_prevButtons = buttons;
 }

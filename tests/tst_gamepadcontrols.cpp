@@ -66,6 +66,17 @@ private slots:
         pad.publishButtonPressed(-1);
         QCOMPARE(pressed.size(), 0);
     }
+
+    void viewBackAndCaptureAreDistinctCanonicalControls()
+    {
+        QVERIFY(ControlId::isCanonical(ControlId::Capture));
+        QVERIFY(ControlId::isCanonical(ControlId::ViewBack));
+        QVERIFY(ControlId::Capture != ControlId::ViewBack);
+        QCOMPARE(ControlId::label(ControlId::Capture, ControlId::ControllerFamily::Xbox),
+                 QStringLiteral("System Share"));
+        QCOMPARE(ControlId::label(ControlId::ViewBack, ControlId::ControllerFamily::Xbox),
+                 QStringLiteral("View / Back"));
+    }
 };
 
 QTEST_MAIN(GamepadControlsTest)

@@ -63,6 +63,8 @@ bool CaptureDatabase::migrate()
         return false;
     if (version < 4 && !applyV4())
         return false;
+    if (version < 5 && !applyV5())
+        return false;
     if (!ensureGameMetadataColumns())
         return false;
 
@@ -930,5 +932,29 @@ bool CaptureDatabase::applyV4()
         }
     }
     QSqlQuery(QStringLiteral("PRAGMA user_version = 4"), m_db);
+    return m_db.commit();
+}
+
+bool CaptureDatabase::applyV5()
+{
+    // XInput's BACK bit was historically mislabeled as the true Capture
+    // control. Only legacy slot profiles prove that the row came from XInput,
+    // so migrate those and nothing else. Shared profiles and model identities
+    // are deliberately untouched: rewriting either from the currently
+    // connected controller would make their meaning device-dependent.
+    if (!m_db.transaction())
+        return false;
+    QSqlQuery migrate(m_db);
+    migrate.prepare(QStringLiteral(
+        "UPDATE binding_overrides "
+        "SET trigger_code = REPLACE(trigger_code, 'gamepad.capture', 'gamepad.view_back') "
+        "WHERE device_group = 'controller' AND device_profile LIKE 'xinput.slot%' "
+        "AND trigger_code LIKE '%gamepad.capture%'"));
+    if (!migrate.exec()) {
+        qCritical() << "DB: migration v5 failed:" << migrate.lastError().text();
+        m_db.rollback();
+        return false;
+    }
+    QSqlQuery(QStringLiteral("PRAGMA user_version = 5"), m_db);
     return m_db.commit();
 }
