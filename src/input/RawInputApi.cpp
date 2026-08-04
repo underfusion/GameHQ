@@ -3,7 +3,9 @@
 #include "input/HidCloakMonitor.h"
 
 #include <QByteArray>
+#include <QHash>
 #include <QVarLengthArray>
+#include <QVector>
 
 #include <windows.h>
 // MinGW's HID headers ship without extern "C" guards; without this wrap the
@@ -12,6 +14,8 @@ extern "C" {
 #include <hidsdi.h>
 #include <hidpi.h>
 }
+
+#include <algorithm>
 
 RawInputApi::~RawInputApi() = default;
 
@@ -134,76 +138,117 @@ public:
         return CloakScan{ result.hiddenPads, result.hidHidePresent };
     }
 
-    bool buttonUsages(void* deviceHandle, const Payload& payload,
-                      QList<quint32>& pressedUsages) override
+    bool visitButtonUsageReports(void* deviceHandle, const Payload& payload, void* context,
+                                 const ButtonUsageVisitor& visitor) override
     {
-        if (!payload.reports || payload.reportSize <= 0 || payload.reportCount <= 0)
+        if (!payload.reports || payload.reportSize <= 0 || payload.reportCount <= 0
+            || !visitor)
             return false;
 
-        // The preparsed report descriptor is fetched per call rather than
-        // cached: this path only runs for devices with a bound raw-HID
-        // control or during the 3 s diagnostics probe, and a stale cached
-        // descriptor after a replug would silently misparse every report.
-        UINT bytes = 0;
-        if (GetRawInputDeviceInfoW(deviceHandle, RIDI_PREPARSEDDATA, nullptr, &bytes) != 0
-            || bytes == 0)
-            return false;
-        if (m_preparsed.size() < static_cast<qsizetype>(bytes))
-            m_preparsed.resize(static_cast<qsizetype>(bytes));
-        if (GetRawInputDeviceInfoW(deviceHandle, RIDI_PREPARSEDDATA,
-                                   m_preparsed.data(), &bytes) == static_cast<UINT>(-1))
-            return false;
-        auto* preparsed = reinterpret_cast<PHIDP_PREPARSED_DATA>(m_preparsed.data());
+        auto cacheIt = m_parsers.find(deviceHandle);
+        if (cacheIt == m_parsers.end()) {
+            ParserCache cache;
+            if (!initializeParser(deviceHandle, cache))
+                return false;
+            cacheIt = m_parsers.insert(deviceHandle, std::move(cache));
+        }
+        ParserCache& cache = cacheIt.value();
+        auto* preparsed = reinterpret_cast<PHIDP_PREPARSED_DATA>(cache.preparsed.data());
+        if (cache.reportCopy.size() < payload.reportSize)
+            cache.reportCopy.resize(payload.reportSize);
 
-        HIDP_CAPS caps{};
-        if (HidP_GetCaps(preparsed, &caps) != HIDP_STATUS_SUCCESS
-            || caps.NumberInputButtonCaps == 0)
-            return false;
+        for (int reportIndex = 0; reportIndex < payload.reportCount; ++reportIndex) {
+            const unsigned char* report = payload.reports
+                + static_cast<size_t>(reportIndex) * payload.reportSize;
+            memcpy(cache.reportCopy.data(), report, static_cast<size_t>(payload.reportSize));
+            cache.pressedUsages.clear();
 
-        QVarLengthArray<HIDP_BUTTON_CAPS, 8> buttonCaps(caps.NumberInputButtonCaps);
-        USHORT capsCount = caps.NumberInputButtonCaps;
-        if (HidP_GetButtonCaps(HidP_Input, buttonCaps.data(), &capsCount, preparsed)
-            != HIDP_STATUS_SUCCESS)
-            return false;
-
-        // Latest state wins: parse the LAST report in the batch.
-        const unsigned char* report = payload.reports
-            + static_cast<size_t>(payload.reportCount - 1) * payload.reportSize;
-        // HidP_GetUsages needs a mutable buffer.
-        if (m_reportCopy.size() < static_cast<qsizetype>(payload.reportSize))
-            m_reportCopy.resize(static_cast<qsizetype>(payload.reportSize));
-        memcpy(m_reportCopy.data(), report, static_cast<size_t>(payload.reportSize));
-
-        // One query per distinct button usage page the device declares.
-        QVarLengthArray<USAGE, 8> seenPages;
-        for (USHORT i = 0; i < capsCount; ++i) {
-            const USAGE page = buttonCaps[i].UsagePage;
-            bool seen = false;
-            for (const USAGE known : seenPages)
-                seen = seen || known == page;
-            if (seen)
-                continue;
-            seenPages.push_back(page);
-
-            ULONG usageCount = HidP_MaxUsageListLength(HidP_Input, page, preparsed);
-            if (usageCount == 0)
-                continue;
-            QVarLengthArray<USAGE, 64> usages(static_cast<int>(usageCount));
-            if (HidP_GetUsages(HidP_Input, page, 0, usages.data(), &usageCount,
-                               preparsed, m_reportCopy.data(),
-                               static_cast<ULONG>(payload.reportSize))
-                != HIDP_STATUS_SUCCESS)
-                continue;
-            for (ULONG u = 0; u < usageCount; ++u)
-                pressedUsages.push_back((quint32(page) << 16) | usages[u]);
+            for (PagePlan& page : cache.pages) {
+                ULONG usageCount = static_cast<ULONG>(page.usages.size());
+                if (HidP_GetUsages(HidP_Input, page.usagePage, 0, page.usages.data(),
+                                   &usageCount, preparsed, cache.reportCopy.data(),
+                                   static_cast<ULONG>(payload.reportSize))
+                    != HIDP_STATUS_SUCCESS)
+                    continue;
+                for (ULONG usageIndex = 0; usageIndex < usageCount; ++usageIndex) {
+                    cache.pressedUsages.push_back(
+                        (quint32(page.usagePage) << 16) | page.usages.at(usageIndex));
+                }
+            }
+            visitor(context, cache.pressedUsages);
         }
         return true;
     }
 
+    void forgetDevice(void* deviceHandle) override
+    {
+        m_parsers.remove(deviceHandle);
+    }
+
 private:
+    struct PagePlan {
+        USAGE usagePage = 0;
+        QVector<USAGE> usages;
+    };
+
+    struct ParserCache {
+        QByteArray preparsed;
+        HIDP_CAPS caps{};
+        QVector<HIDP_BUTTON_CAPS> buttonCaps;
+        QVector<PagePlan> pages;
+        QByteArray reportCopy;
+        QList<quint32> pressedUsages;
+    };
+
+    static bool initializeParser(void* deviceHandle, ParserCache& cache)
+    {
+        UINT bytes = 0;
+        if (GetRawInputDeviceInfoW(deviceHandle, RIDI_PREPARSEDDATA, nullptr, &bytes) != 0
+            || bytes == 0)
+            return false;
+        cache.preparsed.resize(static_cast<qsizetype>(bytes));
+        if (GetRawInputDeviceInfoW(deviceHandle, RIDI_PREPARSEDDATA,
+                                   cache.preparsed.data(), &bytes) == static_cast<UINT>(-1))
+            return false;
+        auto* preparsed = reinterpret_cast<PHIDP_PREPARSED_DATA>(cache.preparsed.data());
+
+        if (HidP_GetCaps(preparsed, &cache.caps) != HIDP_STATUS_SUCCESS
+            || cache.caps.NumberInputButtonCaps == 0)
+            return false;
+
+        cache.buttonCaps.resize(cache.caps.NumberInputButtonCaps);
+        USHORT capsCount = cache.caps.NumberInputButtonCaps;
+        if (HidP_GetButtonCaps(HidP_Input, cache.buttonCaps.data(), &capsCount, preparsed)
+            != HIDP_STATUS_SUCCESS)
+            return false;
+        cache.buttonCaps.resize(capsCount);
+
+        qsizetype maximumPressedUsages = 0;
+        for (USHORT i = 0; i < capsCount; ++i) {
+            const USAGE usagePage = cache.buttonCaps.at(i).UsagePage;
+            if (std::any_of(cache.pages.cbegin(), cache.pages.cend(),
+                            [usagePage](const PagePlan& page) {
+                                return page.usagePage == usagePage;
+                            }))
+                continue;
+            const ULONG usageCount = HidP_MaxUsageListLength(
+                HidP_Input, usagePage, preparsed);
+            if (usageCount == 0)
+                continue;
+            PagePlan page;
+            page.usagePage = usagePage;
+            page.usages.resize(static_cast<qsizetype>(usageCount));
+            maximumPressedUsages += static_cast<qsizetype>(usageCount);
+            cache.pages.push_back(std::move(page));
+        }
+        if (cache.pages.isEmpty())
+            return false;
+        cache.pressedUsages.reserve(maximumPressedUsages);
+        return true;
+    }
+
     QByteArray m_buffer;
-    QByteArray m_preparsed;
-    QByteArray m_reportCopy;
+    QHash<void*, ParserCache> m_parsers;
 };
 } // namespace
 

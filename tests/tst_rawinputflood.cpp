@@ -5,6 +5,7 @@
 #include <new>
 
 #include "input/ControlId.h"
+#include "input/ControllerIdentity.h"
 #include "input/DualSenseDevice.h"
 #include "input/InputDiagnostics.h"
 #include "input/RawInputApi.h"
@@ -82,7 +83,8 @@ public:
         DevicePath path;
         QByteArray report;
         DeviceType type = DeviceType::Hid;
-        QList<quint32> pressedUsages;   // (page << 16) | usage for buttonUsages()
+        QList<quint32> pressedUsages;   // (page << 16) | usage for the report visitor
+        QList<QList<quint32>> usageReports; // ordered states in one RAWINPUTHID batch
         bool usagesParseable = true;
         bool present = true;            // listed by enumerateDevices()
         int describeFailures = 0;       // transient RIDI_DEVICEINFO failures to serve first
@@ -134,7 +136,7 @@ public:
         if (it == devices.cend() || it->report.isEmpty())
             return false;
         out.reports = reinterpret_cast<const unsigned char*>(it->report.constData());
-        out.reportCount = 1;
+        out.reportCount = qMax(1, static_cast<int>(it->usageReports.size()));
         out.reportSize = static_cast<int>(it->report.size());
         return true;
     }
@@ -181,15 +183,32 @@ public:
     // Selective Raw HID fallback: the fake "parses" the report descriptor by
     // returning the pressed usages staged on the device.
     int usageParses = 0;
-    bool buttonUsages(void* deviceHandle, const Payload&,
-                      QList<quint32>& pressedUsages) override
+    int parserBuilds = 0;
+    int parserInvalidations = 0;
+    QSet<void*> parserCache;
+    bool visitButtonUsageReports(void* deviceHandle, const Payload&, void* context,
+                                 const ButtonUsageVisitor& visitor) override
     {
         ++usageParses;
         auto it = devices.constFind(deviceHandle);
         if (it == devices.cend() || !it->usagesParseable)
             return false;
-        pressedUsages = it->pressedUsages;
+        if (!parserCache.contains(deviceHandle)) {
+            parserCache.insert(deviceHandle);
+            ++parserBuilds;
+        }
+        if (it->usageReports.isEmpty())
+            visitor(context, it->pressedUsages);
+        else
+            for (const auto& report : it->usageReports)
+                visitor(context, report);
         return true;
+    }
+
+    void forgetDevice(void* deviceHandle) override
+    {
+        if (parserCache.remove(deviceHandle))
+            ++parserInvalidations;
     }
 };
 } // namespace
@@ -219,11 +238,11 @@ private slots:
         api->devices.insert(flood,
                             FakeRawInputApi::hidDevice(kGameSirVid, kGameSirPid, kUsageGamepad));
 
-        // First event classifies: one RIDI_DEVICEINFO query, and not even a
-        // path query because an unsupported VID/PID settles it.
+        // First event classifies and obtains the stable anonymized endpoint
+        // used by the Raw HID control namespace.
         pad.onRawInput(flood);
         QCOMPARE(api->describeCalls, 1);
-        QCOMPARE(api->pathCalls, 0);
+        QCOMPARE(api->pathCalls, 1);
         QCOMPARE(api->payloadReads, 0);
 
         api->resetCounters();
@@ -443,7 +462,8 @@ private slots:
         QCOMPARE(api->payloadReads, 2);
         QCOMPARE(api->describeCalls, 1);    // eligibility is not re-queried
         const QString summary = InputDiagnostics::instance().probeSummary();
-        QVERIFY(summary.contains(QStringLiteral("3537:1004")));
+        QVERIFY(summary.contains(ControllerIdentity::endpointFingerprint(
+            api->devices[gamesir].path.value)));
         QVERIFY(summary.contains(QStringLiteral("byte 3")));
 
         QTRY_VERIFY_WITH_TIMEOUT(!InputDiagnostics::instance().probeActive(), 2000);
@@ -605,7 +625,8 @@ private slots:
         api->devices.insert(gamesir, device);
         pad.onRawInput(gamesir);            // classify -> ignored (not a Sony pad)
 
-        const QString identity = QStringLiteral("3537:1004");
+        const QString identity = ControllerIdentity::endpointFingerprint(
+            api->devices[gamesir].path.value);
         const QString control = ControlId::rawHidUsage(identity, 0x09, 0x15);
         fallback.setBoundControls({control});
         QSignalSpy edges(&pad, &DualSenseDevice::rawHidControl);
@@ -634,6 +655,128 @@ private slots:
         QCOMPARE(edges.size(), 2);
 
         fallback.setBoundControls({});      // singleton: never leak into other tests
+    }
+
+    void rawHidBatchPreservesFastPressAndRelease()
+    {
+        auto& fallback = ModernInput::SelectiveRawHidFallback::instance();
+        auto* api = new FakeRawInputApi;
+        DualSenseDevice pad(api);
+        void* gamesir = handle(0x8013);
+        auto device = FakeRawInputApi::hidDevice(
+            kGameSirVid, kGameSirPid, kUsageGamepad,
+            QStringLiteral("\\\\?\\HID#VID_3537&PID_1004#batch"));
+        device.report = QByteArray(8, '\0');
+        api->devices.insert(gamesir, device);
+        pad.onRawInput(gamesir);
+
+        const QString identity = ControllerIdentity::endpointFingerprint(device.path.value);
+        const quint32 usage = (quint32(0x09) << 16) | 0x15;
+        const QString control = ControlId::rawHidUsage(identity, 0x09, 0x15);
+        fallback.setBoundControls({control});
+        QSignalSpy edges(&pad, &DualSenseDevice::rawHidControl);
+
+        api->devices[gamesir].usageReports = {{}, {usage}, {}};
+        pad.onRawInput(gamesir);
+        QCOMPARE(edges.size(), 2);
+        QCOMPARE(edges.at(0).at(1).toString(), control);
+        QCOMPARE(edges.at(0).at(2).toBool(), true);
+        QCOMPARE(edges.at(1).at(1).toString(), control);
+        QCOMPARE(edges.at(1).at(2).toBool(), false);
+        fallback.setBoundControls({});
+    }
+
+    void identicalRawHidModelsUseDistinctEndpointNamespaces()
+    {
+        auto& fallback = ModernInput::SelectiveRawHidFallback::instance();
+        auto* api = new FakeRawInputApi;
+        DualSenseDevice pad(api);
+        void* first = handle(0x8014);
+        void* second = handle(0x8015);
+        auto firstDevice = FakeRawInputApi::hidDevice(
+            kGameSirVid, kGameSirPid, kUsageGamepad,
+            QStringLiteral("\\\\?\\HID#VID_3537&PID_1004#endpoint-a"));
+        auto secondDevice = FakeRawInputApi::hidDevice(
+            kGameSirVid, kGameSirPid, kUsageGamepad,
+            QStringLiteral("\\\\?\\HID#VID_3537&PID_1004#endpoint-b"));
+        firstDevice.report = secondDevice.report = QByteArray(8, '\0');
+        api->devices.insert(first, firstDevice);
+        api->devices.insert(second, secondDevice);
+        pad.onRawInput(first);
+        pad.onRawInput(second);
+
+        const QString firstIdentity = ControllerIdentity::endpointFingerprint(
+            firstDevice.path.value);
+        const QString secondIdentity = ControllerIdentity::endpointFingerprint(
+            secondDevice.path.value);
+        QVERIFY(firstIdentity != secondIdentity);
+        const quint32 usage = (quint32(0x09) << 16) | 0x15;
+        const QString firstControl = ControlId::rawHidUsage(firstIdentity, 0x09, 0x15);
+        const QString secondControl = ControlId::rawHidUsage(secondIdentity, 0x09, 0x15);
+        QVERIFY(firstControl != secondControl);
+        fallback.setBoundControls({firstControl, secondControl});
+        QSignalSpy edges(&pad, &DualSenseDevice::rawHidControl);
+
+        api->devices[first].pressedUsages = {usage};
+        api->devices[second].pressedUsages = {usage};
+        pad.onRawInput(first);
+        pad.onRawInput(second);
+        QCOMPARE(edges.size(), 2);
+        QCOMPARE(edges.at(0).at(0).toString(), firstIdentity);
+        QCOMPARE(edges.at(1).at(0).toString(), secondIdentity);
+        fallback.setBoundControls({});
+    }
+
+    void activeBoundRawHidPathIsCachedAndBounded_data()
+    {
+        QTest::addColumn<int>("events");
+        QTest::newRow("1000 Hz active") << 1000;
+        QTest::newRow("4000 Hz active") << 4000;
+        QTest::newRow("8000 Hz active") << 8000;
+    }
+
+    void activeBoundRawHidPathIsCachedAndBounded()
+    {
+        QFETCH(int, events);
+        auto& fallback = ModernInput::SelectiveRawHidFallback::instance();
+        auto* api = new FakeRawInputApi;
+        DualSenseDevice pad(api);
+        void* gamesir = handle(0x8016);
+        auto device = FakeRawInputApi::hidDevice(
+            kGameSirVid, kGameSirPid, kUsageGamepad,
+            QStringLiteral("\\\\?\\HID#VID_3537&PID_1004#benchmark"));
+        device.report = QByteArray(8, '\0');
+        api->devices.insert(gamesir, device);
+        pad.onRawInput(gamesir);
+        const QString identity = ControllerIdentity::endpointFingerprint(device.path.value);
+        fallback.setBoundControls({ControlId::rawHidUsage(identity, 0x09, 0x15)});
+
+        // Warm the eligibility, descriptor and reusable parser buffers once.
+        pad.onRawInput(gamesir);
+        QCOMPARE(api->parserBuilds, 1);
+        api->resetCounters();
+        api->usageParses = 0;
+        g_allocations.store(0, std::memory_order_relaxed);
+        g_countAllocations.store(true, std::memory_order_relaxed);
+        QElapsedTimer timer;
+        timer.start();
+        for (int i = 0; i < events; ++i)
+            pad.onRawInput(gamesir);
+        const qint64 elapsedNs = timer.nsecsElapsed();
+        g_countAllocations.store(false, std::memory_order_relaxed);
+
+        QCOMPARE(api->headerReads, events);
+        QCOMPARE(api->payloadReads, events);
+        QCOMPARE(api->usageParses, events);
+        QCOMPARE(api->parserBuilds, 1);
+        QCOMPARE(api->describeCalls, 0);
+        QCOMPARE(api->pathCalls, 0);
+        QCOMPARE(g_allocations.load(std::memory_order_relaxed), 0ll);
+        qInfo("%s: %d active reports in %.2f ms (%.0f ns/event)",
+              QTest::currentDataTag(), events, elapsedNs / 1e6,
+              double(elapsedNs) / events);
+        QVERIFY(elapsedNs / events < 100000); // comfortably below an 8 kHz interval
+        fallback.setBoundControls({});
     }
 
     void unboundDevicesNeverPayForTheRawHidFallback()
@@ -672,7 +815,8 @@ private slots:
         api->devices.insert(gamesir, device);
         pad.onRawInput(gamesir);
 
-        const QString identity = QStringLiteral("3537:1004");
+        const QString identity = ControllerIdentity::endpointFingerprint(
+            api->devices[gamesir].path.value);
         const QString control = ControlId::rawHidUsage(identity, 0x09, 0x15);
         fallback.setBoundControls({control});
         QSignalSpy edges(&pad, &DualSenseDevice::rawHidControl);
@@ -690,6 +834,8 @@ private slots:
         QCOMPARE(edges.at(1).at(2).toBool(), false);
         QTRY_COMPARE(removed.size(), 1);
         QCOMPARE(removed.at(0).at(0).toString(), identity);
+        QCOMPARE(api->parserBuilds, 1);
+        QCOMPARE(api->parserInvalidations, 1);
 
         fallback.setBoundControls({});
     }

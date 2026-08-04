@@ -16,6 +16,7 @@
 #include "input/WinMMDevice.h"
 #include "input/XInputDevice.h"
 #include "input/SelectiveRawHidFallback.h"
+#include "input/RawHidBindingCatalog.h"
 #include "gameinput/GameInputRouter.h"
 #include "gameinput/ProductionGameInputApi.h"
 #include "storage/CaptureDatabase.h"
@@ -346,12 +347,8 @@ void InputEngine::start()
 void InputEngine::reloadBindings()
 {
     m_runtime->reload();
-    QStringList rawHidBindings;
-    for (const auto& binding : m_runtime->effectiveBindings(QStringLiteral("controller"))) {
-        if (ControlId::isRawHidUsage(binding.triggerCode))
-            rawHidBindings.push_back(binding.triggerCode);
-    }
-    ModernInput::SelectiveRawHidFallback::instance().setBoundControls(rawHidBindings);
+    ModernInput::SelectiveRawHidFallback::instance().setBoundControls(
+        ModernInput::persistedRawHidControls(*m_runtime, m_db));
     if (!m_hotkeys)
         return;
 

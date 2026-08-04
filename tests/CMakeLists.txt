@@ -196,7 +196,8 @@ gamehq_add_test(tst_rawinputflood
     "${CMAKE_SOURCE_DIR}/src/input/RawInputApi.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/HidCloakMonitor.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/SelectiveRawHidFallback.cpp"
-    "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp")
+    "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ControllerIdentity.cpp")
 target_link_libraries(tst_rawinputflood PRIVATE user32 cfgmgr32 hid)
 
 gamehq_add_test(tst_configmanager
@@ -346,6 +347,8 @@ gamehq_add_test(tst_bindingeditor
     "${CMAKE_SOURCE_DIR}/src/input/ContextOverrideCatalog.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/ControllerIdentity.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/RawHidBindingCatalog.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/SelectiveRawHidFallback.cpp"
     "${CMAKE_SOURCE_DIR}/src/storage/CaptureDatabase.cpp"
     "${CMAKE_SOURCE_DIR}/src/storage/CaptureQueries.cpp"
     "${CMAKE_SOURCE_DIR}/src/storage/GameRowRepair.cpp"

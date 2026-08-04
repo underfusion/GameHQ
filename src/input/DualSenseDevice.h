@@ -91,7 +91,7 @@ signals:
 
     // Production selective-Raw-HID path (t26): a bound (or probe-observed)
     // HID button usage on a gamepad-class device this backend does NOT drive
-    // changed state. `deviceIdentity` is the stable "vvvv:pppp" identity;
+    // changed state. `deviceIdentity` is a stable anonymized endpoint identity;
     // `controlId` is the canonical ControlId::rawHidUsage code bindings
     // persist. InputEngine routes these through ProviderIntegration into the
     // binding runtime.
@@ -139,6 +139,8 @@ private:
     // handles; costs one generation compare + hash lookup unless the device
     // carries a bound raw-HID control or the diagnostics probe is open.
     void rawHidFallbackEvent(void* handle, void* hRawInput);
+    void routeRawHidUsageReport(const QString& identity, QSet<quint32>& previous,
+                                const QList<quint32>& current);
     void dropRawHidState(void* handle);   // synthesizes releases for held usages
     // Probe helpers: called only while m_probing (never on the idle fast path).
     void probeIgnoredEvent(void* handle, void* hRawInput);
@@ -149,7 +151,8 @@ private:
     void* m_hwnd = nullptr;                  // HWND of the message-only window
     QHash<void*, DeviceState> m_devices;     // tracked Sony/DS4 devices by Raw Input handle
     // Negative classification cache: handles already proven to be somebody
-    // else's device, mapped to their "vvvv:pppp" identity for the rate log.
+    // else's device, mapped to an anonymized endpoint identity for gamepad
+    // collections (or a coarse diagnostic label for non-gamepad devices).
     // Keyed strictly by live handle and dropped on every removal, reconcile
     // and arrival — Windows reuses handle VALUES after a replug.
     QHash<void*, QString> m_ignoredHandles;

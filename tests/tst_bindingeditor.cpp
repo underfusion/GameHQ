@@ -4,6 +4,8 @@
 #include "input/BindingRuntime.h"
 #include "input/ControlId.h"
 #include "input/InputDiagnostics.h"
+#include "input/RawHidBindingCatalog.h"
+#include "input/SelectiveRawHidFallback.h"
 #include "storage/CaptureDatabase.h"
 
 #include <QSignalSpy>
@@ -125,6 +127,43 @@ private slots:
                  QStringLiteral("Unassigned"));
         QVERIFY(!rowFor(*m_editor, QStringLiteral("global.screenshot"))
                       .value(QStringLiteral("modified")).toBool());
+    }
+
+    void rawHidAllowlistSurvivesDeviceSpecificReloadAndChords()
+    {
+        const QString identityA = QStringLiteral("hid.endpoint.persisted-a");
+        const QString identityB = QStringLiteral("hid.endpoint.persisted-b");
+        const QString identityC = QStringLiteral("hid.endpoint.persisted-c");
+        const QString rawA = ControlId::rawHidUsage(identityA, 0x09, 0x15);
+        const QString rawB = ControlId::rawHidUsage(identityB, 0x09, 0x16);
+        const QString rawC = ControlId::rawHidUsage(identityC, 0x0c, 0x00b5);
+
+        QVERIFY(m_database->upsertBindingOverride(
+            {QStringLiteral("controller"), {}, QStringLiteral("global.screenshot"), 2,
+             rawA, QStringLiteral("press"), 0, false, 1}));
+        QVERIFY(m_database->upsertBindingOverride(
+            {QStringLiteral("controller"), QStringLiteral("controller-logical-b"),
+             QStringLiteral("global.save_replay"), 1,
+             TriggerSpec::orderedChord(rawB, rawC).serialize(),
+             QStringLiteral("press"), 0, false, 1}));
+
+        // A fresh runtime models application restart: the catalog must read
+        // every profile row, not only the empty-profile effective table.
+        BindingRuntime restarted(m_database);
+        restarted.reload();
+        const QStringList controls =
+            ModernInput::persistedRawHidControls(restarted, m_database);
+        const QSet<QString> allowlist(controls.cbegin(), controls.cend());
+        QVERIFY(allowlist.contains(rawA));
+        QVERIFY(allowlist.contains(rawB));
+        QVERIFY(allowlist.contains(rawC));
+
+        auto& fallback = ModernInput::SelectiveRawHidFallback::instance();
+        fallback.setBoundControls(controls);
+        QCOMPARE(fallback.observeUsage(identityA, 0x09, 0x15, true), rawA);
+        QCOMPARE(fallback.observeUsage(identityB, 0x09, 0x16, true), rawB);
+        QCOMPARE(fallback.observeUsage(identityC, 0x0c, 0x00b5, true), rawC);
+        fallback.setBoundControls({});
     }
 
     void slotStatesUseTheCorrectSharedAndControllerBaseline()

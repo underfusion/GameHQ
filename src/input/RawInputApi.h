@@ -91,19 +91,28 @@ public:
 
     virtual CloakScan scanHiddenPads(const QSet<QString>& visibleRawPathsLower) = 0;
 
-    // Pressed button usages ((usagePage << 16) | usage) decoded from the LAST
-    // report in `payload` using the device's own HID report descriptor
-    // (production: RIDI_PREPARSEDDATA + HidP_GetUsages). Returns false when
+    using ButtonUsageVisitor = void (*)(void* context,
+                                        const QList<quint32>& pressedUsages);
+
+    // Pressed button usages ((usagePage << 16) | usage) decoded from EVERY
+    // report in `payload`, in order, using the device's own HID report
+    // descriptor. Returns false when
     // the device's descriptor cannot be obtained or parsed — the caller must
     // treat that as "no fallback available", never as "all released".
     // Only reached for devices the selective Raw HID fallback explicitly
     // observes (bound controls or an active probe), never on the idle path.
-    virtual bool buttonUsages(void* deviceHandle, const Payload& payload,
-                              QList<quint32>& pressedUsages)
+    virtual bool visitButtonUsageReports(void* deviceHandle, const Payload& payload,
+                                         void* context,
+                                         const ButtonUsageVisitor& visitor)
     {
-        Q_UNUSED(deviceHandle) Q_UNUSED(payload) Q_UNUSED(pressedUsages)
+        Q_UNUSED(deviceHandle) Q_UNUSED(payload) Q_UNUSED(context) Q_UNUSED(visitor)
         return false;
     }
+
+    // Invalidates every descriptor/parser buffer associated with a live Raw
+    // Input handle. The caller invokes this on removal, arrival re-evaluation,
+    // and reconcile pruning because Windows can reuse handle values.
+    virtual void forgetDevice(void* deviceHandle) { Q_UNUSED(deviceHandle) }
 
     // Win32-backed implementation. Caller owns the returned object.
     static RawInputApi* createSystem();

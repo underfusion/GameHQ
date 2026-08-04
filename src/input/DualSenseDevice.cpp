@@ -247,29 +247,35 @@ DualSenseDevice::DeviceState* DualSenseDevice::probeDevice(void* handle)
     // 054C:0ECC vendor-defined pages). Tracking those produced phantom
     // "DualSense" entries that never send a report — require a real
     // Joystick/Gamepad/MultiAxis collection.
-    if (layout == LayoutUnknown || !gamepadUsage) {
+    if (!gamepadUsage) {
         // Only hardware that at least looks like a pad earns a log line;
         // everything else is silently remembered as somebody else's device.
         const QString reason = layout == LayoutUnknown
-            ? (gamepadUsage ? QStringLiteral("unsupported report layout") : QString())
-            : QStringLiteral("non-gamepad collection on supported hardware");
+            ? QString() : QStringLiteral("non-gamepad collection on supported hardware");
         return ignoreDevice(handle, id, reason);
     }
 
-    // Only a plausible pad is worth the second OS query. Xbox-type pads expose
+    // Every gamepad-class collection needs its endpoint path before it is
+    // cached. The selective Raw HID namespace is derived from this anonymized
+    // endpoint, never from VID/PID, so two identical pads remain distinct.
+    // Xbox-type pads expose
     // HID collections whose interface path contains "IG_"; they never send
     // usable WM_INPUT reports and are handled by the XInput backend — skip
     // them here so one pad can't drive both backends.
     const RawInputApi::DevicePath path = m_api->devicePath(handle);
     if (!path.queried)
         return nullptr;   // transient again: re-query on the next report
+    const QString endpoint = ControllerIdentity::endpointFingerprint(path.value);
+    if (endpoint.isEmpty())
+        return nullptr;
+    if (layout == LayoutUnknown)
+        return ignoreDevice(handle, endpoint, QStringLiteral("unsupported report layout"));
     if (path.value.contains(QLatin1String("IG_"), Qt::CaseInsensitive)) {
         // Remember its identity: XInput only knows slot numbers, so this is
         // the one place the real VID/PID of an XInput pad is visible.
         m_xinputClass.insert(handle, id);
-        m_xinputEndpoints.insert(handle,
-                                 ControllerIdentity::endpointFingerprint(path.value));
-        return ignoreDevice(handle, id,
+        m_xinputEndpoints.insert(handle, endpoint);
+        return ignoreDevice(handle, endpoint,
                             QStringLiteral("XInput device — XInput backend handles it"));
     }
 
@@ -313,6 +319,7 @@ void DualSenseDevice::forgetClassification(void* handle)
 {
     const QString rawHidIdentity = m_ignoredHandles.value(handle);
     dropRawHidState(handle);
+    m_api->forgetDevice(handle);
     m_ignoredHandles.remove(handle);
     m_xinputClass.remove(handle);
     m_xinputEndpoints.remove(handle);
@@ -378,32 +385,51 @@ void DualSenseDevice::rawHidFallbackEvent(void* handle, void* hRawInputV)
     RawInputApi::Payload payload;
     if (!m_api->readPayload(hRawInputV, payload))
         return;
-    QList<quint32> pressedList;
-    if (!m_api->buttonUsages(handle, payload, pressedList))
-        return;   // descriptor unavailable/unparseable: no fallback for this device
-
     const QString identity = m_ignoredHandles.value(handle);
-    QSet<quint32> current(pressedList.cbegin(), pressedList.cend());
     QSet<quint32>& previous = m_rawHidPressed[handle];
-    if (current == previous)
-        return;
+    struct VisitContext {
+        DualSenseDevice* device = nullptr;
+        const QString* identity = nullptr;
+        QSet<quint32>* previous = nullptr;
+    } context{this, &identity, &previous};
+    if (!m_api->visitButtonUsageReports(
+            handle, payload, &context,
+            [](void* opaque, const QList<quint32>& current) {
+                auto* visit = static_cast<VisitContext*>(opaque);
+                visit->device->routeRawHidUsageReport(
+                    *visit->identity, *visit->previous, current);
+            }))
+        return;   // descriptor unavailable/unparseable: no fallback for this device
+}
+
+void DualSenseDevice::routeRawHidUsageReport(const QString& identity,
+                                             QSet<quint32>& previous,
+                                             const QList<quint32>& current)
+{
+    auto& fallback = ModernInput::SelectiveRawHidFallback::instance();
+    // Preserve transitions inside one RAWINPUTHID batch instead of reducing
+    // the batch to its final state.
     for (const quint32 usage : current) {
         if (previous.contains(usage))
             continue;
+        previous.insert(usage);
         const QString control = fallback.observeUsage(
             identity, quint16(usage >> 16), quint16(usage & 0xFFFF), true);
         if (!control.isEmpty())
             emit rawHidControl(identity, control, true);
     }
-    for (const quint32 usage : previous) {
-        if (current.contains(usage))
+    for (auto it = previous.begin(); it != previous.end();) {
+        if (current.contains(*it)) {
+            ++it;
             continue;
+        }
+        const quint32 usage = *it;
+        it = previous.erase(it);
         const QString control = fallback.observeUsage(
             identity, quint16(usage >> 16), quint16(usage & 0xFFFF), false);
         if (!control.isEmpty())
             emit rawHidControl(identity, control, false);
     }
-    previous = std::move(current);
 }
 
 QStringList DualSenseDevice::xinputClassIdentities() const
