@@ -147,6 +147,11 @@ gamehq_add_test(tst_providerintegration
     "${CMAKE_SOURCE_DIR}/src/input/CapabilityEventRouter.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/PhysicalControllerRegistry.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp")
+target_include_directories(tst_providerintegration PRIVATE
+    "${CMAKE_SOURCE_DIR}/third_party/gameinput/include")
+
+target_include_directories(tst_gameinputrouter PRIVATE
+    "${CMAKE_SOURCE_DIR}/third_party/gameinput/include")
 
 gamehq_add_test(tst_selectiverawhid
     tst_selectiverawhid.cpp

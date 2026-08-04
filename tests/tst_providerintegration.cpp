@@ -2,11 +2,54 @@
 #include "input/CapabilityEventRouter.h"
 #include "input/ControlId.h"
 #include "input/PhysicalControllerRegistry.h"
+#include "gameinput/GameInputLabelMap.h"
 #include "gameinput/StandardControlMap.h"
+
+#include "GameInput.h"
 
 #include <QtTest>
 
 using namespace ModernInput;
+
+namespace GI = GameInput::v3;
+
+#define GAMEHQ_ASSERT_GAMEINPUT_FLAG(localName, sdkName) \
+    static_assert(StandardControlMap::localName == quint32(GI::sdkName))
+
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(Menu, GameInputGamepadMenu);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(View, GameInputGamepadView);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(FaceA, GameInputGamepadA);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(FaceB, GameInputGamepadB);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(FaceC, GameInputGamepadC);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(FaceX, GameInputGamepadX);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(FaceY, GameInputGamepadY);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(FaceZ, GameInputGamepadZ);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(DpadUp, GameInputGamepadDPadUp);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(DpadDown, GameInputGamepadDPadDown);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(DpadLeft, GameInputGamepadDPadLeft);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(DpadRight, GameInputGamepadDPadRight);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(LeftShoulder, GameInputGamepadLeftShoulder);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(RightShoulder, GameInputGamepadRightShoulder);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(LeftTriggerButton, GameInputGamepadLeftTriggerButton);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(RightTriggerButton, GameInputGamepadRightTriggerButton);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(LeftThumbstick, GameInputGamepadLeftThumbstick);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(RightThumbstick, GameInputGamepadRightThumbstick);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(LeftThumbstickUp, GameInputGamepadLeftThumbstickUp);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(LeftThumbstickDown, GameInputGamepadLeftThumbstickDown);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(LeftThumbstickLeft, GameInputGamepadLeftThumbstickLeft);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(LeftThumbstickRight, GameInputGamepadLeftThumbstickRight);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(RightThumbstickUp, GameInputGamepadRightThumbstickUp);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(RightThumbstickDown, GameInputGamepadRightThumbstickDown);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(RightThumbstickLeft, GameInputGamepadRightThumbstickLeft);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(RightThumbstickRight, GameInputGamepadRightThumbstickRight);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(PaddleLeft1, GameInputGamepadPaddleLeft1);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(PaddleLeft2, GameInputGamepadPaddleLeft2);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(PaddleRight1, GameInputGamepadPaddleRight1);
+GAMEHQ_ASSERT_GAMEINPUT_FLAG(PaddleRight2, GameInputGamepadPaddleRight2);
+static_assert(SystemControlMap::Guide == quint32(GI::GameInputSystemButtonGuide));
+static_assert(SystemControlMap::Share == quint32(GI::GameInputSystemButtonShare));
+
+#undef GAMEHQ_ASSERT_GAMEINPUT_FLAG
 
 // t25 cross-provider integration: one PhysicalControllerRegistry and one
 // CapabilityEventRouter shared by Sony Raw Input, GameInput, XInput, WinMM
@@ -243,6 +286,23 @@ private slots:
         const auto controls = controlsFor(0xFFFFFFFFu);
         for (const QString& control : controls)
             QVERIFY2(ControlId::isCanonical(control), qPrintable(control));
+    }
+
+    void productionLabelsCarryEnumClassification()
+    {
+        const auto face = GameInputLabelMap::describe(GI::GameInputLabelXboxA);
+        QCOMPARE(face.rawLabel, qint32(GI::GameInputLabelXboxA));
+        QCOMPARE(face.normalizedLabel, QStringLiteral("A"));
+        QCOMPARE(face.classification, GameInputButtonClassification::Standard);
+
+        const auto share = GameInputLabelMap::describe(GI::GameInputLabelShare);
+        QCOMPARE(share.rawLabel, qint32(GI::GameInputLabelShare));
+        QCOMPARE(share.classification, GameInputButtonClassification::System);
+
+        const auto macro = GameInputLabelMap::describe(GI::GameInputLabelLetterM);
+        QCOMPARE(macro.rawLabel, qint32(GI::GameInputLabelLetterM));
+        QCOMPARE(macro.normalizedLabel, QStringLiteral("M"));
+        QCOMPARE(macro.classification, GameInputButtonClassification::Extra);
     }
 
 };

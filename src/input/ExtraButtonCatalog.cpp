@@ -4,65 +4,32 @@
 #include "storage/CaptureDatabase.h"
 
 #include <QCryptographicHash>
-#include <QSet>
 
 namespace ModernInput {
 
-QString ExtraButtonCatalog::signatureFor(int buttonCount, const QStringList& labels)
+QString ExtraButtonCatalog::signatureFor(
+    int buttonCount, const QVector<GameInputButtonDescriptor>& buttons)
 {
     QByteArray material = QByteArray::number(buttonCount);
     for (int index = 0; index < buttonCount; ++index) {
+        const GameInputButtonDescriptor descriptor = index < buttons.size()
+            ? buttons.at(index) : GameInputButtonDescriptor{};
         material.append('\0');
-        material.append(index < labels.size() ? labels.at(index).toUtf8() : QByteArray());
+        material.append(QByteArray::number(descriptor.rawLabel));
+        material.append(':');
+        material.append(QByteArray::number(int(descriptor.classification)));
+        material.append(':');
+        material.append(descriptor.normalizedLabel.toUtf8());
     }
     return QString::fromLatin1(
         QCryptographicHash::hash(material, QCryptographicHash::Sha256).toHex().left(16));
 }
 
-bool ExtraButtonCatalog::isStandardControlLabel(const QString& label)
-{
-    QString normalized;
-    normalized.reserve(label.size());
-    for (const QChar character : label) {
-        if (character.isLetterOrNumber())
-            normalized.append(character.toLower());
-    }
-    static const QSet<QString> kStandardNames = {
-        // Face buttons across families.
-        QStringLiteral("a"), QStringLiteral("b"), QStringLiteral("c"),
-        QStringLiteral("x"), QStringLiteral("y"), QStringLiteral("z"),
-        QStringLiteral("cross"), QStringLiteral("circle"),
-        QStringLiteral("square"), QStringLiteral("triangle"),
-        // Menu / view family.
-        QStringLiteral("menu"), QStringLiteral("start"), QStringLiteral("options"),
-        QStringLiteral("view"), QStringLiteral("back"), QStringLiteral("select"),
-        // D-pad.
-        QStringLiteral("dpadup"), QStringLiteral("dpaddown"),
-        QStringLiteral("dpadleft"), QStringLiteral("dpadright"),
-        // Shoulders / triggers / thumbstick clicks.
-        QStringLiteral("leftshoulder"), QStringLiteral("rightshoulder"),
-        QStringLiteral("lb"), QStringLiteral("rb"),
-        QStringLiteral("l1"), QStringLiteral("r1"),
-        QStringLiteral("lefttrigger"), QStringLiteral("righttrigger"),
-        QStringLiteral("lefttriggerbutton"), QStringLiteral("righttriggerbutton"),
-        QStringLiteral("lt"), QStringLiteral("rt"),
-        QStringLiteral("l2"), QStringLiteral("r2"),
-        QStringLiteral("leftthumbstick"), QStringLiteral("rightthumbstick"),
-        QStringLiteral("leftstick"), QStringLiteral("rightstick"),
-        QStringLiteral("ls"), QStringLiteral("rs"),
-        QStringLiteral("l3"), QStringLiteral("r3"),
-        // System buttons (already routed through the system path).
-        QStringLiteral("guide"), QStringLiteral("home"), QStringLiteral("xbox"),
-        QStringLiteral("ps"), QStringLiteral("share"), QStringLiteral("capture"),
-        QStringLiteral("create"),
-    };
-    return kStandardNames.contains(normalized);
-}
-
 ExtraButtonCatalog::Layout ExtraButtonCatalog::observe(
-    const QString& logicalId, int buttonCount, const QStringList& reportedLabels)
+    const QString& logicalId, int buttonCount,
+    const QVector<GameInputButtonDescriptor>& buttons)
 {
-    const QString signature = signatureFor(buttonCount, reportedLabels);
+    const QString signature = signatureFor(buttonCount, buttons);
     // Hot path: an unchanged layout is answered from memory with zero
     // database reads or writes.
     if (const auto cached = m_cache.constFind(logicalId);
@@ -72,10 +39,15 @@ ExtraButtonCatalog::Layout ExtraButtonCatalog::observe(
     Layout result;
     result.signature = signature;
     for (int index = 0; index < buttonCount; ++index) {
-        const QString reported = index < reportedLabels.size() ? reportedLabels.at(index) : QString();
+        const GameInputButtonDescriptor descriptor = index < buttons.size()
+            ? buttons.at(index) : GameInputButtonDescriptor{};
+        const QString reported = descriptor.normalizedLabel;
         result.labels.push_back(reported.isEmpty()
             ? QStringLiteral("Extra Button %1").arg(index + 1) : reported);
-        result.controlIds.push_back(isStandardControlLabel(reported)
+        const bool canonical = descriptor.classification
+                == GameInputButtonClassification::Standard
+            || descriptor.classification == GameInputButtonClassification::System;
+        result.controlIds.push_back(canonical
             ? QString()
             : ControlId::deviceButton(logicalId, result.signature, index));
     }

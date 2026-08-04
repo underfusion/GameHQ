@@ -100,4 +100,11 @@ inline QStringList controlsFor(quint32 mask)
 }
 
 } // namespace StandardControlMap
+
+namespace SystemControlMap {
+
+constexpr quint32 Guide = 0x00000001u;
+constexpr quint32 Share = 0x00000002u;
+
+} // namespace SystemControlMap
 } // namespace ModernInput

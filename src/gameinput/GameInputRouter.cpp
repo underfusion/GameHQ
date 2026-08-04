@@ -2,6 +2,7 @@
 
 #include "gameinput/GameInputWrapper.h"
 #include "gameinput/IGameInputApi.h"
+#include "gameinput/StandardControlMap.h"
 #include "input/ControlId.h"
 #include "input/InputDiagnostics.h"
 #include "input/ExtraButtonCatalog.h"
@@ -13,11 +14,6 @@
 namespace ModernInput {
 
 namespace {
-// Mirror of GameInputSystemButtons (GameInput.h); redeclared so this
-// translation unit stays buildable without the vendored SDK header.
-constexpr quint32 kSystemButtonGuide = 0x00000001u;
-constexpr quint32 kSystemButtonShare = 0x00000002u;
-
 QString providerLabel(ControllerProvider provider)
 {
     switch (provider) {
@@ -164,9 +160,9 @@ QString GameInputRouter::observeDevice(const GameInputDeviceDescriptor& device)
     observation.capabilities = ControllerCapability::StandardControls;
     // Each system button is granted individually: a Guide-only pad must not
     // be reported (or routed) as Share-capable, and vice versa.
-    if (device.supportedSystemButtons & kSystemButtonShare)
+    if (device.supportedSystemButtons & SystemControlMap::Share)
         observation.capabilities |= ControllerCapability::SystemShare;
-    if (device.supportedSystemButtons & kSystemButtonGuide)
+    if (device.supportedSystemButtons & SystemControlMap::Guide)
         observation.capabilities |= ControllerCapability::Guide;
     if (device.extraButtonCount > 0)
         observation.capabilities |= ControllerCapability::ExtraControls;
@@ -262,7 +258,7 @@ void GameInputRouter::handleBatch(const GameInputEventBatch& batch)
             m_deviceStandardButtons.insert(event.deviceId, event.standardButtons);
             if (!event.buttonStates.isEmpty()) {
                 const auto layout = m_extraButtons->observe(
-                    logicalId, event.buttonStates.size(), event.device.buttonLabels);
+                    logicalId, event.buttonStates.size(), event.device.buttons);
                 auto previous = m_deviceExtraStates.value(event.deviceId);
                 if (layout.changed) {
                     if (!m_layoutWarnings.contains(logicalId)) {
@@ -394,7 +390,7 @@ void GameInputRouter::publishEdge(const QString& deviceId, const QString& logica
                                   ControllerCapability capability, quint64 timestamp)
 {
     if (controlId.isEmpty())
-        return;   // standard-labeled extras are filtered to an empty id
+        return;   // standard/system descriptor indices are not extra controls
     // Cross-provider safety gate (t25): a Share/Guide press may reach us
     // twice — once here and once through a legacy provider (DualSense Sony
     // Raw Capture/Guide, XInput ordinal-100 Guide). When that legacy provider

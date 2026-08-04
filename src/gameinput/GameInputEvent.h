@@ -7,6 +7,20 @@
 
 namespace ModernInput {
 
+enum class GameInputButtonClassification {
+    Unknown,
+    Standard,
+    System,
+    Extra
+};
+
+struct GameInputButtonDescriptor
+{
+    qint32 rawLabel = -1;
+    QString normalizedLabel;
+    GameInputButtonClassification classification = GameInputButtonClassification::Unknown;
+};
+
 enum class GameInputEventKind {
     DeviceAdded,
     DeviceRemoved,
@@ -30,7 +44,7 @@ struct GameInputDeviceDescriptor
     quint32 supportedInput = 0;
     quint32 supportedSystemButtons = 0;
     quint32 extraButtonCount = 0;
-    QStringList buttonLabels;
+    QVector<GameInputButtonDescriptor> buttons;
 };
 
 // Callback threads publish only this immutable value object. It deliberately
@@ -59,4 +73,3 @@ struct GameInputEventBatch
 
 Q_DECLARE_METATYPE(ModernInput::GameInputEvent)
 Q_DECLARE_METATYPE(ModernInput::GameInputEventBatch)
-

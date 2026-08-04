@@ -1,4 +1,5 @@
 #include "gameinput/FakeGameInputApi.h"
+#include "gameinput/GameInputLabelMap.h"
 #include "gameinput/GameInputRouter.h"
 #include "input/ControlId.h"
 #include "input/ExtraButtonCatalog.h"
@@ -9,7 +10,11 @@
 #include <QTemporaryDir>
 #include <QtTest>
 
+#include "GameInput.h"
+
 using namespace ModernInput;
+
+namespace GI = GameInput::v3;
 
 namespace {
 GameInputEvent makeEvent(GameInputEventKind kind, const QString& control = {})
@@ -405,13 +410,15 @@ private slots:
         QCOMPARE(registers - unregisters, 3);   // device + reading + system
     }
 
-    void extraCatalogBlanksStandardLabeledButtons()
+    void extraCatalogBlanksStandardAndSystemEnums()
     {
         ExtraButtonCatalog catalog;   // no database: pure layout logic
         const auto layout = catalog.observe(
             QStringLiteral("controller-test"), 4,
-            {QStringLiteral("A"), QStringLiteral("M1"),
-             QStringLiteral("Left Thumbstick"), QStringLiteral("Share")});
+            {GameInputLabelMap::describe(GI::GameInputLabelXboxA),
+             GameInputLabelMap::describe(GI::GameInputLabelLetterM),
+             GameInputLabelMap::describe(GI::GameInputLabelL3),
+             GameInputLabelMap::describe(GI::GameInputLabelShare)});
         QCOMPARE(layout.controlIds.size(), 4);
         QVERIFY(layout.controlIds.at(0).isEmpty());   // A = standard face button
         QVERIFY(!layout.controlIds.at(1).isEmpty());  // M1 = genuine extra
@@ -431,8 +438,10 @@ private slots:
 
         auto reading = makeEvent(GameInputEventKind::Reading);
         reading.buttonStates.fill(0, 2);
-        reading.device.extraButtonCount = 2;
-        reading.device.buttonLabels = {QStringLiteral("A"), QStringLiteral("M1")};
+        reading.device.extraButtonCount = 1;
+        reading.device.buttons = {
+            GameInputLabelMap::describe(GI::GameInputLabelXboxA),
+            GameInputLabelMap::describe(GI::GameInputLabelLetterM)};
         raw->emitReading(reading);
         QTRY_COMPARE(router.shadowReadingCount(), 1);
 

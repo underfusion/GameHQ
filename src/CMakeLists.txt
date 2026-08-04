@@ -31,6 +31,7 @@ qt_add_executable(GameHQ
     gameinput/GameInputWrapper.cpp gameinput/GameInputWrapper.h
     gameinput/GameInputRouter.cpp gameinput/GameInputRouter.h
     gameinput/ProductionGameInputApi.cpp gameinput/ProductionGameInputApi.h
+    gameinput/GameInputLabelMap.h
     gameinput/StandardControlMap.h
     games/GameDetector.cpp games/GameDetector.h
     input/HotkeyManager.cpp input/HotkeyManager.h

@@ -1,5 +1,7 @@
 #include "gameinput/ProductionGameInputApi.h"
 
+#include "gameinput/GameInputLabelMap.h"
+
 #include "GameInput.h"
 
 #include <QCoreApplication>
@@ -43,11 +45,14 @@ GameInputDeviceDescriptor describeDevice(GI::IGameInputDevice* device)
     result.supportedInput = quint32(info->supportedInput);
     result.supportedSystemButtons = quint32(info->supportedSystemButtons);
     if (info->controllerInfo) {
-        result.extraButtonCount = info->controllerInfo->controllerButtonCount;
-        result.buttonLabels.reserve(int(info->controllerInfo->controllerButtonCount));
-        for (quint32 i = 0; i < info->controllerInfo->controllerButtonCount; ++i)
-            result.buttonLabels.push_back(QString::number(
-                int(info->controllerInfo->controllerButtonLabels[i])));
+        result.buttons.reserve(int(info->controllerInfo->controllerButtonCount));
+        for (quint32 i = 0; i < info->controllerInfo->controllerButtonCount; ++i) {
+            const auto button = GameInputLabelMap::describe(
+                info->controllerInfo->controllerButtonLabels[i]);
+            if (GameInputLabelMap::isExtra(button))
+                ++result.extraButtonCount;
+            result.buttons.push_back(button);
+        }
     }
     return result;
 }
