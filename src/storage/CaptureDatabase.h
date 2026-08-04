@@ -110,6 +110,7 @@ public:
     // only user-facing changes, keyed by (device group, device profile, action, slot).
     QVector<BindingOverrideRow> listBindingOverrides() const;
     bool upsertBindingOverride(const BindingOverrideRow& row);
+    bool upsertBindingOverridesAtomically(const QVector<BindingOverrideRow>& rows);
     bool clearBindingOverride(const QString& deviceGroup, const QString& deviceProfile,
                                const QString& actionId, int slot);
     bool clearBindingOverridesForGroup(const QString& deviceGroup);

@@ -76,12 +76,14 @@ SettingsPage {
         // reported" is only ever the controller/backend case — a chord Windows
         // owns and a failed write are separate kinds with their own copy.
         eyebrow: editor.relationKind === "context_override" ? "Context"
+                 : editor.relationKind === "conversion_required" ? "Compatibility"
                  : editor.relationKind === "unsupported_input" ? "Not available"
                  : editor.relationKind === "hotkey_unavailable" ? "In use"
                  : editor.relationKind === "persistence_error" ? "Not saved"
                  : editor.relationKind === "redundant" ? "Duplicate"
                                                        : "Shared button"
         title: editor.relationKind === "context_override" ? "This button changes meaning"
+               : editor.relationKind === "conversion_required" ? "Assignment conversion required"
                : editor.relationKind === "unsupported_input" ? "Button not reported"
                : editor.relationKind === "hotkey_unavailable" ? "Shortcut already taken"
                : editor.relationKind === "persistence_error" ? "Could not save this binding"
@@ -92,6 +94,7 @@ SettingsPage {
         // look; shared gestures and duplicates are informational, so they stay
         // quiet.
         variant: editor.relationKind === "context_override"
+                 || editor.relationKind === "conversion_required"
                  || editor.relationKind === "unsupported_input"
                  || editor.relationKind === "hotkey_unavailable"
                  || editor.relationKind === "persistence_error" ? "warning" : "status"
@@ -197,17 +200,28 @@ SettingsPage {
         Repeater {
             model: editor.rows
             delegate: Rectangle {
+                id: actionCard
                 property bool modified: Boolean(modelData.modified)
 
                 Layout.fillWidth: true
                 implicitHeight: actionLayout.implicitHeight + Theme.s32
                 radius: Theme.radiusM
-                color: modified ? Theme.accentSoft : Theme.bg1
+                color: modified
+                       ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.07)
+                       : Theme.bg1
                 border.width: Theme.borderWidth
-                border.color: modified ? Theme.accent : Theme.stroke
+                border.color: Theme.stroke
 
                 Behavior on color { ColorAnimation { duration: Theme.durFast } }
-                Behavior on border.color { ColorAnimation { duration: Theme.durFast } }
+                Rectangle {
+                    visible: actionCard.modified
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: 3
+                    radius: actionCard.radius
+                    color: Theme.accent
+                }
 
                 ColumnLayout {
                     id: actionLayout
@@ -302,8 +316,11 @@ SettingsPage {
                                     triggerLabel: modelData.primaryTrigger
                                     badgeLabel: modelData.bindable ? modelData.primaryGesture : "Fixed"
                                     editable: modelData.bindable
+                                    changeState: modelData.primaryChangeState
+                                    statusLabel: modelData.primaryStatusLabel
                                     onEditRequested: editor.openAssignmentEditor(modelData.actionId, 1)
                                     onClearRequested: editor.clearBinding(modelData.actionId, 1)
+                                    onResetRequested: editor.resetBinding(modelData.actionId, 1)
                                 }
                                 BindingCard {
                                     Layout.fillWidth: true
@@ -312,8 +329,11 @@ SettingsPage {
                                     triggerLabel: modelData.secondaryTrigger
                                     badgeLabel: modelData.bindable ? modelData.secondaryGesture : "Fixed"
                                     editable: modelData.bindable
+                                    changeState: modelData.secondaryChangeState
+                                    statusLabel: modelData.secondaryStatusLabel
                                     onEditRequested: editor.openAssignmentEditor(modelData.actionId, 2)
                                     onClearRequested: editor.clearBinding(modelData.actionId, 2)
+                                    onResetRequested: editor.resetBinding(modelData.actionId, 2)
                                 }
                             }
                         }
@@ -394,6 +414,24 @@ SettingsPage {
         function onConflictChanged() {
             if (editor.conflictPending) conflictDialog.open()
             else conflictDialog.close()
+        }
+    }
+
+    BindingCompatibilityDialog {
+        id: compatibilityDialog
+        parent: root
+        anchors.fill: parent
+        z: 211
+        message: editor.compatibilityMessage
+        onConverted: editor.confirmCompatibility()
+        onRetried: editor.retryCompatibilityCapture()
+        onCanceled: editor.dismissCompatibility()
+    }
+    Connections {
+        target: editor
+        function onCompatibilityChanged() {
+            if (editor.compatibilityPending) compatibilityDialog.open()
+            else compatibilityDialog.close()
         }
     }
 

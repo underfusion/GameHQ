@@ -476,6 +476,30 @@ bool CaptureDatabase::upsertBindingOverride(const BindingOverrideRow& row)
     return true;
 }
 
+bool CaptureDatabase::upsertBindingOverridesAtomically(const QVector<BindingOverrideRow>& rows)
+{
+    if (rows.isEmpty())
+        return true;
+    if (!m_db.transaction()) {
+        qWarning() << "DB: could not open binding override transaction:"
+                   << m_db.lastError().text();
+        return false;
+    }
+    for (const BindingOverrideRow& row : rows) {
+        if (upsertBindingOverride(row))
+            continue;
+        m_db.rollback();
+        return false;
+    }
+    if (!m_db.commit()) {
+        qWarning() << "DB: binding override transaction commit failed:"
+                   << m_db.lastError().text();
+        m_db.rollback();
+        return false;
+    }
+    return true;
+}
+
 bool CaptureDatabase::clearBindingOverride(const QString& deviceGroup, const QString& deviceProfile,
                                             const QString& actionId, int slot)
 {

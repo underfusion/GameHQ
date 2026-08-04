@@ -366,13 +366,39 @@ private slots:
                  Kind::HardConflict);
     }
 
-    void pressAgainstTimedGestureIsHardConflict()
+    void editablePressAgainstTimedGestureRequiresConversion()
     {
-        // Global press vs Overlay tap on one button: press resolves on the down
-        // edge and would fire alongside whatever the tap later becomes.
+        // Global Press can become Tap x1 so a triple-tap assignment can share
+        // the control without deleting either action.
+        QCOMPARE(BindingRelation::classify(
+                      controller("global.toggle_overlay", ControlId::Menu, kPress),
+                      controller("overlay.sidebar_toggle", ControlId::Menu, kTripleTap)),
+                  Kind::ConversionRequired);
+        QCOMPARE(BindingRelation::classify(
+                     controller("overlay.sidebar_toggle", ControlId::Menu, kTripleTap),
+                     controller("global.toggle_overlay", ControlId::Menu, kPress)),
+                 Kind::ConversionRequired);
+    }
+
+    void pressAgainstSingleTapRemainsAHardConflict()
+    {
+        // Converting Press to Tap x1 would create the exact same gesture as the
+        // requested assignment, so there is no compatible pair to offer.
         QCOMPARE(BindingRelation::classify(
                      controller("global.toggle_overlay", ControlId::Menu, kPress),
                      controller("overlay.sidebar_toggle", ControlId::Menu, kTap)),
+                 Kind::HardConflict);
+    }
+
+    void repeatingAndFixedPressesNeverOfferConversion()
+    {
+        QCOMPARE(BindingRelation::classify(
+                     controller("overlay.navigate_left", ControlId::DpadLeft, kPress),
+                     controller("overlay.favorite", ControlId::DpadLeft, kTripleTap)),
+                 Kind::HardConflict);
+        QCOMPARE(BindingRelation::classify(
+                     controller("overlay.back", ControlId::FaceEast, kPress),
+                     controller("global.toggle_overlay", ControlId::FaceEast, kTripleTap)),
                  Kind::HardConflict);
     }
 
@@ -391,6 +417,8 @@ private slots:
         QCOMPARE(BindingRelation::kindId(Kind::ContextOverride), QStringLiteral("context_override"));
         QCOMPARE(BindingRelation::kindId(Kind::Redundant), QStringLiteral("redundant"));
         QCOMPARE(BindingRelation::kindId(Kind::SharedGesture), QStringLiteral("shared_gesture"));
+        QCOMPARE(BindingRelation::kindId(Kind::ConversionRequired),
+                 QStringLiteral("conversion_required"));
         QCOMPARE(BindingRelation::kindId(Kind::HardConflict), QStringLiteral("hard_conflict"));
     }
 };

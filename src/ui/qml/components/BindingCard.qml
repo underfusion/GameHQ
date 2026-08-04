@@ -13,14 +13,28 @@ Rectangle {
     property string badgeLabel: ""
     property bool assigned: false
     property bool editable: true
+    property string changeState: "default"
+    property string statusLabel: ""
+    readonly property bool changed: changeState !== "default"
     signal editRequested()
     signal clearRequested()
+    signal resetRequested()
 
     implicitHeight: Theme.s48 + Theme.s24
     radius: Theme.radiusM
-    color: root.assigned ? Theme.surface : "transparent"
+    color: root.changed ? Theme.accentSoft : root.assigned ? Theme.surface : "transparent"
     border.width: Theme.borderWidth
-    border.color: root.assigned ? Theme.borderLight : Theme.stroke
+    border.color: root.changed ? Theme.accent : root.assigned ? Theme.borderLight : Theme.stroke
+
+    Rectangle {
+        visible: root.changed
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: 3
+        radius: root.radius
+        color: Theme.accent
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -41,6 +55,59 @@ Rectangle {
                 font.pixelSize: Theme.fontCaption
                 font.letterSpacing: Theme.letterSpacingWide
                 elide: Text.ElideRight
+            }
+
+            Rectangle {
+                visible: root.statusLabel !== ""
+                implicitWidth: statusText.implicitWidth + Theme.s12
+                implicitHeight: statusText.implicitHeight + Theme.s4
+                radius: Theme.radiusPill
+                color: Theme.accentSoft
+                border.width: Theme.borderWidth
+                border.color: Theme.accent
+
+                Text {
+                    id: statusText
+                    anchors.centerIn: parent
+                    text: root.statusLabel
+                    color: Theme.accent
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontCaption
+                    font.weight: Font.DemiBold
+                }
+            }
+
+            QC.AbstractButton {
+                id: resetButton
+
+                visible: root.editable
+                         && (root.changeState === "modified" || root.changeState === "removed")
+                Layout.preferredWidth: resetText.implicitWidth + Theme.s16
+                Layout.preferredHeight: Theme.s24
+                focusPolicy: Qt.StrongFocus
+                Accessible.name: (root.changeState === "removed" ? "Restore " : "Revert ")
+                                 + root.slotLabel.toLowerCase() + " assignment"
+                Accessible.role: Accessible.Button
+                onClicked: root.resetRequested()
+
+                contentItem: Text {
+                    id: resetText
+                    text: root.changeState === "removed" ? "Restore" : "Revert"
+                    color: resetButton.activeFocus || resetButton.hovered
+                           ? Theme.accent : Theme.textMuted
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.fontCaption
+                    font.weight: Font.DemiBold
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                background: Rectangle {
+                    radius: Theme.radiusS
+                    color: resetButton.hovered || resetButton.down ? Theme.accentSoft : "transparent"
+                    border.width: resetButton.activeFocus ? Theme.borderWidth + 1 : 0
+                    border.color: Theme.focusRing
+                    Behavior on color { ColorAnimation { duration: Theme.durFast } }
+                }
             }
 
             QC.AbstractButton {
@@ -85,10 +152,11 @@ Rectangle {
             focusPolicy: root.editable ? Qt.StrongFocus : Qt.NoFocus
             leftPadding: Theme.s8
             rightPadding: Theme.s8
-            Accessible.name: root.assigned
-                             ? "Edit " + root.slotLabel.toLowerCase() + " assignment: "
-                               + root.triggerLabel + ", " + root.badgeLabel
-                             : "Add " + root.slotLabel.toLowerCase() + " assignment"
+            Accessible.name: (root.assigned
+                              ? "Edit " + root.slotLabel.toLowerCase() + " assignment: "
+                                + root.triggerLabel + ", " + root.badgeLabel
+                              : "Add " + root.slotLabel.toLowerCase() + " assignment")
+                             + (root.statusLabel !== "" ? ", status " + root.statusLabel : "")
             Accessible.role: Accessible.Button
             onClicked: root.editRequested()
 
@@ -98,7 +166,8 @@ Rectangle {
                 Text {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
-                    text: root.assigned ? root.triggerLabel : "+ Add input"
+                    text: root.assigned ? root.triggerLabel
+                                        : root.changeState === "removed" ? "Unassigned" : "+ Add input"
                     color: root.assigned ? Theme.text : Theme.textMuted
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontBody

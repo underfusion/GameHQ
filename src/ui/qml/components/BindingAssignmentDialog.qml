@@ -17,7 +17,9 @@ FocusScope {
     readonly property bool combination: model && model.editorTriggerKind === "combination"
     readonly property string noticeKind: model ? model.editorNoticeKind : "none"
     readonly property bool noticeDanger: noticeKind === "hard_conflict"
-                                         || noticeKind === "invalid_pattern"
+                                          || noticeKind === "invalid_pattern"
+    readonly property bool noticeWarning: noticeKind === "unsupported_input"
+                                           || noticeKind === "conversion_required"
 
     function gestureValue() {
         if (!model)
@@ -408,7 +410,7 @@ FocusScope {
                     visible: root.model && root.model.editorNotice !== ""
                     radius: Theme.radiusS
                     color: root.noticeDanger ? Theme.dangerSoft
-                         : root.noticeKind === "unsupported_input" ? Theme.warningSoft
+                         : root.noticeWarning ? Theme.warningSoft
                                                                   : Theme.surfaceAlt
                     border.width: Theme.borderWidth
                     border.color: root.noticeDanger ? Theme.danger
@@ -423,9 +425,9 @@ FocusScope {
                         spacing: Theme.s12
 
                         Text {
-                            text: root.noticeDanger ? "!" : root.noticeKind === "unsupported_input" ? "⚠" : "i"
+                            text: root.noticeDanger ? "!" : root.noticeWarning ? "⚠" : "i"
                             color: root.noticeDanger ? Theme.danger
-                                 : root.noticeKind === "unsupported_input" ? Theme.warning : Theme.textMuted
+                                 : root.noticeWarning ? Theme.warning : Theme.textMuted
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontH3
                             font.weight: Font.DemiBold
@@ -438,9 +440,11 @@ FocusScope {
                                 Layout.fillWidth: true
                                 text: root.noticeDanger ? "Assignment needs attention"
                                       : root.noticeKind === "unsupported_input"
-                                        ? "Button not verified this session" : "Assignment note"
+                                        ? "Button not verified this session"
+                                      : root.noticeKind === "conversion_required"
+                                        ? "Compatibility change required" : "Assignment note"
                                 color: root.noticeDanger ? Theme.danger
-                                     : root.noticeKind === "unsupported_input" ? Theme.warning : Theme.text
+                                     : root.noticeWarning ? Theme.warning : Theme.text
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.fontBody
                                 font.weight: Font.DemiBold

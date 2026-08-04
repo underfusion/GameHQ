@@ -314,6 +314,43 @@ QVector<BindingResolver::Binding> BindingResolver::effectiveBindings(
     return result;
 }
 
+QVector<BindingResolver::Binding> BindingResolver::baselineBindings(
+    const QString& deviceGroup, const QString& deviceProfile) const
+{
+    QHash<QString, Binding> merged;
+    for (const Binding& binding : defaultBindings()) {
+        if (binding.deviceGroup == deviceGroup)
+            merged.insert(bindingKey(binding.actionId, binding.slot), binding);
+    }
+
+    // A shared profile compares directly with code-owned defaults. A specific
+    // controller compares with everything below its own identity: group-wide
+    // rows first, then its legacy slot alias when one exists.
+    if (!deviceProfile.isEmpty()) {
+        QStringList inheritedProfiles{QString()};
+        const QString alias = m_profileAliases.value(deviceProfile);
+        if (!alias.isEmpty() && alias != deviceProfile)
+            inheritedProfiles.append(alias);
+        for (const QString& profile : inheritedProfiles) {
+            for (const Binding& binding : m_overrides) {
+                if (binding.deviceGroup != deviceGroup || binding.deviceProfile != profile)
+                    continue;
+                const auto* action = ActionCatalog::find(binding.actionId);
+                if (!action || !action->bindable)
+                    continue;
+                merged.insert(bindingKey(binding.actionId, binding.slot), binding);
+            }
+        }
+    }
+
+    QVector<Binding> result;
+    for (const Binding& binding : std::as_const(merged)) {
+        if (!binding.unbound && !binding.triggerCode.isEmpty())
+            result.append(binding);
+    }
+    return result;
+}
+
 QVector<BindingResolver::Binding> BindingResolver::matching(
     const QString& deviceGroup, const QString& deviceProfile,
     const QString& triggerCode, const GestureSpec& gesture,

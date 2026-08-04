@@ -80,6 +80,12 @@ QVector<BindingResolver::Binding> BindingRuntime::effectiveBindings(
     return m_resolver.effectiveBindings(deviceGroup, deviceProfile);
 }
 
+QVector<BindingResolver::Binding> BindingRuntime::baselineBindings(
+    const QString& deviceGroup, const QString& deviceProfile) const
+{
+    return m_resolver.baselineBindings(deviceGroup, deviceProfile);
+}
+
 BindingResolver::Gesture BindingRuntime::inheritedGesture(
     const QString& deviceGroup, const QString& deviceProfile,
     const QString& actionId, int slot) const

@@ -33,6 +33,16 @@ bool hasBinding(const BindingRuntime &runtime, const QString &group, const QStri
     }
     return false;
 }
+
+BindingResolver::Binding bindingFor(const BindingRuntime &runtime, const QString &group,
+                                    const QString &profile, const QString &actionId, int slot)
+{
+    for (const auto &binding : runtime.effectiveBindings(group, profile)) {
+        if (binding.actionId == actionId && binding.slot == slot)
+            return binding;
+    }
+    return {};
+}
 }
 
 class BindingEditorTest : public QObject
@@ -63,8 +73,10 @@ private slots:
         QVERIFY(m_database->clearAllBindingOverrides());
         m_runtime->reload();
         m_runtime->cancelAll();
+        m_runtime->setTiming({300, 300, 2000});
         m_editor->cancelCapture();
         m_editor->dismissConflict();
+        m_editor->dismissCompatibility();
         m_editor->setDeviceGroup(QStringLiteral("controller"));
         m_editor->setControllerProfile({});
         m_editor->setControllerSpecific(false);
@@ -74,7 +86,10 @@ private slots:
     {
         m_editor->setDeviceGroup(QStringLiteral("keyboard"));
         QVERIFY(!rowFor(*m_editor, QStringLiteral("global.screenshot"))
-                     .value(QStringLiteral("modified")).toBool());
+                      .value(QStringLiteral("modified")).toBool());
+        QCOMPARE(rowFor(*m_editor, QStringLiteral("global.screenshot"))
+                     .value(QStringLiteral("primaryChangeState")).toString(),
+                 QStringLiteral("default"));
         m_editor->beginCapture(QStringLiteral("global.screenshot"), 2);
         QVERIFY(m_editor->captureInput(QStringLiteral("keyboard"),
                                        QStringLiteral("Ctrl+Alt+P"),
@@ -86,6 +101,10 @@ private slots:
         QCOMPARE(edited.value(QStringLiteral("secondary")).toString(),
                  QStringLiteral("Ctrl+Alt+P"));
         QVERIFY(edited.value(QStringLiteral("modified")).toBool());
+        QCOMPARE(edited.value(QStringLiteral("secondaryChangeState")).toString(),
+                 QStringLiteral("added"));
+        QCOMPARE(edited.value(QStringLiteral("secondaryStatusLabel")).toString(),
+                 QStringLiteral("Added"));
 
         BindingRuntime reloaded(m_database);
         reloaded.reload();
@@ -105,7 +124,54 @@ private slots:
                      .value(QStringLiteral("secondary")).toString(),
                  QStringLiteral("Unassigned"));
         QVERIFY(!rowFor(*m_editor, QStringLiteral("global.screenshot"))
-                     .value(QStringLiteral("modified")).toBool());
+                      .value(QStringLiteral("modified")).toBool());
+    }
+
+    void slotStatesUseTheCorrectSharedAndControllerBaseline()
+    {
+        const QString action = QStringLiteral("desktop.favorite");
+        const QString sharedTrigger = ControlId::genericButton(30);
+        QVERIFY(m_database->upsertBindingOverride(
+            {QStringLiteral("controller"), {}, action, 2, sharedTrigger,
+             QStringLiteral("press"), 0, false, 1}));
+        m_runtime->reload();
+
+        const ControlId::DeviceProfile pad{
+            QStringLiteral("XInput"), QStringLiteral("3537:1004"),
+            ControlId::ControllerFamily::Xbox, QStringLiteral("Xbox-compatible controller")};
+        m_editor->setControllerProfile(pad);
+        m_editor->setControllerSpecific(true);
+
+        QVariantMap row = rowFor(*m_editor, action);
+        QCOMPARE(row.value(QStringLiteral("secondaryTrigger")).toString(),
+                 QStringLiteral("Button 30"));
+        QCOMPARE(row.value(QStringLiteral("secondaryChangeState")).toString(),
+                 QStringLiteral("default"));
+        QVERIFY(!row.value(QStringLiteral("modified")).toBool());
+
+        const QString ownTrigger = ControlId::genericButton(31);
+        QVERIFY(m_database->upsertBindingOverride(
+            {QStringLiteral("controller"), pad.fingerprint, action, 2, ownTrigger,
+             QStringLiteral("press"), 0, false, 1}));
+        m_runtime->reload();
+        m_editor->setControllerSpecific(false);
+        m_editor->setControllerSpecific(true);
+        row = rowFor(*m_editor, action);
+        QCOMPARE(row.value(QStringLiteral("secondaryChangeState")).toString(),
+                 QStringLiteral("modified"));
+
+        m_editor->clearBinding(action, 2);
+        row = rowFor(*m_editor, action);
+        QCOMPARE(row.value(QStringLiteral("secondaryChangeState")).toString(),
+                 QStringLiteral("removed"));
+        QVERIFY(!row.value(QStringLiteral("secondaryAssigned")).toBool());
+
+        m_editor->resetBinding(action, 2);
+        row = rowFor(*m_editor, action);
+        QCOMPARE(row.value(QStringLiteral("secondaryChangeState")).toString(),
+                 QStringLiteral("default"));
+        QCOMPARE(row.value(QStringLiteral("secondaryTrigger")).toString(),
+                 QStringLiteral("Button 30"));
     }
 
     void conflictCanBeCanceledOrReplaced()
@@ -982,6 +1048,129 @@ private slots:
                                QStringLiteral("Share"));
         m_editor->setEditorGesture(QStringLiteral("tap"), 3, 0);
         QCOMPARE(m_editor->editorNoticeKind(), QStringLiteral("higher_tap_count_delay"));
+        m_editor->closeAssignmentEditor();
+    }
+
+    void pressToTripleTapConversionPreservesBothExactActions()
+    {
+        m_editor->noteObservedControl(ControlId::Guide);
+        m_editor->openAssignmentEditor(QStringLiteral("overlay.favorite"), 2);
+        m_editor->beginTriggerCapture(1);
+        QVERIFY(m_editor->captureInput(QStringLiteral("controller"), ControlId::Guide,
+                                       QStringLiteral("PS")));
+        m_editor->setEditorGesture(QStringLiteral("tap"), 3, 0);
+        QCOMPARE(m_editor->editorNoticeKind(), QStringLiteral("conversion_required"));
+        m_editor->saveAssignment();
+        QVERIFY(m_editor->compatibilityPending());
+        QVERIFY(!m_editor->conflictPending());
+        QVERIFY(m_editor->compatibilityMessage().contains(QStringLiteral("released")));
+        QVERIFY(m_editor->compatibilityMessage().contains(QStringLiteral("300 ms")));
+
+        m_editor->confirmCompatibility();
+        QVERIFY(!m_editor->compatibilityPending());
+        const auto single = bindingFor(*m_runtime, QStringLiteral("controller"), {},
+                                       QStringLiteral("global.toggle_overlay"), 1);
+        const auto triple = bindingFor(*m_runtime, QStringLiteral("controller"), {},
+                                       QStringLiteral("overlay.favorite"), 2);
+        QCOMPARE(single.triggerCode, ControlId::Guide);
+        QCOMPARE(single.gesture(), GestureSpec::tap(1));
+        QCOMPARE(triple.triggerCode, ControlId::Guide);
+        QCOMPARE(triple.gesture(), GestureSpec::tap(3));
+
+        m_runtime->setTiming({20, 300, 2000});
+        QSignalSpy fired(m_runtime, &BindingRuntime::actionTriggered);
+        QVERIFY(m_runtime->press(QStringLiteral("controller"), {}, ControlId::Guide,
+                                 ActionCatalog::Scope::Overlay));
+        QVERIFY(m_runtime->release(QStringLiteral("controller"), {}, ControlId::Guide));
+        QTRY_COMPARE(fired.count(), 1);
+        QCOMPARE(fired.takeFirst().at(0).toString(), QStringLiteral("global.toggle_overlay"));
+
+        for (int i = 0; i < 3; ++i) {
+            QVERIFY(m_runtime->press(QStringLiteral("controller"), {}, ControlId::Guide,
+                                     ActionCatalog::Scope::Overlay));
+            QVERIFY(m_runtime->release(QStringLiteral("controller"), {}, ControlId::Guide));
+        }
+        QCOMPARE(fired.count(), 1);
+        QCOMPARE(fired.takeFirst().at(0).toString(), QStringLiteral("overlay.favorite"));
+    }
+
+    void compatibilityCancelAndChooseAnotherLeaveBindingsUntouched()
+    {
+        m_editor->noteObservedControl(ControlId::Guide);
+        const auto prepare = [this] {
+            m_editor->openAssignmentEditor(QStringLiteral("overlay.favorite"), 2);
+            m_editor->beginTriggerCapture(1);
+            m_editor->captureInput(QStringLiteral("controller"), ControlId::Guide,
+                                   QStringLiteral("PS"));
+            m_editor->setEditorGesture(QStringLiteral("tap"), 3, 0);
+            m_editor->saveAssignment();
+            QVERIFY(m_editor->compatibilityPending());
+        };
+
+        prepare();
+        m_editor->dismissCompatibility();
+        QVERIFY(!hasBinding(*m_runtime, QStringLiteral("controller"), {},
+                            QStringLiteral("overlay.favorite"), 2, ControlId::Guide));
+        QCOMPARE(bindingFor(*m_runtime, QStringLiteral("controller"), {},
+                            QStringLiteral("global.toggle_overlay"), 1).gesture(),
+                 GestureSpec::press());
+        m_editor->closeAssignmentEditor();
+
+        prepare();
+        m_editor->retryCompatibilityCapture();
+        QVERIFY(!m_editor->compatibilityPending());
+        QVERIFY(m_editor->captureActive());
+        QCOMPARE(m_editor->editorCaptureStep(), QStringLiteral("first"));
+        m_editor->cancelTriggerCapture();
+        m_editor->closeAssignmentEditor();
+    }
+
+    void conversionPreflightRejectsASecondSingleTap()
+    {
+        QVERIFY(m_database->upsertBindingOverride(
+            {QStringLiteral("controller"), {}, QStringLiteral("global.screenshot"), 2,
+             ControlId::Guide, QStringLiteral("tap"), 0, false, 1}));
+        m_runtime->reload();
+        m_editor->noteObservedControl(ControlId::Guide);
+        m_editor->openAssignmentEditor(QStringLiteral("overlay.favorite"), 2);
+        m_editor->beginTriggerCapture(1);
+        m_editor->captureInput(QStringLiteral("controller"), ControlId::Guide,
+                               QStringLiteral("PS"));
+        m_editor->setEditorGesture(QStringLiteral("tap"), 3, 0);
+        QCOMPARE(m_editor->editorNoticeKind(), QStringLiteral("hard_conflict"));
+        m_editor->saveAssignment();
+        QVERIFY(m_editor->conflictPending());
+        QVERIFY(!m_editor->compatibilityPending());
+        m_editor->dismissConflict();
+        m_editor->closeAssignmentEditor();
+    }
+
+    void conversionFailureRestoresBothPreviousRows()
+    {
+        m_editor->noteObservedControl(ControlId::Guide);
+        m_editor->openAssignmentEditor(QStringLiteral("overlay.favorite"), 2);
+        m_editor->beginTriggerCapture(1);
+        m_editor->captureInput(QStringLiteral("controller"), ControlId::Guide,
+                               QStringLiteral("PS"));
+        m_editor->setEditorGesture(QStringLiteral("tap"), 3, 0);
+        m_editor->saveAssignment();
+        QVERIFY(m_editor->compatibilityPending());
+
+        m_editor->setPersistRow([this](const BindingOverrideRow& row) {
+            if (row.actionId == QLatin1String("overlay.favorite"))
+                return false;
+            return m_database->upsertBindingOverride(row);
+        });
+        m_editor->confirmCompatibility();
+        m_editor->setPersistRow(nullptr);
+
+        QCOMPARE(m_editor->relationKind(), QStringLiteral("persistence_error"));
+        QCOMPARE(bindingFor(*m_runtime, QStringLiteral("controller"), {},
+                            QStringLiteral("global.toggle_overlay"), 1).gesture(),
+                 GestureSpec::press());
+        QVERIFY(!hasBinding(*m_runtime, QStringLiteral("controller"), {},
+                            QStringLiteral("overlay.favorite"), 2, ControlId::Guide));
+        QVERIFY(m_database->listBindingOverrides().isEmpty());
         m_editor->closeAssignmentEditor();
     }
 

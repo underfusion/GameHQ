@@ -28,6 +28,17 @@ bool actsImmediately(const GestureSpec& gesture, const ActionCatalog::Action* ac
     return gesture.kind == GestureSpec::Kind::Press || repeatsWhileHeld(action);
 }
 
+bool canConvertPress(const ActionCatalog::Action* action)
+{
+    return action && action->bindable && !action->repeats && !action->requiresImmediatePress;
+}
+
+bool isConvertibleTimedGesture(const GestureSpec& gesture)
+{
+    return gesture.kind == GestureSpec::Kind::Hold
+        || (gesture.kind == GestureSpec::Kind::Tap && gesture.tapCount >= 2);
+}
+
 } // namespace
 
 bool BindingRelation::scopesOverlap(ActionCatalog::Scope left, ActionCatalog::Scope right)
@@ -153,7 +164,20 @@ BindingRelation::Kind BindingRelation::classify(const BindingResolver::Binding& 
     if (leftTrigger == rightTrigger && gesturesCompatible(leftGesture, rightGesture))
         return Kind::SharedGesture;
 
-    // 6) Either the same gesture drives two different actions, or a press
+    // A non-repeating, editable Press can be made compatible with a timed
+    // gesture by explicitly converting it to Tap x1. This verdict is only the
+    // pairwise candidate: the editor still preflights the converted row against
+    // the complete effective set before offering the operation.
+    if (leftTrigger == rightTrigger && !leftTrigger.isChord()) {
+        if (leftGesture.kind == GestureSpec::Kind::Press
+            && isConvertibleTimedGesture(rightGesture) && canConvertPress(leftAction))
+            return Kind::ConversionRequired;
+        if (rightGesture.kind == GestureSpec::Kind::Press
+            && isConvertibleTimedGesture(leftGesture) && canConvertPress(rightAction))
+            return Kind::ConversionRequired;
+    }
+
+    // Either the same gesture drives two different actions, or a press
     //    binding sits on a button that also carries a timed gesture. Press
     //    fires on the down edge, so it always beats and doubles up with the
     //    gesture that would have resolved later.
@@ -220,6 +244,7 @@ QString BindingRelation::kindId(Kind kind)
     case Kind::ContextOverride: return QStringLiteral("context_override");
     case Kind::Redundant: return QStringLiteral("redundant");
     case Kind::SharedGesture: return QStringLiteral("shared_gesture");
+    case Kind::ConversionRequired: return QStringLiteral("conversion_required");
     case Kind::HardConflict: return QStringLiteral("hard_conflict");
     }
     return QStringLiteral("none");

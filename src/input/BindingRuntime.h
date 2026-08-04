@@ -27,6 +27,8 @@ public:
     void reload();
     QVector<BindingResolver::Binding> effectiveBindings(
         const QString& deviceGroup, const QString& deviceProfile = {}) const;
+    QVector<BindingResolver::Binding> baselineBindings(
+        const QString& deviceGroup, const QString& deviceProfile = {}) const;
     BindingResolver::Gesture inheritedGesture(const QString& deviceGroup,
                                               const QString& deviceProfile,
                                               const QString& actionId, int slot) const;

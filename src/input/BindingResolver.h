@@ -84,6 +84,11 @@ public:
 
     QVector<Binding> effectiveBindings(const QString& deviceGroup,
                                        const QString& deviceProfile = {}) const;
+    // Values inherited when the selected profile's own rows are absent.
+    // Shared profiles inherit code defaults; controller-specific profiles also
+    // inherit group-wide and legacy-alias rows.
+    QVector<Binding> baselineBindings(const QString& deviceGroup,
+                                      const QString& deviceProfile = {}) const;
     QVector<Binding> matching(const QString& deviceGroup,
                               const QString& deviceProfile,
                               const QString& triggerCode,

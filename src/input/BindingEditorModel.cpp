@@ -28,10 +28,45 @@ int noticeSeverity(BindingRelation::Kind kind)
     case BindingRelation::Kind::ContextOverride: return 3;
     case BindingRelation::Kind::Redundant:       return 2;
     case BindingRelation::Kind::SharedGesture:   return 1;
+    case BindingRelation::Kind::ConversionRequired:     // owns its compatibility modal
     case BindingRelation::Kind::HardConflict:            // owns the modal instead
     case BindingRelation::Kind::None:            return 0;
     }
     return 0;
+}
+
+bool sameBindingValue(const BindingResolver::Binding& left,
+                      const BindingResolver::Binding& right)
+{
+    return left.triggerCode == right.triggerCode
+        && left.activation == right.activation
+        && left.holdMs == right.holdMs
+        && left.tapCount == right.tapCount;
+}
+
+QString slotChangeState(const BindingResolver::Binding* baseline,
+                        const BindingResolver::Binding* effective,
+                        const BindingOverrideRow* local)
+{
+    if (!local)
+        return QStringLiteral("default");
+    const bool hadBaseline = baseline && !baseline->triggerCode.isEmpty();
+    const bool isAssigned = effective && !effective->triggerCode.isEmpty();
+    if (hadBaseline && (local->unbound || !isAssigned))
+        return QStringLiteral("removed");
+    if (!hadBaseline && isAssigned)
+        return QStringLiteral("added");
+    if (hadBaseline && isAssigned && !sameBindingValue(*baseline, *effective))
+        return QStringLiteral("modified");
+    return QStringLiteral("default");
+}
+
+QString statusLabel(const QString& state)
+{
+    if (state == QLatin1String("added")) return QStringLiteral("Added");
+    if (state == QLatin1String("modified")) return QStringLiteral("Modified");
+    if (state == QLatin1String("removed")) return QStringLiteral("Removed");
+    return {};
 }
 }
 
@@ -129,10 +164,14 @@ void BindingEditorModel::rebuildRows()
     for (const auto& binding : m_runtime->effectiveBindings(m_deviceGroup, profile))
         bindings.insert(slotKey(binding.actionId, binding.slot), binding);
 
-    QSet<QString> modifiedActions;
+    QHash<QString, BindingResolver::Binding> baselines;
+    for (const auto& binding : m_runtime->baselineBindings(m_deviceGroup, profile))
+        baselines.insert(slotKey(binding.actionId, binding.slot), binding);
+
+    QHash<QString, BindingOverrideRow> localOverrides;
     for (const BindingOverrideRow& row : m_database->listBindingOverrides()) {
         if (row.deviceGroup == m_deviceGroup && row.deviceProfile == profile)
-            modifiedActions.insert(row.actionId);
+            localOverrides.insert(slotKey(row.actionId, row.slot), row);
     }
 
     QVariantList next;
@@ -143,19 +182,32 @@ void BindingEditorModel::rebuildRows()
         row.insert(QStringLiteral("description"), action.description);
         row.insert(QStringLiteral("scope"), scopeLabel(action.scope));
         row.insert(QStringLiteral("bindable"), action.bindable);
-        row.insert(QStringLiteral("modified"), modifiedActions.contains(action.id));
+        bool actionModified = false;
         for (int slot = 1; slot <= 2; ++slot) {
-            const auto binding = bindings.value(slotKey(action.id, slot));
+            const QString key = slotKey(action.id, slot);
+            const auto binding = bindings.value(key);
+            const auto baselineIt = baselines.constFind(key);
+            const auto localIt = localOverrides.constFind(key);
+            const BindingResolver::Binding* baseline = baselineIt == baselines.cend()
+                ? nullptr : &baselineIt.value();
+            const BindingOverrideRow* local = localIt == localOverrides.cend()
+                ? nullptr : &localIt.value();
             const QString prefix = slot == 1 ? QStringLiteral("primary")
                                              : QStringLiteral("secondary");
             const bool assigned = !binding.actionId.isEmpty();
+            const QString changeState = slotChangeState(
+                baseline, assigned ? &binding : nullptr, local);
+            actionModified = actionModified || changeState != QLatin1String("default");
             row.insert(prefix, assigned ? formatBinding(binding) : QStringLiteral("Unassigned"));
             row.insert(prefix + QStringLiteral("Assigned"), assigned);
             row.insert(prefix + QStringLiteral("Trigger"),
                        assigned ? formatTrigger(binding) : QString());
             row.insert(prefix + QStringLiteral("Gesture"),
                        assigned ? formatGestureBadge(binding) : QString());
+            row.insert(prefix + QStringLiteral("ChangeState"), changeState);
+            row.insert(prefix + QStringLiteral("StatusLabel"), statusLabel(changeState));
         }
+        row.insert(QStringLiteral("modified"), actionModified);
         next.append(row);
     }
     m_rows = next;
@@ -230,6 +282,118 @@ void BindingEditorModel::dismissRelationNotice()
     setRelationNotice(QStringLiteral("none"), {});
 }
 
+bool BindingEditorModel::conversionCanApply(
+    const BindingResolver::Binding& target,
+    const BindingResolver::Binding& press,
+    const QVector<BindingResolver::Binding>& effective,
+    BindingResolver::Binding* converted) const
+{
+    const GestureSpec targetGesture = target.gesture();
+    if (press.gesture().kind != GestureSpec::Kind::Press)
+        return false;
+    if (targetGesture.kind != GestureSpec::Kind::Hold
+        && !(targetGesture.kind == GestureSpec::Kind::Tap && targetGesture.tapCount >= 2))
+        return false;
+
+    BindingResolver::Binding candidate = press;
+    candidate.deviceProfile = target.deviceProfile;
+    candidate.activation = QStringLiteral("tap");
+    candidate.tapCount = 1;
+    candidate.holdMs = 0;
+
+    if (BindingRelation::classify(candidate, target) == BindingRelation::Kind::HardConflict)
+        return false;
+    for (const auto& binding : effective) {
+        if ((binding.actionId == press.actionId && binding.slot == press.slot)
+            || (binding.actionId == target.actionId && binding.slot == target.slot))
+            continue;
+        if (BindingRelation::classify(candidate, binding) == BindingRelation::Kind::HardConflict)
+            return false;
+    }
+    if (converted)
+        *converted = candidate;
+    return true;
+}
+
+BindingEditorModel::PendingChange BindingEditorModel::pendingChangeFor(
+    const BindingResolver::Binding& target) const
+{
+    PendingChange change;
+    change.target = target;
+    const auto effective = m_runtime->effectiveBindings(target.deviceGroup, target.deviceProfile);
+    for (const auto& binding : effective) {
+        if (binding.actionId == target.actionId && binding.slot == target.slot)
+            continue;
+        const BindingRelation::Kind kind = BindingRelation::classify(target, binding);
+        if (kind == BindingRelation::Kind::HardConflict) {
+            change.conflicts.append(binding);
+            continue;
+        }
+        if (kind != BindingRelation::Kind::ConversionRequired)
+            continue;
+        BindingResolver::Binding converted;
+        if (!change.hasConversion
+            && conversionCanApply(target, binding, effective, &converted)) {
+            change.hasConversion = true;
+            change.conversionSource = binding;
+            change.conversionTarget = converted;
+        } else {
+            // A second candidate or a conversion that would create another
+            // conflict remains destructive; never guess which Press to alter.
+            change.conflicts.append(binding);
+        }
+    }
+    if (change.hasConversion && !change.conflicts.isEmpty()) {
+        change.conflicts.append(change.conversionSource);
+        change.hasConversion = false;
+        change.conversionSource = {};
+        change.conversionTarget = {};
+    }
+    return change;
+}
+
+QString BindingEditorModel::conflictMessageFor(
+    const BindingResolver::Binding& target,
+    const BindingResolver::Binding& partner,
+    const QString& displayLabel) const
+{
+    const auto* other = ActionCatalog::find(partner.actionId);
+    const QString otherLabel = other ? other->label : partner.actionId;
+    const GestureSpec targetGesture = target.gesture();
+    const GestureSpec partnerGesture = partner.gesture();
+    if (targetGesture.kind == GestureSpec::Kind::Press
+        || partnerGesture.kind == GestureSpec::Kind::Press) {
+        const QString timed = targetGesture.kind == GestureSpec::Kind::Press
+            ? partnerGesture.label() : targetGesture.label();
+        return QStringLiteral("%1 uses Press for %2. It cannot be distinguished from %3 "
+                              "in this context without changing its button-down behavior.")
+            .arg(displayLabel, otherLabel, timed);
+    }
+    return QStringLiteral("%1 · %2 is already assigned to %3 in this context.")
+        .arg(displayLabel, targetGesture.label(), otherLabel);
+}
+
+QString BindingEditorModel::compatibilityMessageFor(
+    const PendingChange& change, const QString& displayLabel) const
+{
+    const auto* existingAction = ActionCatalog::find(change.conversionSource.actionId);
+    const QString existingLabel = existingAction ? existingAction->label
+                                                  : change.conversionSource.actionId;
+    const GestureSpec requested = change.target.gesture();
+    QString consequence = QStringLiteral("%1 will then activate after the button is released")
+                              .arg(existingLabel);
+    if (requested.kind == GestureSpec::Kind::Tap && requested.tapCount >= 2) {
+        consequence += QStringLiteral(" and may wait up to %1 ms to rule out the %2 action")
+                           .arg(m_runtime->timing().multiTapIntervalMs)
+                           .arg(requested.label());
+    }
+    consequence += QLatin1Char('.');
+    return QStringLiteral(
+        "%1 currently activates %2 immediately when the button is pressed.\n\n"
+        "To also use %1 for %3, GameHQ must change %2 from Press to Single tap.\n\n%4")
+        .arg(displayLabel, existingLabel, requested.label(), consequence);
+}
+
 bool BindingEditorModel::captureInput(const QString& deviceGroup, const QString& triggerCode,
                                       const QString& displayLabel)
 {
@@ -261,17 +425,14 @@ bool BindingEditorModel::captureInput(const QString& deviceGroup, const QString&
     // One shared policy decides what the new binding means next to every
     // existing one. Only HardConflict blocks; the softer tiers are recorded so
     // the editor can explain the result without refusing a valid assignment.
-    PendingChange change;
-    change.target = target;
+    PendingChange change = pendingChangeFor(target);
     BindingRelation::Kind notice = BindingRelation::Kind::None;
     BindingResolver::Binding noticePartner;
     for (const auto& binding : effective) {
         if (binding.actionId == target.actionId && binding.slot == target.slot)
             continue;
         const BindingRelation::Kind kind = BindingRelation::classify(target, binding);
-        if (kind == BindingRelation::Kind::HardConflict) {
-            change.conflicts.append(binding);
-        } else if (noticeSeverity(kind) > noticeSeverity(notice)) {
+        if (noticeSeverity(kind) > noticeSeverity(notice)) {
             notice = kind;
             noticePartner = binding;
         }
@@ -283,14 +444,19 @@ bool BindingEditorModel::captureInput(const QString& deviceGroup, const QString&
     if (!change.conflicts.isEmpty()) {
         m_pending = change;
         m_conflictPending = true;
-        const auto* other = ActionCatalog::find(change.conflicts.first().actionId);
-        m_conflictMessage = QStringLiteral("%1 is already assigned to %2 in %3. Replace that assignment?")
-                                .arg(displayLabel,
-                                     other ? other->label : change.conflicts.first().actionId,
-                                     other ? scopeLabel(other->scope) : QStringLiteral("this context"));
+        m_conflictMessage = conflictMessageFor(target, change.conflicts.first(), displayLabel);
         setRelationNotice(BindingRelation::kindId(BindingRelation::Kind::HardConflict),
                           m_conflictMessage);
         emit conflictChanged();
+        return true;
+    }
+    if (change.hasConversion) {
+        m_pending = change;
+        m_compatibilityPending = true;
+        m_compatibilityMessage = compatibilityMessageFor(change, displayLabel);
+        setRelationNotice(BindingRelation::kindId(BindingRelation::Kind::ConversionRequired),
+                          m_compatibilityMessage);
+        emit compatibilityChanged();
         return true;
     }
 
@@ -330,6 +496,7 @@ QString BindingEditorModel::noticeTextFor(BindingRelation::Kind kind,
             .arg(displayLabel,
                  gestureLabel(target), targetAction->label,
                  gestureLabel(partner), partnerAction->label);
+    case BindingRelation::Kind::ConversionRequired:
     case BindingRelation::Kind::HardConflict:
     case BindingRelation::Kind::None:
         break;
@@ -388,8 +555,57 @@ void BindingEditorModel::retryConflictCapture()
         return;
     const QString actionId = m_pending.target.actionId;
     const int slot = m_pending.target.slot;
+    const bool dialogDraft = m_editorOpen && m_editorActionId == actionId && m_editorSlot == slot;
     dismissConflict();
-    beginCapture(actionId, slot);
+    if (dialogDraft)
+        beginTriggerCapture(1);
+    else
+        beginCapture(actionId, slot);
+}
+
+void BindingEditorModel::confirmCompatibility()
+{
+    if (!m_compatibilityPending)
+        return;
+    const PendingChange change = m_pending;
+    const QString triggerLabel = formatTrigger(change.conversionSource);
+    const auto* convertedAction = ActionCatalog::find(change.conversionSource.actionId);
+    const auto* targetAction = ActionCatalog::find(change.target.actionId);
+    dismissCompatibility();
+    if (!applyChange(change))
+        return;
+    setRelationNotice(
+        QStringLiteral("shared_gesture"),
+        QStringLiteral("%1 now uses Single tap for %2 and %3 for %4.")
+            .arg(triggerLabel,
+                 convertedAction ? convertedAction->label : change.conversionSource.actionId,
+                 change.target.gesture().label(),
+                 targetAction ? targetAction->label : change.target.actionId));
+    closeAssignmentEditor();
+}
+
+void BindingEditorModel::dismissCompatibility()
+{
+    if (!m_compatibilityPending)
+        return;
+    m_compatibilityPending = false;
+    m_compatibilityMessage.clear();
+    m_pending = {};
+    emit compatibilityChanged();
+}
+
+void BindingEditorModel::retryCompatibilityCapture()
+{
+    if (!m_compatibilityPending)
+        return;
+    const QString actionId = m_pending.target.actionId;
+    const int slot = m_pending.target.slot;
+    const bool dialogDraft = m_editorOpen && m_editorActionId == actionId && m_editorSlot == slot;
+    dismissCompatibility();
+    if (dialogDraft)
+        beginTriggerCapture(1);
+    else
+        beginCapture(actionId, slot);
 }
 
 void BindingEditorModel::setHotkeyApply(HotkeyApply apply)
@@ -417,6 +633,38 @@ bool BindingEditorModel::isGlobalHotkey(const BindingResolver::Binding& binding)
     return action && action->scope == ActionCatalog::Scope::Global;
 }
 
+bool BindingEditorModel::persistRowsAtomically(const QVector<BindingOverrideRow>& rows)
+{
+    if (!m_persistRow)
+        return m_database->upsertBindingOverridesAtomically(rows);
+
+    // The injectable per-row seam is retained for deterministic failure tests.
+    // Production uses CaptureDatabase's real SQL transaction above; the seam
+    // emulates the same all-or-nothing result and restores exact previous rows.
+    const auto keyFor = [](const BindingOverrideRow& row) {
+        return row.deviceGroup + QLatin1Char('|') + row.deviceProfile + QLatin1Char('|')
+             + row.actionId + QLatin1Char('#') + QString::number(row.slot);
+    };
+    QHash<QString, BindingOverrideRow> before;
+    for (const BindingOverrideRow& row : m_database->listBindingOverrides())
+        before.insert(keyFor(row), row);
+
+    for (const BindingOverrideRow& row : rows) {
+        if (persist(row))
+            continue;
+        for (const BindingOverrideRow& affected : rows) {
+            const auto previous = before.constFind(keyFor(affected));
+            if (previous != before.cend())
+                m_database->upsertBindingOverride(previous.value());
+            else
+                m_database->clearBindingOverride(affected.deviceGroup, affected.deviceProfile,
+                                                 affected.actionId, affected.slot);
+        }
+        return false;
+    }
+    return true;
+}
+
 // Commits the OS registration and the database write together, or leaves both
 // exactly as they were. Previously the DB was written first and the hotkey layer
 // was reconciled afterwards from InputEngine, whose return value was discarded:
@@ -426,6 +674,27 @@ bool BindingEditorModel::applyChange(const PendingChange& change)
 {
     const auto& target = change.target;
     const QString profile = selectedProfile();
+
+    if (change.hasConversion) {
+        const BindingOverrideRow converted{
+            change.conversionTarget.deviceGroup, profile,
+            change.conversionTarget.actionId, change.conversionTarget.slot,
+            change.conversionTarget.triggerCode, change.conversionTarget.activation,
+            change.conversionTarget.holdMs, false, change.conversionTarget.tapCount};
+        const BindingOverrideRow requested{
+            target.deviceGroup, profile, target.actionId, target.slot,
+            target.triggerCode, target.activation, target.holdMs, false, target.tapCount};
+        if (!persistRowsAtomically({converted, requested})) {
+            setRelationNotice(QStringLiteral("persistence_error"),
+                              QStringLiteral("These assignments could not be saved. Both "
+                                             "previous assignments are still active."));
+            reloadAndRefresh();
+            return false;
+        }
+        reloadAndRefresh();
+        return true;
+    }
+
     const bool ownsHotkey = m_hotkeyApply && isGlobalHotkey(target);
 
     // 1) Remember what is live now, so step 4 can put it back.
@@ -526,6 +795,15 @@ void BindingEditorModel::clearBinding(const QString& actionId, int slot)
     BindingOverrideRow row{m_deviceGroup, selectedProfile(), actionId, slot, {},
                            gesture.activation, gesture.holdMs, true, gesture.tapCount};
     m_database->upsertBindingOverride(row);
+    reloadAndRefresh();
+}
+
+void BindingEditorModel::resetBinding(const QString& actionId, int slot)
+{
+    const auto* action = ActionCatalog::find(actionId);
+    if (!action || !action->bindable || slot < 1 || slot > 2)
+        return;
+    m_database->clearBindingOverride(m_deviceGroup, selectedProfile(), actionId, slot);
     reloadAndRefresh();
 }
 
@@ -868,6 +1146,18 @@ void BindingEditorModel::refreshEditorNotice()
 
     const BindingResolver::Binding target = editorBinding();
     const auto timing = m_runtime->timing();
+    const PendingChange pending = pendingChangeFor(target);
+    if (!pending.conflicts.isEmpty()) {
+        m_editorNoticeKind = BindingRelation::kindId(BindingRelation::Kind::HardConflict);
+        m_editorNotice = conflictMessageFor(target, pending.conflicts.first(),
+                                            editorTriggerLabel());
+        return;
+    }
+    if (pending.hasConversion) {
+        m_editorNoticeKind = BindingRelation::kindId(BindingRelation::Kind::ConversionRequired);
+        m_editorNotice = compatibilityMessageFor(pending, editorTriggerLabel());
+        return;
+    }
     BindingRelation::Kind worst = BindingRelation::Kind::None;
     BindingRelation::Notice notice = BindingRelation::Notice::None;
     BindingResolver::Binding partner;
@@ -888,14 +1178,8 @@ void BindingEditorModel::refreshEditorNotice()
         }
     }
 
-    if (worst == BindingRelation::Kind::HardConflict) {
-        const auto* other = ActionCatalog::find(partner.actionId);
-        m_editorNoticeKind = BindingRelation::kindId(worst);
-        m_editorNotice = QStringLiteral("%1 is already used by %2. Saving will replace it.")
-                             .arg(editorTriggerLabel(),
-                                  other ? other->label : partner.actionId);
+    if (worst == BindingRelation::Kind::HardConflict)
         return;
-    }
     if (notice != BindingRelation::Notice::None) {
         m_editorNoticeKind = BindingRelation::noticeId(notice);
         m_editorNotice = BindingRelation::noticeText(notice, timing.chordWindowMs,
@@ -914,27 +1198,27 @@ void BindingEditorModel::saveAssignment()
         return;
     const BindingResolver::Binding target = editorBinding();
 
-    PendingChange change;
-    change.target = target;
-    for (const auto& binding : m_runtime->effectiveBindings(m_deviceGroup, selectedProfile())) {
-        if (binding.actionId == target.actionId && binding.slot == target.slot)
-            continue;
-        if (BindingRelation::classify(target, binding) == BindingRelation::Kind::HardConflict)
-            change.conflicts.append(binding);
-    }
+    PendingChange change = pendingChangeFor(target);
 
     if (!change.conflicts.isEmpty()) {
         // The dialog already said this would replace something; the modal is
         // still where the user confirms it, so both paths stay identical.
         m_pending = change;
         m_conflictPending = true;
-        const auto* other = ActionCatalog::find(change.conflicts.first().actionId);
-        m_conflictMessage = QStringLiteral("%1 is already assigned to %2. Replace that assignment?")
-                                .arg(editorTriggerLabel(),
-                                     other ? other->label : change.conflicts.first().actionId);
+        m_conflictMessage = conflictMessageFor(target, change.conflicts.first(),
+                                               editorTriggerLabel());
         setRelationNotice(BindingRelation::kindId(BindingRelation::Kind::HardConflict),
                           m_conflictMessage);
         emit conflictChanged();
+        return;
+    }
+    if (change.hasConversion) {
+        m_pending = change;
+        m_compatibilityPending = true;
+        m_compatibilityMessage = compatibilityMessageFor(change, editorTriggerLabel());
+        setRelationNotice(BindingRelation::kindId(BindingRelation::Kind::ConversionRequired),
+                          m_compatibilityMessage);
+        emit compatibilityChanged();
         return;
     }
     if (!applyChange(change))

@@ -139,6 +139,7 @@ qt_add_qml_module(GameHQ
         ui/qml/components/BindingSegmentedControl.qml
         ui/qml/components/BindingAssignmentDialog.qml
         ui/qml/components/BindingConflictDialog.qml
+        ui/qml/components/BindingCompatibilityDialog.qml
         ui/qml/components/ConfirmDialog.qml
         ui/qml/components/Toast.qml
         ui/qml/components/UpdateBanner.qml

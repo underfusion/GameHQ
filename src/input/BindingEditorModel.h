@@ -26,6 +26,8 @@ class BindingEditorModel : public QObject
     Q_PROPERTY(QString capturePrompt READ capturePrompt NOTIFY captureChanged)
     Q_PROPERTY(bool conflictPending READ conflictPending NOTIFY conflictChanged)
     Q_PROPERTY(QString conflictMessage READ conflictMessage NOTIFY conflictChanged)
+    Q_PROPERTY(bool compatibilityPending READ compatibilityPending NOTIFY compatibilityChanged)
+    Q_PROPERTY(QString compatibilityMessage READ compatibilityMessage NOTIFY compatibilityChanged)
     // Binding notices live on their own channel. They must never be routed
     // through input.controllerWarning, which is reserved for HidHide/cloaked-pad
     // state — a key conflict overwriting a hidden-controller warning would hide
@@ -92,6 +94,8 @@ public:
     QString capturePrompt() const { return m_capturePrompt; }
     bool conflictPending() const { return m_conflictPending; }
     QString conflictMessage() const { return m_conflictMessage; }
+    bool compatibilityPending() const { return m_compatibilityPending; }
+    QString compatibilityMessage() const { return m_compatibilityMessage; }
     QString relationNotice() const { return m_relationNotice; }
     QString relationKind() const { return m_relationKind; }
     QString validationError() const { return m_validationError; }
@@ -100,6 +104,7 @@ public:
     Q_INVOKABLE void beginCapture(const QString& actionId, int slot);
     Q_INVOKABLE void cancelCapture();
     Q_INVOKABLE void clearBinding(const QString& actionId, int slot);
+    Q_INVOKABLE void resetBinding(const QString& actionId, int slot);
     Q_INVOKABLE void resetAction(const QString& actionId);
     Q_INVOKABLE void resetCurrentProfile();
     Q_INVOKABLE void resetAllBindings();
@@ -109,6 +114,9 @@ public:
     // Re-opens capture for the same action/slot so the user can pick another
     // trigger without hunting for the row again ("Choose another" in the dialog).
     Q_INVOKABLE void retryConflictCapture();
+    Q_INVOKABLE void confirmCompatibility();
+    Q_INVOKABLE void dismissCompatibility();
+    Q_INVOKABLE void retryCompatibilityCapture();
     bool legacyCopyAvailable() const;
     Q_INVOKABLE void copyLegacyOverridesToController();
 
@@ -163,6 +171,7 @@ signals:
     void controllerProfileChanged();
     void captureChanged();
     void conflictChanged();
+    void compatibilityChanged();
     void relationNoticeChanged();
     void lastFiredActionChanged();
 
@@ -170,11 +179,20 @@ private:
     struct PendingChange {
         BindingResolver::Binding target;
         QVector<BindingResolver::Binding> conflicts;
+        bool hasConversion = false;
+        BindingResolver::Binding conversionSource;
+        BindingResolver::Binding conversionTarget;
     };
 
     QString selectedProfile() const;
     void rebuildRows();
+    PendingChange pendingChangeFor(const BindingResolver::Binding& target) const;
+    bool conversionCanApply(const BindingResolver::Binding& target,
+                            const BindingResolver::Binding& press,
+                            const QVector<BindingResolver::Binding>& effective,
+                            BindingResolver::Binding* converted) const;
     bool applyChange(const PendingChange& change);
+    bool persistRowsAtomically(const QVector<BindingOverrideRow>& rows);
     // True when this binding owns a Win32 global hotkey, i.e. the only rows the
     // OS half of the transaction applies to.
     bool isGlobalHotkey(const BindingResolver::Binding& binding) const;
@@ -188,6 +206,11 @@ private:
                           const BindingResolver::Binding& target,
                           const BindingResolver::Binding& partner,
                           const QString& displayLabel) const;
+    QString conflictMessageFor(const BindingResolver::Binding& target,
+                               const BindingResolver::Binding& partner,
+                               const QString& displayLabel) const;
+    QString compatibilityMessageFor(const PendingChange& change,
+                                    const QString& displayLabel) const;
     static QString gestureLabel(const BindingResolver::Binding& binding);
     static QString scopeLabel(ActionCatalog::Scope scope);
     bool editorCaptureInput(const QString& deviceGroup, const QString& triggerCode);
@@ -213,6 +236,8 @@ private:
     QString m_capturePrompt;
     bool m_conflictPending = false;
     QString m_conflictMessage;
+    bool m_compatibilityPending = false;
+    QString m_compatibilityMessage;
     QString m_relationNotice;
     QString m_relationKind = QStringLiteral("none");
     QString m_validationError;

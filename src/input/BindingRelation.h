@@ -26,6 +26,7 @@ public:
         ContextOverride, // declared substitution: the contextual action replaces the Global one
         Redundant,       // same action, same trigger, same gesture, same device and profile
         SharedGesture,   // same trigger, complementary gestures, overlapping scopes
+        ConversionRequired, // Press can become Tap x1 so a timed gesture can share the trigger
         HardConflict     // same trigger, colliding gestures, different actions
     };
 
@@ -50,9 +51,10 @@ public:
     //  4) chord rules (appended): duplicate chord, press/repeat on a chord's
     //     first control, chord sharing a control with a timed gesture
     //  5) overlapping scopes, compatible gestures      -> SharedGesture
-    //  6) overlapping scopes, a press gesture involved,
+    //  6) convertible Press + timed gesture            -> ConversionRequired
+    //  7) overlapping scopes, another press pairing,
     //     or the same gesture on different actions     -> HardConflict
-    //  7) otherwise                                    -> None
+    //  8) otherwise                                    -> None
     static Kind classify(const BindingResolver::Binding& left,
                          const BindingResolver::Binding& right);
 

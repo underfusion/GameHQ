@@ -30,6 +30,10 @@ public:
         // never be the first control of a chord, because holding it to reach
         // the second control would step the gallery on the way.
         bool repeats = false;
+        // Reserved for actions whose button-down edge is part of their product
+        // contract. Such a Press binding must never be offered for automatic
+        // conversion to a release-based single tap.
+        bool requiresImmediatePress = false;
     };
 
     // Full catalog, in a stable declaration order (used for default UI grouping).
