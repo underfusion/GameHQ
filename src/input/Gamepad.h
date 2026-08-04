@@ -114,18 +114,28 @@ protected:
     // the legacy 32-bit button mask.
     void publishControlPressed(const QString& controlId)
     {
+        publishControlPressed(controlId, profile());
+    }
+
+    void publishControlPressed(const QString& controlId,
+                               const ControlId::DeviceProfile& device)
+    {
         if (controlId.isEmpty())
             return;
-        const auto device = profile();
         emit controlPressed(controlId, static_cast<int>(device.family),
                             device.backend, device.fingerprint, device.displayName);
     }
 
     void publishControlReleased(const QString& controlId)
     {
+        publishControlReleased(controlId, profile());
+    }
+
+    void publishControlReleased(const QString& controlId,
+                                const ControlId::DeviceProfile& device)
+    {
         if (controlId.isEmpty())
             return;
-        const auto device = profile();
         emit controlReleased(controlId, static_cast<int>(device.family),
                              device.backend, device.fingerprint, device.displayName);
     }

@@ -66,9 +66,13 @@ enum class ControllerFamily {
 // editor can show "DualSense" instead of just "controller".
 struct DeviceProfile {
     QString backend;          // "Sony Raw Input", "XInput", "WinMM joystick"
-    QString fingerprint;      // stable per-device id, e.g. "054C:0CE6" (VID:PID)
+    QString fingerprint;      // provider endpoint identity; never VID/PID alone
     ControllerFamily family = ControllerFamily::Generic;
     QString displayName;      // "DualSense", "Xbox Wireless Controller", ...
+    QString modelFingerprint; // compatibility/model hint, e.g. "054c:0ce6"
+    QString endpointId;       // stable anonymized PnP/interface endpoint when known
+    QString containerId;      // PnP container evidence when known
+    QString deviceRoot;       // physical device-root evidence when known
 };
 
 // Display label for a canonical code under a given family. Unknown/generic

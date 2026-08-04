@@ -36,11 +36,14 @@ QString PhysicalControllerRegistry::createLogicalId(const ProviderObservation& o
     // weak identities (nothing stable to hash) stay session-local through
     // the generation counter.
     const bool strongIdentity = !observation.appLocalDeviceId.isEmpty()
-        || !observation.containerId.isEmpty();
+        || !observation.containerId.isEmpty() || !observation.topologyRoot.isEmpty()
+        || !observation.endpointId.isEmpty();
     const QString strongest = !observation.appLocalDeviceId.isEmpty()
         ? observation.appLocalDeviceId
         : (!observation.containerId.isEmpty() ? observation.containerId
-                                              : observation.providerDeviceId);
+           : (!observation.topologyRoot.isEmpty() ? observation.topologyRoot
+              : (!observation.endpointId.isEmpty() ? observation.endpointId
+                                                    : observation.providerDeviceId)));
     const QByteArray material = strongIdentity
         ? QStringLiteral("strong|%1").arg(strongest).toUtf8()
         : QStringLiteral("weak|%1|%2|%3")
@@ -52,6 +55,22 @@ QString PhysicalControllerRegistry::createLogicalId(const ProviderObservation& o
 
 QString PhysicalControllerRegistry::findStrongMatch(const ProviderObservation& observation) const
 {
+    if (!observation.topologyRoot.isEmpty()) {
+        QString rootMatch;
+        for (auto it = m_controllers.cbegin(); it != m_controllers.cend(); ++it) {
+            if (it->topologyRoot != observation.topologyRoot
+                || it->hasProvider(observation.provider))
+                continue;
+            if (!observation.containerId.isEmpty() && !it->containerId.isEmpty()
+                && observation.containerId != it->containerId)
+                continue;
+            if (!rootMatch.isEmpty())
+                return {};
+            rootMatch = it.key();
+        }
+        if (!rootMatch.isEmpty())
+            return rootMatch;
+    }
     for (auto it = m_controllers.cbegin(); it != m_controllers.cend(); ++it) {
         const auto& current = it.value();
         if (!observation.appLocalDeviceId.isEmpty()
@@ -61,9 +80,17 @@ QString PhysicalControllerRegistry::findStrongMatch(const ProviderObservation& o
         // container match must never merge two conflicting strong device IDs.
         if (!observation.containerId.isEmpty()
             && observation.containerId == current.containerId) {
+            if (current.hasProvider(observation.provider))
+                continue;
             if (!observation.appLocalDeviceId.isEmpty()
                 && !current.appLocalDeviceId.isEmpty()
                 && observation.appLocalDeviceId != current.appLocalDeviceId)
+                continue;
+            return it.key();
+        }
+        if (!observation.endpointId.isEmpty()
+            && observation.endpointId == current.endpointId) {
+            if (current.hasProvider(observation.provider))
                 continue;
             return it.key();
         }
@@ -73,6 +100,11 @@ QString PhysicalControllerRegistry::findStrongMatch(const ProviderObservation& o
 
 QString PhysicalControllerRegistry::findCorrelatedMatch(const ProviderObservation& observation) const
 {
+    // Model/VID:PID hints must never merge providers. Strong app-local,
+    // container, root, or endpoint evidence is handled by findStrongMatch().
+    Q_UNUSED(observation);
+    return {};
+#if 0
     if (observation.topologyRoot.isEmpty())
         return {};
 
@@ -99,6 +131,7 @@ QString PhysicalControllerRegistry::findCorrelatedMatch(const ProviderObservatio
         match = it.key();
     }
     return match;
+#endif
 }
 
 QString PhysicalControllerRegistry::observe(const ProviderObservation& observation,
@@ -111,7 +144,8 @@ QString PhysicalControllerRegistry::observe(const ProviderObservation& observati
         existing != m_attachmentToLogical.cend()) {
         // Re-observation of a live attachment (e.g. CapabilityChanged) must
         // refresh its capabilities and fill in missing metadata, not no-op.
-        if (const auto it = m_controllers.find(*existing); it != m_controllers.end()) {
+        QString currentId = *existing;
+        if (const auto it = m_controllers.find(currentId); it != m_controllers.end()) {
             for (auto& attachment : it->providers) {
                 if (attachment.provider == observation.provider
                     && attachment.providerDeviceId == observation.providerDeviceId)
@@ -119,8 +153,40 @@ QString PhysicalControllerRegistry::observe(const ProviderObservation& observati
             }
             if (it->displayName.isEmpty())
                 it->displayName = observation.displayName;
+            if (it->appLocalDeviceId.isEmpty())
+                it->appLocalDeviceId = observation.appLocalDeviceId;
+            if (it->containerId.isEmpty())
+                it->containerId = observation.containerId;
+            if (it->topologyRoot.isEmpty())
+                it->topologyRoot = observation.topologyRoot;
+            if (it->endpointId.isEmpty())
+                it->endpointId = observation.endpointId;
+            if (it->modelFingerprint.isEmpty())
+                it->modelFingerprint = observation.modelFingerprint;
         }
-        return *existing;
+        const bool strongObservation = !observation.appLocalDeviceId.isEmpty()
+            || !observation.containerId.isEmpty() || !observation.topologyRoot.isEmpty()
+            || !observation.endpointId.isEmpty();
+        const auto current = m_controllers.constFind(currentId);
+        if (strongObservation && current != m_controllers.cend()
+            && current->confidence == IdentityConfidence::Weak) {
+            const QString upgradedId = createLogicalId(observation, 0);
+            if (upgradedId != currentId && !m_controllers.contains(upgradedId)) {
+                LogicalController moved = m_controllers.take(currentId);
+                moved.logicalId = upgradedId;
+                moved.confidence = IdentityConfidence::Strong;
+                m_controllers.insert(upgradedId, moved);
+                for (auto attachment = m_attachmentToLogical.begin();
+                     attachment != m_attachmentToLogical.end(); ++attachment) {
+                    if (attachment.value() == currentId)
+                        attachment.value() = upgradedId;
+                }
+                if (rekeyedFrom)
+                    *rekeyedFrom = currentId;
+                currentId = upgradedId;
+            }
+        }
+        return currentId;
     }
 
     QString logicalId = findStrongMatch(observation);
@@ -136,10 +202,14 @@ QString PhysicalControllerRegistry::observe(const ProviderObservation& observati
     // upgrade is what reconnects a device to its saved profile regardless of
     // which provider observed it first this session.
     if (!logicalId.isEmpty()
-        && (!observation.appLocalDeviceId.isEmpty() || !observation.containerId.isEmpty())) {
+        && (!observation.appLocalDeviceId.isEmpty() || !observation.containerId.isEmpty()
+            || !observation.topologyRoot.isEmpty() || !observation.endpointId.isEmpty())) {
         const auto existing = m_controllers.constFind(logicalId);
-        if (existing != m_controllers.cend()
-            && existing->appLocalDeviceId.isEmpty() && existing->containerId.isEmpty()) {
+        const bool appLocalUpgrade = !observation.appLocalDeviceId.isEmpty()
+            && existing != m_controllers.cend() && existing->appLocalDeviceId.isEmpty();
+        const bool weakUpgrade = existing != m_controllers.cend()
+            && existing->confidence == IdentityConfidence::Weak;
+        if (existing != m_controllers.cend() && (appLocalUpgrade || weakUpgrade)) {
             const QString upgradedId = createLogicalId(observation, 0);
             if (upgradedId != logicalId && !m_controllers.contains(upgradedId)) {
                 const QString previousId = logicalId;
@@ -159,10 +229,11 @@ QString PhysicalControllerRegistry::observe(const ProviderObservation& observati
     }
     if (logicalId.isEmpty()) {
         logicalId = createLogicalId(observation, ++m_generation);
-        confidence = (!observation.appLocalDeviceId.isEmpty() || !observation.containerId.isEmpty())
-            ? IdentityConfidence::Strong
-            : (!observation.topologyRoot.isEmpty() ? IdentityConfidence::Correlated
-                                                   : IdentityConfidence::Weak);
+        confidence = (!observation.appLocalDeviceId.isEmpty()
+                      || !observation.containerId.isEmpty()
+                      || !observation.topologyRoot.isEmpty()
+                      || !observation.endpointId.isEmpty())
+            ? IdentityConfidence::Strong : IdentityConfidence::Weak;
         LogicalController controller;
         controller.logicalId = logicalId;
         controller.displayName = observation.displayName;
@@ -170,6 +241,8 @@ QString PhysicalControllerRegistry::observe(const ProviderObservation& observati
         controller.appLocalDeviceId = observation.appLocalDeviceId;
         controller.containerId = observation.containerId;
         controller.topologyRoot = observation.topologyRoot;
+        controller.endpointId = observation.endpointId;
+        controller.modelFingerprint = observation.modelFingerprint;
         controller.vendorId = observation.vendorId;
         controller.productId = observation.productId;
         m_controllers.insert(logicalId, controller);
@@ -184,6 +257,10 @@ QString PhysicalControllerRegistry::observe(const ProviderObservation& observati
         controller.containerId = observation.containerId;
     if (controller.topologyRoot.isEmpty())
         controller.topologyRoot = observation.topologyRoot;
+    if (controller.endpointId.isEmpty())
+        controller.endpointId = observation.endpointId;
+    if (controller.modelFingerprint.isEmpty())
+        controller.modelFingerprint = observation.modelFingerprint;
     controller.confidence = std::max(controller.confidence, confidence);
     controller.providers.push_back({observation.provider, observation.providerDeviceId,
                                     observation.capabilities});

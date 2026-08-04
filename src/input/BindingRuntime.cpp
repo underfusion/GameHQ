@@ -102,6 +102,14 @@ void BindingRuntime::setProfileAlias(const QString& profile, const QString& lega
     m_recognizer.invalidate();
 }
 
+void BindingRuntime::setProfileAliases(const QString& profile,
+                                       const QStringList& legacyProfiles)
+{
+    m_resolver.setProfileAliases(profile, legacyProfiles);
+    m_relations.clear();
+    m_recognizer.invalidate();
+}
+
 // A Hold binding that stores 0 means "however long the user configured".
 // Built-in hold defaults do exactly that, so the setting has one home instead
 // of being copied into every default row at construction time.

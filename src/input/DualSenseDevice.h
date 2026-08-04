@@ -69,6 +69,7 @@ public:
     // XInput API itself only exposes slot numbers. Feeds the stable-identity
     // correlation in InputEngine (ControllerIdentity).
     QStringList xinputClassIdentities() const;
+    QStringList xinputClassEndpoints() const;
 
     // Called from the window procedure — not for general use.
     void onRawInput(void* hRawInput);
@@ -155,6 +156,7 @@ private:
     // Subset of the ignored handles that are XInput-class (IG_) collections,
     // kept in lockstep with m_ignoredHandles' lifetime rules.
     QHash<void*, QString> m_xinputClass;
+    QHash<void*, QString> m_xinputEndpoints;
     QSet<QString> m_loggedIgnored;           // device identities already logged as ignored
     void* m_activeHandle = nullptr;          // device currently driving input (or null)
     QTimer* m_disconnectTimer = nullptr;

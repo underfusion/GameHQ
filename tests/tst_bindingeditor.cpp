@@ -830,6 +830,32 @@ private slots:
         QCOMPARE(padFavorite34, 1);   // the pad's own row was not clobbered
     }
 
+    void identicalModelsKeepIndependentCanonicalProfiles()
+    {
+        const QString padA = QStringLiteral("controller-pad-a");
+        const QString padB = QStringLiteral("controller-pad-b");
+        const QString trigger = ControlId::genericButton(35);
+        QVERIFY(m_database->upsertBindingOverride(
+            {QStringLiteral("controller"), padA, QStringLiteral("desktop.favorite"), 2,
+             trigger, QStringLiteral("press"), 0, false}));
+        QVERIFY(m_database->upsertBindingOverride(
+            {QStringLiteral("controller"), padB, QStringLiteral("desktop.menu"), 2,
+             trigger, QStringLiteral("press"), 0, false}));
+        m_runtime->reload();
+        m_runtime->setProfileAliases(
+            padA, {QStringLiteral("054c:0ce6"), QStringLiteral("xinput.slot0")});
+        m_runtime->setProfileAliases(
+            padB, {QStringLiteral("054c:0ce6"), QStringLiteral("xinput.slot1")});
+        QSignalSpy actions(m_runtime, &BindingRuntime::actionTriggered);
+
+        QVERIFY(m_runtime->press(QStringLiteral("controller"), padB, trigger,
+                                 ActionCatalog::Scope::Desktop));
+        QCOMPARE(actions.size(), 1);
+        QCOMPARE(actions.front().front().toString(), QStringLiteral("desktop.menu"));
+        QVERIFY(actions.front().front().toString() != QStringLiteral("desktop.favorite"));
+        m_runtime->release(QStringLiteral("controller"), padB, trigger);
+    }
+
     // A row that cannot be a valid pattern — a chord serialization this build
     // does not know, a gesture whose parts contradict each other — must be
     // skipped at load, leaving the action on its default. Executing a guess

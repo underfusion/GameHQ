@@ -156,6 +156,7 @@ QString GameInputRouter::observeDevice(const GameInputDeviceDescriptor& device)
     observation.providerDeviceId = device.deviceId;
     observation.appLocalDeviceId = device.deviceId;
     observation.containerId = device.containerId;
+    observation.topologyRoot = device.rootId;
     observation.displayName = device.displayName;
     observation.vendorId = device.vendorId;
     observation.productId = device.productId;
@@ -165,7 +166,7 @@ QString GameInputRouter::observeDevice(const GameInputDeviceDescriptor& device)
     // controller (t25 cross-provider dedup). The registry's unique-match
     // rule keeps two identical models apart.
     if (device.vendorId != 0 || device.productId != 0) {
-        observation.topologyRoot = QStringLiteral("%1:%2")
+        observation.modelFingerprint = QStringLiteral("%1:%2")
             .arg(device.vendorId, 4, 16, QLatin1Char('0'))
             .arg(device.productId, 4, 16, QLatin1Char('0'));
     }
@@ -192,6 +193,7 @@ QString GameInputRouter::observeDevice(const GameInputDeviceDescriptor& device)
                 it.value() = logicalId;
         }
         emit lifecycleReset(rekeyedFrom, QStringLiteral("controller identity changed"));
+        emit logicalControllerRekeyed(rekeyedFrom, logicalId);
     }
     m_deviceLogicalIds.insert(device.deviceId, logicalId);
     m_deviceNames.insert(device.deviceId, device.displayName);

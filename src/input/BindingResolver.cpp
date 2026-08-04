@@ -56,12 +56,24 @@ void BindingResolver::setDefaultHoldMs(int milliseconds)
 
 void BindingResolver::setProfileAlias(const QString& profile, const QString& legacyProfile)
 {
+    setProfileAliases(profile, legacyProfile.isEmpty() ? QStringList{}
+                                                        : QStringList{legacyProfile});
+}
+
+void BindingResolver::setProfileAliases(const QString& profile,
+                                        const QStringList& legacyProfiles)
+{
     if (profile.isEmpty())
         return;
-    if (legacyProfile.isEmpty())
+    QStringList aliases;
+    for (const QString& alias : legacyProfiles) {
+        if (!alias.isEmpty() && alias != profile && !aliases.contains(alias))
+            aliases.append(alias);
+    }
+    if (aliases.isEmpty())
         m_profileAliases.remove(profile);
     else
-        m_profileAliases.insert(profile, legacyProfile);
+        m_profileAliases.insert(profile, aliases);
 }
 
 void BindingResolver::reload()
@@ -290,9 +302,7 @@ QVector<BindingResolver::Binding> BindingResolver::effectiveBindings(
     // "xinput.slotN" rows kept alive for this profile) < device-specific.
     QStringList profiles{QString()};
     if (!deviceProfile.isEmpty()) {
-        const QString alias = m_profileAliases.value(deviceProfile);
-        if (!alias.isEmpty() && alias != deviceProfile)
-            profiles.append(alias);
+        profiles.append(m_profileAliases.value(deviceProfile));
         profiles.append(deviceProfile);
     }
     for (const QString& profile : profiles) {
@@ -328,9 +338,7 @@ QVector<BindingResolver::Binding> BindingResolver::baselineBindings(
     // rows first, then its legacy slot alias when one exists.
     if (!deviceProfile.isEmpty()) {
         QStringList inheritedProfiles{QString()};
-        const QString alias = m_profileAliases.value(deviceProfile);
-        if (!alias.isEmpty() && alias != deviceProfile)
-            inheritedProfiles.append(alias);
+        inheritedProfiles.append(m_profileAliases.value(deviceProfile));
         for (const QString& profile : inheritedProfiles) {
             for (const Binding& binding : m_overrides) {
                 if (binding.deviceGroup != deviceGroup || binding.deviceProfile != profile)

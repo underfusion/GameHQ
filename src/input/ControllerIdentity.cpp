@@ -1,5 +1,6 @@
 #include "input/ControllerIdentity.h"
 
+#include <QCryptographicHash>
 #include <QSet>
 
 namespace ControllerIdentity
@@ -12,6 +13,15 @@ QString legacySlotFingerprint(int slot)
 bool isLegacySlotFingerprint(const QString& fingerprint)
 {
     return fingerprint.startsWith(QLatin1String("xinput.slot"));
+}
+
+QString endpointFingerprint(const QString& devicePath)
+{
+    if (devicePath.isEmpty())
+        return {};
+    const QByteArray digest = QCryptographicHash::hash(
+        devicePath.toLower().toUtf8(), QCryptographicHash::Sha256).toHex().left(20);
+    return QStringLiteral("hid.endpoint.%1").arg(QString::fromLatin1(digest));
 }
 
 QString resolveXInputFingerprint(const QStringList& xinputClassIdentities,

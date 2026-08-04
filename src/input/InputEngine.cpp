@@ -138,6 +138,14 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
     auto xinputPad = std::make_unique<XInputDevice>();
     m_xinputPad = xinputPad.get();
     attachGamepad(std::move(xinputPad), QStringLiteral("XInput controller"));
+    connect(m_xinputPad, &XInputDevice::slotConnectionChanged, this,
+            [this](int slot, bool connected) {
+                const auto profile = m_xinputPad->profileForSlot(slot);
+                if (connected)
+                    observeLegacyBackend(m_xinputPad, profile);
+                else
+                    removeLegacyBackend(m_xinputPad, profile.fingerprint);
+            });
 
     auto winmmPad = std::make_unique<WinMMDevice>();
     m_winmmPad = winmmPad.get();
@@ -159,9 +167,8 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
     // the SAME profile the binding editor writes — one binding profile per
     // physical controller, regardless of which provider delivers the edge.
     const auto gameInputProfile = [this](const QString& logicalId) {
-        const auto* logical = m_providers.registry().controller(logicalId);
-        return (logical && !logical->topologyRoot.isEmpty()) ? logical->topologyRoot
-                                                             : logicalId;
+        configureLogicalProfile(logicalId);
+        return logicalId;
     };
     connect(m_gameInput.get(), &ModernInput::GameInputRouter::systemControlPressed,
             this, [this, gameInputProfile](const QString& control, const QString& logicalId,
@@ -169,6 +176,10 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
                 InputDiagnostics::instance().noteControl(control, QStringLiteral("GameInput"));
                 m_bindingEditor->noteObservedControl(control);
                 const auto family = ControlId::ControllerFamily::Generic;
+                const auto* logical = m_providers.registry().controller(logicalId);
+                m_bindingEditor->setControllerProfile({
+                    QStringLiteral("GameInput"), logicalId, family,
+                    displayName, logical ? logical->modelFingerprint : QString()});
                 if (m_bindingEditor->captureInput(QStringLiteral("controller"), control,
                                                   ControlId::label(control, family)))
                     return;
@@ -192,6 +203,10 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
             this, [this](const QString&, const QString&) {
                 stopNavRepeat();
                 m_runtime->cancelAll();
+            });
+    connect(m_gameInput.get(), &ModernInput::GameInputRouter::logicalControllerRekeyed,
+            this, [this](const QString& previous, const QString& logicalId) {
+                configureLogicalProfile(logicalId, {previous});
             });
     connect(m_gameInput.get(), &ModernInput::GameInputRouter::statusChanged,
             this, &InputEngine::modernControllerChanged);
@@ -219,8 +234,11 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
             [this](const QString& identity, const QString& control, bool pressed) {
                 const auto result = m_providers.routeRawHidEdge(
                     identity, control, pressed, quint64(m_controllerClock.elapsed()));
+                const QString logicalId = m_providers.registry().logicalIdFor(
+                    ModernInput::ControllerProvider::RawHid, identity);
+                configureLogicalProfile(logicalId);
                 for (const QString& release : result.safeReleases)
-                    m_runtime->release(QStringLiteral("controller"), identity, release);
+                    m_runtime->release(QStringLiteral("controller"), logicalId, release);
                 if (!result.accepted)
                     return;
                 const auto family = ControlId::ControllerFamily::Generic;
@@ -228,23 +246,28 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
                     InputDiagnostics::instance().noteControl(
                         control, QStringLiteral("Raw HID"));
                     m_bindingEditor->noteObservedControl(control);
+                    m_bindingEditor->setControllerProfile({
+                        QStringLiteral("Raw HID"), logicalId, family,
+                        QStringLiteral("Raw HID controller")});
                     if (m_bindingEditor->captureInput(QStringLiteral("controller"),
                                                       control,
                                                       ControlId::label(control, family)))
                         return;
-                    m_runtime->press(QStringLiteral("controller"), identity, control,
+                    m_runtime->press(QStringLiteral("controller"), logicalId, control,
                                      primaryScope(), fallbackScope());
                 } else {
-                    m_runtime->release(QStringLiteral("controller"), identity, control);
+                    m_runtime->release(QStringLiteral("controller"), logicalId, control);
                     if (control == m_repeatTrigger)
                         stopNavRepeat();
                 }
             });
     connect(m_sonyPad, &DualSenseDevice::rawHidDeviceRemoved, this,
             [this](const QString& identity) {
+                const QString logicalId = m_providers.registry().logicalIdFor(
+                    ModernInput::ControllerProvider::RawHid, identity);
                 const QStringList releases = m_providers.removeRawHid(identity);
                 for (const QString& control : releases) {
-                    m_runtime->release(QStringLiteral("controller"), identity, control);
+                    m_runtime->release(QStringLiteral("controller"), logicalId, control);
                 }
             });
 
@@ -404,10 +427,12 @@ void InputEngine::attachGamepad(std::unique_ptr<Gamepad> pad, const QString& dis
         else if (raw == m_winmmPad)
             m_winmmConnected = c;
 
-        if (c)
-            observeLegacyBackend(raw);
-        else
-            removeLegacyBackend(raw);
+        if (raw != m_xinputPad) {
+            if (c)
+                observeLegacyBackend(raw, raw->profile());
+            else
+                removeLegacyBackend(raw);
+        }
         if (!c) {
             m_backendLastControlMs.remove(raw);
             m_backendCandidateFirstMs.remove(raw);
@@ -436,20 +461,13 @@ ModernInput::ControllerProvider InputEngine::providerFor(const Gamepad* pad) con
 // registry. The fingerprint doubles as the provider device id; when it
 // changes (XInput slot → correlated hardware identity) the old attachment is
 // replaced so the registry never holds a stale one.
-void InputEngine::observeLegacyBackend(Gamepad* pad)
+void InputEngine::observeLegacyBackend(Gamepad* pad,
+                                       const ControlId::DeviceProfile& profile)
 {
-    const auto profile = pad->profile();
     if (profile.fingerprint.isEmpty())
         return;
-    const QString previous = m_legacyObservedIds.value(pad);
-    if (previous == profile.fingerprint)
-        return;
-    if (!previous.isEmpty()) {
-        const QStringList releases =
-            m_providers.removeLegacy(providerFor(pad), previous);
-        for (const QString& control : releases)
-            m_runtime->release(QStringLiteral("controller"), previous, control);
-    }
+    const QString previousLogical = m_providers.registry().logicalIdFor(
+        providerFor(pad), profile.fingerprint);
 
     ModernInput::ControllerCapabilities capabilities =
         ModernInput::ControllerCapability::StandardControls;
@@ -466,35 +484,76 @@ void InputEngine::observeLegacyBackend(Gamepad* pad)
         capabilities |= ModernInput::ControllerCapability::Guide;
     }
     QStringList rekeyReleases;
-    m_providers.observeLegacy(providerFor(pad), profile.fingerprint,
-                              profile.fingerprint, profile.displayName, capabilities,
-                              &rekeyReleases);
+    const QString logicalId = m_providers.observeLegacy(
+        providerFor(pad), profile.fingerprint, profile.modelFingerprint,
+        profile.displayName, capabilities, &rekeyReleases,
+        profile.endpointId, profile.containerId, profile.deviceRoot);
     for (const QString& control : rekeyReleases) {
-        m_runtime->release(QStringLiteral("controller"), profile.fingerprint, control);
+        m_runtime->release(QStringLiteral("controller"), previousLogical, control);
     }
-    m_legacyObservedIds.insert(pad, profile.fingerprint);
+    m_legacyObservedIds[pad].insert(profile.fingerprint);
+    configureLogicalProfile(logicalId,
+                            previousLogical == logicalId ? QStringList{}
+                                                         : QStringList{previousLogical});
 }
 
-void InputEngine::removeLegacyBackend(Gamepad* pad)
+void InputEngine::removeLegacyBackend(Gamepad* pad, const QString& providerDeviceId)
 {
-    const QString observed = m_legacyObservedIds.take(pad);
-    if (!observed.isEmpty()) {
+    QSet<QString> observed = m_legacyObservedIds.value(pad);
+    if (!providerDeviceId.isEmpty())
+        observed.intersect(QSet<QString>{providerDeviceId});
+    for (const QString& id : observed) {
+        const QString logicalId = canonicalProfile(pad, id);
         const QStringList releases =
-            m_providers.removeLegacy(providerFor(pad), observed);
+            m_providers.removeLegacy(providerFor(pad), id);
         for (const QString& control : releases)
-            m_runtime->release(QStringLiteral("controller"), observed, control);
+            m_runtime->release(QStringLiteral("controller"), logicalId, control);
+        m_legacyObservedIds[pad].remove(id);
     }
+    if (m_legacyObservedIds.value(pad).isEmpty())
+        m_legacyObservedIds.remove(pad);
 }
 
-bool InputEngine::routeLegacySystemEdge(Gamepad* source, const QString& controlId,
-                                        bool pressed)
+QString InputEngine::canonicalProfile(Gamepad* pad, const QString& providerDeviceId) const
+{
+    const QString logicalId = m_providers.registry().logicalIdFor(
+        providerFor(pad), providerDeviceId);
+    return logicalId.isEmpty() ? providerDeviceId : logicalId;
+}
+
+void InputEngine::configureLogicalProfile(const QString& logicalId,
+                                          const QStringList& migrationAliases)
+{
+    const auto* logical = m_providers.registry().controller(logicalId);
+    if (!logical || logicalId.isEmpty())
+        return;
+    QStringList aliases = m_profileMigrationAliases.value(logicalId);
+    for (const QString& alias : migrationAliases) {
+        if (!alias.isEmpty() && !aliases.contains(alias))
+            aliases.append(alias);
+    }
+    m_profileMigrationAliases.insert(logicalId, aliases);
+    if (!logical->modelFingerprint.isEmpty())
+        aliases.append(logical->modelFingerprint);
+    for (const auto& attachment : logical->providers) {
+        if (!attachment.providerDeviceId.isEmpty()
+            && attachment.providerDeviceId != logicalId
+            && !aliases.contains(attachment.providerDeviceId))
+            aliases.append(attachment.providerDeviceId);
+    }
+    m_runtime->setProfileAliases(logicalId, aliases);
+}
+
+bool InputEngine::routeLegacySystemEdge(Gamepad* source,
+                                        const QString& providerDeviceId,
+                                        const QString& controlId, bool pressed)
 {
     const auto result = m_providers.routeLegacySystemEdge(
-        providerFor(source), m_legacyObservedIds.value(source), controlId, pressed,
+        providerFor(source), providerDeviceId, controlId, pressed,
         quint64(m_controllerClock.elapsed()));
     for (const QString& release : result.safeReleases)
         m_runtime->release(QStringLiteral("controller"),
-                           source->profile().fingerprint, release);
+                           canonicalProfile(source, providerDeviceId), release);
     return result.accepted;
 }
 
@@ -602,7 +661,8 @@ void InputEngine::replayPendingPress(const PendingPress& press)
     // Replayed back to back so a tap stays a tap: the runtime measures hold
     // time from the press it just saw, and this release arrives immediately.
     if (press.released) {
-        m_runtime->release(QStringLiteral("controller"), press.fingerprint,
+        m_runtime->release(QStringLiteral("controller"),
+                           canonicalProfile(press.source, press.fingerprint),
                            press.controlId);
         if (press.controlId == m_repeatTrigger)
             stopNavRepeat();
@@ -618,7 +678,9 @@ void InputEngine::activateBackend(Gamepad* pick, const QString& reason)
     m_activeBackend = pick;
 
     if (pick) {
-        m_bindingEditor->setControllerProfile(pick->profile());
+        auto profile = pick->profile();
+        profile.fingerprint = canonicalProfile(pick, profile.fingerprint);
+        m_bindingEditor->setControllerProfile(profile);
         const QString name = backendDisplayName(pick);
         InputDiagnostics::instance().noteBackendSwitch(name, reason);
         qInfo() << "Input: active controller backend ->" << name
@@ -671,26 +733,26 @@ void InputEngine::updateXInputIdentity()
         return;
     const int slot = m_xinputPad->firstConnectedSlot();
     if (slot < 0) {
-        m_xinputPad->setKnownDeviceIdentity({});
+        for (int index = 0; index < 4; ++index)
+            m_xinputPad->setKnownDeviceIdentity(index, {});
         return;
     }
     const QString fingerprint = ControllerIdentity::resolveXInputFingerprint(
-        m_sonyPad->xinputClassIdentities(), m_xinputPad->connectedSlotCount(), slot);
+        m_sonyPad->xinputClassEndpoints(), m_xinputPad->connectedSlotCount(), slot);
     const bool stable = !ControllerIdentity::isLegacySlotFingerprint(fingerprint);
-    m_xinputPad->setKnownDeviceIdentity(stable ? fingerprint : QString());
-    // Rows saved before stable identity existed stay live for this pad at
-    // lower precedence; promotion to the identity is the user's explicit
-    // copy action in Settings, never automatic.
-    if (stable)
-        m_runtime->setProfileAlias(fingerprint,
-                                   ControllerIdentity::legacySlotFingerprint(slot));
-    if (m_activeBackend == m_xinputPad)
-        m_bindingEditor->setControllerProfile(m_xinputPad->profile());
+    const QStringList models = m_sonyPad->xinputClassIdentities();
+    m_xinputPad->setKnownDeviceIdentity(
+        slot, stable ? fingerprint : QString(), models.size() == 1 ? models.front() : QString());
     // The fingerprint (slot → stable hardware identity or back) is also the
     // registry attachment id — refresh it so cross-provider correlation and
     // Share/Guide dedup key on the identity the pad currently reports.
     if (m_xinputConnected)
-        observeLegacyBackend(m_xinputPad);
+        observeLegacyBackend(m_xinputPad, m_xinputPad->profile());
+    if (m_activeBackend == m_xinputPad) {
+        auto profile = m_xinputPad->profile();
+        profile.fingerprint = canonicalProfile(m_xinputPad, profile.fingerprint);
+        m_bindingEditor->setControllerProfile(profile);
+    }
 }
 
 void InputEngine::setOverlayVisible(bool visible)
@@ -732,6 +794,9 @@ void InputEngine::onControlPressed(const QString& controlId, int family,
     auto* source = qobject_cast<Gamepad*>(sender());
     if (!source || !backendConnected(source))
         return;
+    const auto currentProfile = source->profile();
+    if (currentProfile.fingerprint == fingerprint)
+        observeLegacyBackend(source, currentProfile);
 
     const qint64 now = m_controllerClock.elapsed();
     if (source != m_activeBackend) {
@@ -778,16 +843,29 @@ void InputEngine::onControlPressed(const QString& controlId, int family,
 void InputEngine::deliverPress(Gamepad* source, const QString& controlId, int family,
                                const QString& fingerprint)
 {
+    const QString logicalProfile = canonicalProfile(source, fingerprint);
     // Capture/Guide may also arrive through GameInput for the same physical
     // controller; the shared capability router guarantees exactly one edge.
     // A duplicate here means GameInput already delivered this press.
     if ((controlId == ControlId::Capture || controlId == ControlId::Guide)
-        && !routeLegacySystemEdge(source, controlId, true))
+        && !routeLegacySystemEdge(source, fingerprint, controlId, true))
         return;
     InputDiagnostics::instance().noteControl(controlId, backendDisplayName(source));
     // Which controls the pad genuinely delivers is only knowable by observation:
     // the editor uses it to warn about a button another app is intercepting.
     m_bindingEditor->noteObservedControl(controlId);
+    auto editorProfile = source->profile();
+    if (source == m_xinputPad) {
+        for (int slot = 0; slot < 4; ++slot) {
+            const auto slotProfile = m_xinputPad->profileForSlot(slot);
+            if (slotProfile.fingerprint == fingerprint) {
+                editorProfile = slotProfile;
+                break;
+            }
+        }
+    }
+    editorProfile.fingerprint = logicalProfile;
+    m_bindingEditor->setControllerProfile(editorProfile);
     if (controlId == ControlId::Guide)
         InputDiagnostics::instance().setGuideObserved(true);
     setLastInput(ControlId::label(controlId, static_cast<ControlId::ControllerFamily>(family))
@@ -796,14 +874,14 @@ void InputEngine::deliverPress(Gamepad* source, const QString& controlId, int fa
             QStringLiteral("controller"), controlId,
             ControlId::label(controlId, static_cast<ControlId::ControllerFamily>(family))))
         return;
-    const bool handled = m_runtime->press(QStringLiteral("controller"), fingerprint, controlId,
+    const bool handled = m_runtime->press(QStringLiteral("controller"), logicalProfile, controlId,
                                           primaryScope(), fallbackScope());
     // XInput Back/View is now independently bindable. For profiles that have
     // no explicit View/Back pattern yet, preserve the historic built-in
     // Capture gestures as a capability fallback. As soon as the user binds
     // View/Back itself, that stable meaning wins and the alias is not entered.
     if (!handled && controlId == ControlId::ViewBack)
-        m_runtime->press(QStringLiteral("controller"), fingerprint, ControlId::Capture,
+        m_runtime->press(QStringLiteral("controller"), logicalProfile, ControlId::Capture,
                          primaryScope(), fallbackScope());
 }
 
@@ -824,11 +902,12 @@ void InputEngine::onControlReleased(const QString& controlId, int, const QString
     if (source != m_activeBackend)
         return;
     if ((controlId == ControlId::Capture || controlId == ControlId::Guide)
-        && !routeLegacySystemEdge(source, controlId, false))
+        && !routeLegacySystemEdge(source, fingerprint, controlId, false))
         return;
-    const bool handled = m_runtime->release(QStringLiteral("controller"), fingerprint, controlId);
+    const QString logicalProfile = canonicalProfile(source, fingerprint);
+    const bool handled = m_runtime->release(QStringLiteral("controller"), logicalProfile, controlId);
     if (!handled && controlId == ControlId::ViewBack)
-        m_runtime->release(QStringLiteral("controller"), fingerprint, ControlId::Capture);
+        m_runtime->release(QStringLiteral("controller"), logicalProfile, ControlId::Capture);
     if (controlId == m_repeatTrigger)
         stopNavRepeat();
 }

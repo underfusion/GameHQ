@@ -107,13 +107,18 @@ ControlId::DeviceProfile WinMMDevice::profile() const
 {
     if (!m_connected)
         return {};
+    const QString model = QStringLiteral("%1:%2")
+                              .arg(m_vendorId, 4, 16, QLatin1Char('0'))
+                              .arg(m_productId, 4, 16, QLatin1Char('0'));
+    const QString endpoint = QStringLiteral("winmm.slot%1").arg(m_activeId);
     return ControlId::DeviceProfile{
         QStringLiteral("WinMM joystick"),
-        QStringLiteral("%1:%2").arg(m_vendorId, 4, 16, QLatin1Char('0'))
-                                .arg(m_productId, 4, 16, QLatin1Char('0')),
+        endpoint,
         m_ds4Layout ? ControlId::ControllerFamily::PlayStation : ControlId::ControllerFamily::Xbox,
         m_ds4Layout ? QStringLiteral("WinMM joystick (Sony layout)")
                     : QStringLiteral("WinMM joystick (Xbox layout)"),
+        model,
+        endpoint,
     };
 }
 

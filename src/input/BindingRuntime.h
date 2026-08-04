@@ -33,6 +33,7 @@ public:
                                               const QString& deviceProfile,
                                               const QString& actionId, int slot) const;
     void setProfileAlias(const QString& profile, const QString& legacyProfile);
+    void setProfileAliases(const QString& profile, const QStringList& legacyProfiles);
 
     // One classified pair out of the effective table for a device group.
     struct Relation {

@@ -41,7 +41,10 @@ public:
     QString observeLegacy(ControllerProvider provider, const QString& providerDeviceId,
                           const QString& fingerprint, const QString& displayName,
                           ControllerCapabilities capabilities,
-                          QStringList* safeReleases = nullptr);
+                          QStringList* safeReleases = nullptr,
+                          const QString& endpointId = {},
+                          const QString& containerId = {},
+                          const QString& deviceRoot = {});
     QStringList removeLegacy(ControllerProvider provider,
                              const QString& providerDeviceId);
 

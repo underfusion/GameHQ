@@ -19,6 +19,7 @@ namespace ControllerIdentity
 {
 QString legacySlotFingerprint(int slot);
 bool isLegacySlotFingerprint(const QString& fingerprint);
+QString endpointFingerprint(const QString& devicePath);
 
 // `xinputClassIdentities`: distinct "vvvv:pppp" identities of IG_ devices
 // Raw Input currently sees. `connectedSlotCount`: XInput slots in use.

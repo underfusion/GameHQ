@@ -37,6 +37,8 @@ struct ProviderObservation {
     QString appLocalDeviceId;
     QString containerId;
     QString topologyRoot;
+    QString endpointId;
+    QString modelFingerprint;
     QString displayName;
     quint16 vendorId = 0;
     quint16 productId = 0;
@@ -56,6 +58,8 @@ struct LogicalController {
     QString appLocalDeviceId;
     QString containerId;
     QString topologyRoot;
+    QString endpointId;
+    QString modelFingerprint;
     quint16 vendorId = 0;
     quint16 productId = 0;
     QVector<ProviderAttachment> providers;

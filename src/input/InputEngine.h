@@ -1,8 +1,10 @@
 #pragma once
 #include "input/ActionCatalog.h"
+#include "input/ControlId.h"
 #include "input/ProviderIntegration.h"
 #include <QElapsedTimer>
 #include <QHash>
+#include <QSet>
 #include <QObject>
 #include <QString>
 #include <functional>
@@ -157,12 +159,16 @@ private:
     // legacy backend reports as, and (re-)observing its attachment when it
     // connects, disconnects, or changes fingerprint.
     ModernInput::ControllerProvider providerFor(const Gamepad* pad) const;
-    void observeLegacyBackend(Gamepad* pad);
-    void removeLegacyBackend(Gamepad* pad);
+    void observeLegacyBackend(Gamepad* pad, const ControlId::DeviceProfile& profile);
+    void removeLegacyBackend(Gamepad* pad, const QString& providerDeviceId = {});
+    QString canonicalProfile(Gamepad* pad, const QString& providerDeviceId) const;
+    void configureLogicalProfile(const QString& logicalId,
+                                 const QStringList& migrationAliases = {});
     // Routes a legacy Capture/Guide edge through the shared capability router
     // so the same physical press arriving via GameInput cannot double-fire.
     // Returns false when the edge is a cross-provider duplicate.
-    bool routeLegacySystemEdge(Gamepad* source, const QString& controlId, bool pressed);
+    bool routeLegacySystemEdge(Gamepad* source, const QString& providerDeviceId,
+                               const QString& controlId, bool pressed);
     void updateActiveBackend();
     void activateBackend(Gamepad* pad, const QString& reason);
     // Pending-candidate confirmation: true once `source` has carried input on
@@ -256,7 +262,8 @@ private:
     // WinMM, selective Raw HID). Declared before m_gameInput, which holds a
     // pointer into it.
     ModernInput::ProviderIntegration m_providers;
-    QHash<Gamepad*, QString> m_legacyObservedIds;   // providerDeviceId per observed backend
+    QHash<Gamepad*, QSet<QString>> m_legacyObservedIds;
+    QHash<QString, QStringList> m_profileMigrationAliases;
     std::unique_ptr<ModernInput::GameInputRouter> m_gameInput;
     std::vector<std::unique_ptr<Gamepad>> m_pads;
     DualSenseDevice* m_sonyPad = nullptr;

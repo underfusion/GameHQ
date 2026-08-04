@@ -81,6 +81,7 @@ public:
     // they are never silently rewritten or broadened — promotion to the
     // stable identity is the user's explicit copy action in Settings.
     void setProfileAlias(const QString& profile, const QString& legacyProfile);
+    void setProfileAliases(const QString& profile, const QStringList& legacyProfiles);
 
     QVector<Binding> effectiveBindings(const QString& deviceGroup,
                                        const QString& deviceProfile = {}) const;
@@ -101,6 +102,6 @@ public:
 private:
     CaptureDatabase* m_database = nullptr;
     QVector<Binding> m_overrides;
-    QHash<QString, QString> m_profileAliases;
+    QHash<QString, QStringList> m_profileAliases;
     int m_defaultHoldMs = 2000;
 };

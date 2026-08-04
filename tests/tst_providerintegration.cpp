@@ -62,7 +62,8 @@ class ProviderIntegrationTest : public QObject
 
     static ProviderObservation gameInputObservation(
         const QString& deviceId = QStringLiteral("gi-device-1"),
-        quint16 vendorId = 0x054C, quint16 productId = 0x0CE6)
+        quint16 vendorId = 0x054C, quint16 productId = 0x0CE6,
+        const QString& deviceRoot = QStringLiteral("pnp.root.default"))
     {
         ProviderObservation observation;
         observation.provider = ControllerProvider::GameInput;
@@ -71,7 +72,8 @@ class ProviderIntegrationTest : public QObject
         observation.displayName = QStringLiteral("Modern pad");
         observation.vendorId = vendorId;
         observation.productId = productId;
-        observation.topologyRoot = QStringLiteral("%1:%2")
+        observation.topologyRoot = deviceRoot;
+        observation.modelFingerprint = QStringLiteral("%1:%2")
             .arg(vendorId, 4, 16, QLatin1Char('0'))
             .arg(productId, 4, 16, QLatin1Char('0'));
         observation.capabilities = ControllerCapability::StandardControls
@@ -92,7 +94,7 @@ private slots:
         const QString legacyId = integration.observeLegacy(
             ControllerProvider::SonyRaw, QStringLiteral("054c:0ce6"),
             QStringLiteral("054c:0ce6"), QStringLiteral("DualSense"),
-            sonyCapabilities());
+            sonyCapabilities(), nullptr, {}, {}, QStringLiteral("pnp.root.default"));
         QVERIFY(!legacyId.isEmpty());
 
         const QString modernId = integration.registry().observe(gameInputObservation());
@@ -113,7 +115,8 @@ private slots:
         ProviderIntegration integration;
         integration.observeLegacy(ControllerProvider::SonyRaw,
                                   QStringLiteral("054c:0ce6"), QStringLiteral("054c:0ce6"),
-                                  QStringLiteral("DualSense"), sonyCapabilities());
+                                  QStringLiteral("DualSense"), sonyCapabilities(), nullptr,
+                                  {}, {}, QStringLiteral("pnp.root.default"));
         const QString logicalId = integration.registry().observe(gameInputObservation());
 
         // GameInput is the preferred Share provider on a merged controller:
@@ -138,7 +141,8 @@ private slots:
         ProviderIntegration integration;
         integration.observeLegacy(ControllerProvider::SonyRaw,
                                   QStringLiteral("054c:0ce6"), QStringLiteral("054c:0ce6"),
-                                  QStringLiteral("DualSense"), sonyCapabilities());
+                                  QStringLiteral("DualSense"), sonyCapabilities(), nullptr,
+                                  {}, {}, QStringLiteral("pnp.root.default"));
         const QString logicalId = integration.registry().observe(gameInputObservation());
         integration.registry().removeProvider(ControllerProvider::GameInput,
                                               QStringLiteral("gi-device-1"));
@@ -157,9 +161,11 @@ private slots:
                                   QStringLiteral("045e:0b12"), QStringLiteral("045e:0b12"),
                                   QStringLiteral("Xbox pad"),
                                   ControllerCapability::StandardControls
-                                      | ControllerCapability::Guide);
+                                      | ControllerCapability::Guide, nullptr, {}, {},
+                                  QStringLiteral("pnp.root.xbox"));
         const QString logicalId = integration.registry().observe(
-            gameInputObservation(QStringLiteral("gi-xbox"), 0x045E, 0x0B12));
+            gameInputObservation(QStringLiteral("gi-xbox"), 0x045E, 0x0B12,
+                                 QStringLiteral("pnp.root.xbox")));
         QCOMPARE(integration.registry().logicalIdFor(
                      ControllerProvider::XInput, QStringLiteral("045e:0b12")),
                  logicalId);
@@ -193,6 +199,22 @@ private slots:
         QVERIFY(modernId != second);
         QVERIFY(integration.legacyProviderConnected());
         QVERIFY(!integration.hasLegacyAttachment(modernId));
+    }
+
+    void sameVidPidAcrossDifferentProvidersNeverMerges()
+    {
+        ProviderIntegration integration;
+        const QString sony = integration.observeLegacy(
+            ControllerProvider::SonyRaw, QStringLiteral("hid.endpoint.sony-a"),
+            QStringLiteral("054c:0ce6"), QStringLiteral("DualSense A"),
+            sonyCapabilities(), nullptr, QStringLiteral("hid.endpoint.sony-a"));
+        const QString winmm = integration.observeLegacy(
+            ControllerProvider::WinMM, QStringLiteral("winmm.slot1"),
+            QStringLiteral("054c:0ce6"), QStringLiteral("DualSense B"),
+            sonyCapabilities(), nullptr, QStringLiteral("winmm.slot1"));
+
+        QVERIFY(sony != winmm);
+        QCOMPARE(integration.registry().controllers().size(), 2);
     }
 
     void unobservedLegacyEdgeFailsOpen()
@@ -244,25 +266,26 @@ private slots:
     void rawHidEdgeObservesCorrelatesAndRoutes()
     {
         ProviderIntegration integration;
+        const QString endpoint = QStringLiteral("hid.endpoint.gamesir-a");
         integration.observeLegacy(ControllerProvider::XInput,
-                                  QStringLiteral("3537:1004"), QStringLiteral("3537:1004"),
+                                  endpoint, QStringLiteral("3537:1004"),
                                   QStringLiteral("GameSir"),
                                   ControllerCapability::StandardControls
-                                      | ControllerCapability::Guide);
-        const QString control = ControlId::rawHidUsage(QStringLiteral("3537:1004"), 0x09, 0x15);
-        const auto press = integration.routeRawHidEdge(QStringLiteral("3537:1004"),
+                                      | ControllerCapability::Guide, nullptr, endpoint);
+        const QString control = ControlId::rawHidUsage(endpoint, 0x09, 0x15);
+        const auto press = integration.routeRawHidEdge(endpoint,
                                                        control, true, 10);
         QVERIFY(press.accepted);
         // The Raw HID attachment correlates onto the SAME logical controller
         // the XInput attachment created — one physical pad, one identity.
         QCOMPARE(integration.registry().logicalIdFor(ControllerProvider::RawHid,
-                                                     QStringLiteral("3537:1004")),
+                                                     endpoint),
                  integration.registry().logicalIdFor(ControllerProvider::XInput,
-                                                     QStringLiteral("3537:1004")));
-        const auto duplicate = integration.routeRawHidEdge(QStringLiteral("3537:1004"),
+                                                     endpoint));
+        const auto duplicate = integration.routeRawHidEdge(endpoint,
                                                            control, true, 12);
         QVERIFY(!duplicate.accepted);
-        const auto release = integration.routeRawHidEdge(QStringLiteral("3537:1004"),
+        const auto release = integration.routeRawHidEdge(endpoint,
                                                          control, false, 40);
         QVERIFY(release.accepted);
     }
@@ -287,18 +310,31 @@ private slots:
 
     void weakIdentityUpgradesToDeterministicStrongId()
     {
-        // Legacy observes first (weak identity), GameInput merges in with a
-        // strong one: the logical ID must become the deterministic strong
-        // hash so persisted per-controller state survives provider order.
-        PhysicalControllerRegistry reference;
-        const QString strongFirst = reference.observe(gameInputObservation());
-
         ProviderIntegration integration;
-        integration.observeLegacy(ControllerProvider::SonyRaw,
-                                  QStringLiteral("054c:0ce6"), QStringLiteral("054c:0ce6"),
-                                  QStringLiteral("DualSense"), sonyCapabilities());
-        const QString merged = integration.registry().observe(gameInputObservation());
-        QCOMPARE(merged, strongFirst);
+        const QString providerId = QStringLiteral("sony.live.1");
+        const QString weak = integration.observeLegacy(
+            ControllerProvider::SonyRaw, providerId, QStringLiteral("054c:0ce6"),
+            QStringLiteral("DualSense"), sonyCapabilities());
+        QVERIFY(integration.routeLegacySystemEdge(
+                    ControllerProvider::SonyRaw, providerId,
+                    ControlId::Capture, true, 10).accepted);
+
+        QStringList safeReleases;
+        const QString strong = integration.observeLegacy(
+            ControllerProvider::SonyRaw, providerId, QStringLiteral("054c:0ce6"),
+            QStringLiteral("DualSense"), sonyCapabilities(), &safeReleases,
+            QStringLiteral("hid.endpoint.dualsense-a"));
+
+        QVERIFY(strong != weak);
+        QCOMPARE(safeReleases, QStringList{ControlId::Capture});
+        QCOMPARE(integration.registry().logicalIdFor(
+                     ControllerProvider::SonyRaw, providerId), strong);
+        const auto mirroredAfterRekey = integration.routeLegacySystemEdge(
+            ControllerProvider::SonyRaw, providerId, ControlId::Capture, true, 20);
+        QVERIFY(mirroredAfterRekey.accepted);
+        QVERIFY(integration.routeLegacySystemEdge(
+                    ControllerProvider::SonyRaw, providerId,
+                    ControlId::Capture, false, 30).accepted);
     }
 
     void standardControlMapCoversEveryPinnedHeaderFlag()

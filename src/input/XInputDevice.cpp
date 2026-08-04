@@ -159,6 +159,8 @@ void XInputDevice::setSlotState(int slot, quint32 buttons, bool connected)
         m_connected[slot] = connected;
         qInfo() << "Gamepad: XInput slot" << slot
                 << (connected ? "connected" : "disconnected");
+        if (connected)
+            emit slotConnectionChanged(slot, true);
     }
 
     // Aggregate connect is announced BEFORE the first edges so InputEngine
@@ -177,11 +179,14 @@ void XInputDevice::setSlotState(int slot, quint32 buttons, bool connected)
             continue;
         const QString control = b == Share ? ControlId::ViewBack : controlIdFor(b);
         if (buttons & mask)
-            publishControlPressed(control);
+            publishControlPressed(control, profileForSlot(slot));
         else
-            publishControlReleased(control);
+            publishControlReleased(control, profileForSlot(slot));
     }
     m_prevButtons[slot] = buttons;
+
+    if (!connected && slotChanged)
+        emit slotConnectionChanged(slot, false);
 
     if (!connected && slotChanged && m_anyConnected && connectedCount() == 0) {
         m_anyConnected = false;
@@ -198,14 +203,19 @@ void XInputDevice::setSlotState(int slot, quint32 buttons, bool connected)
     }
 }
 
-void XInputDevice::setKnownDeviceIdentity(const QString& vidPid)
+void XInputDevice::setKnownDeviceIdentity(int slot, const QString& endpointId,
+                                          const QString& modelFingerprint)
 {
-    if (m_knownIdentity == vidPid)
+    if (slot < 0 || slot >= 4)
         return;
-    m_knownIdentity = vidPid;
-    if (!vidPid.isEmpty())
-        qInfo().noquote() << "Gamepad: XInput pad correlated to hardware identity"
-                          << vidPid << "- device-specific bindings follow the pad";
+    if (m_knownEndpoint[slot] == endpointId
+        && m_modelFingerprint[slot] == modelFingerprint)
+        return;
+    m_knownEndpoint[slot] = endpointId;
+    m_modelFingerprint[slot] = modelFingerprint.toLower();
+    if (!endpointId.isEmpty())
+        qInfo().noquote() << "Gamepad: XInput slot" << slot
+                          << "correlated to anonymized endpoint" << endpointId;
 }
 
 int XInputDevice::firstConnectedSlot() const
@@ -222,22 +232,34 @@ ControlId::DeviceProfile XInputDevice::profile() const
     const int slot = firstConnectedSlot();
     if (slot < 0)
         return {};
-    if (!m_knownIdentity.isEmpty()) {
-        return ControlId::DeviceProfile{
-            QStringLiteral("XInput"),
-            m_knownIdentity,
-            ControlId::ControllerFamily::Xbox,
-            QStringLiteral("Xbox-compatible controller"),
-        };
-    }
     // No stable identity is obtainable: say so instead of pretending. The
     // fingerprint stays slot-keyed, so overrides saved now follow the slot,
     // not the physical pad.
     return ControlId::DeviceProfile{
         QStringLiteral("XInput"),
-        ControllerIdentity::legacySlotFingerprint(slot),
+        profileForSlot(slot).fingerprint,
         ControlId::ControllerFamily::Xbox,
         QStringLiteral("Xbox controller (per-slot profile — model cannot be identified)"),
+        profileForSlot(slot).modelFingerprint,
+        profileForSlot(slot).endpointId,
+    };
+}
+
+ControlId::DeviceProfile XInputDevice::profileForSlot(int slot) const
+{
+    if (slot < 0 || slot >= 4)
+        return {};
+    const QString endpoint = m_knownEndpoint[slot];
+    return ControlId::DeviceProfile{
+        QStringLiteral("XInput"),
+        ControllerIdentity::legacySlotFingerprint(slot),
+        ControlId::ControllerFamily::Xbox,
+        endpoint.isEmpty()
+            ? QStringLiteral("Xbox controller (slot %1; hardware identity unavailable)")
+                  .arg(slot + 1)
+            : QStringLiteral("Xbox-compatible controller"),
+        m_modelFingerprint[slot],
+        endpoint,
     };
 }
 

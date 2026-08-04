@@ -64,6 +64,8 @@ signals:
     void statusChanged();
     void sessionFallback(const QString& reason);
     void lifecycleReset(const QString& logicalId, const QString& reason);
+    void logicalControllerRekeyed(const QString& previousLogicalId,
+                                  const QString& logicalId);
     void deviceConnected(const QString& logicalId, bool profileRestored);
     void deviceDisconnected(const QString& logicalId);
 

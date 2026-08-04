@@ -1,6 +1,7 @@
 #include "input/DualSenseDevice.h"
 
 #include "input/ControllerArbitration.h"
+#include "input/ControllerIdentity.h"
 #include "input/InputDiagnostics.h"
 #include "input/SelectiveRawHidFallback.h"
 #include "input/SonyReportLayout.h"
@@ -266,6 +267,8 @@ DualSenseDevice::DeviceState* DualSenseDevice::probeDevice(void* handle)
         // Remember its identity: XInput only knows slot numbers, so this is
         // the one place the real VID/PID of an XInput pad is visible.
         m_xinputClass.insert(handle, id);
+        m_xinputEndpoints.insert(handle,
+                                 ControllerIdentity::endpointFingerprint(path.value));
         return ignoreDevice(handle, id,
                             QStringLiteral("XInput device — XInput backend handles it"));
     }
@@ -312,6 +315,7 @@ void DualSenseDevice::forgetClassification(void* handle)
     dropRawHidState(handle);
     m_ignoredHandles.remove(handle);
     m_xinputClass.remove(handle);
+    m_xinputEndpoints.remove(handle);
     m_rates.forget(handle);
     if (!rawHidIdentity.isEmpty()
         && !m_ignoredHandles.values().contains(rawHidIdentity))
@@ -410,6 +414,16 @@ QStringList DualSenseDevice::xinputClassIdentities() const
             identities.append(identity);
     }
     return identities;
+}
+
+QStringList DualSenseDevice::xinputClassEndpoints() const
+{
+    QStringList endpoints;
+    for (const QString& endpoint : m_xinputEndpoints) {
+        if (!endpoint.isEmpty() && !endpoints.contains(endpoint))
+            endpoints.append(endpoint);
+    }
+    return endpoints;
 }
 
 void DualSenseDevice::onDeviceChange(bool arrived, void* deviceHandle)
@@ -984,11 +998,16 @@ ControlId::DeviceProfile DualSenseDevice::profile() const
     if (!m_activeHandle || !m_devices.contains(m_activeHandle))
         return {};
     const DeviceState& st = m_devices.value(m_activeHandle);
+    const QString model = QStringLiteral("%1:%2")
+                              .arg(st.vendorId, 4, 16, QLatin1Char('0'))
+                              .arg(st.productId, 4, 16, QLatin1Char('0'));
+    const QString endpoint = ControllerIdentity::endpointFingerprint(st.path);
     return ControlId::DeviceProfile{
         QStringLiteral("Sony Raw Input"),
-        QStringLiteral("%1:%2").arg(st.vendorId, 4, 16, QLatin1Char('0'))
-                                .arg(st.productId, 4, 16, QLatin1Char('0')),
+        endpoint,
         ControlId::ControllerFamily::PlayStation,
         QString::fromLatin1(padName(st.layout)),
+        model,
+        endpoint,
     };
 }

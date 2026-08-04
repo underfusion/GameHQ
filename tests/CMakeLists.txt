@@ -43,6 +43,14 @@ gamehq_add_test(tst_controlleridentity
     tst_controlleridentity.cpp
     "${CMAKE_SOURCE_DIR}/src/input/ControllerIdentity.cpp")
 
+gamehq_add_test(tst_xinputidentity
+    tst_xinputidentity.cpp
+    "${CMAKE_SOURCE_DIR}/src/input/Gamepad.h"
+    "${CMAKE_SOURCE_DIR}/src/input/XInputDevice.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ControllerIdentity.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/InputDiagnostics.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp")
+
 gamehq_add_test(tst_sonyreportlayout
     tst_sonyreportlayout.cpp)
 

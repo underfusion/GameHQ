@@ -33,7 +33,10 @@ QString ProviderIntegration::observeLegacy(ControllerProvider provider,
                                            const QString& fingerprint,
                                            const QString& displayName,
                                            ControllerCapabilities capabilities,
-                                           QStringList* safeReleases)
+                                           QStringList* safeReleases,
+                                           const QString& endpointId,
+                                           const QString& containerId,
+                                           const QString& deviceRoot)
 {
     if (safeReleases)
         safeReleases->clear();
@@ -47,7 +50,10 @@ QString ProviderIntegration::observeLegacy(ControllerProvider provider,
     // The lowercase "vvvv:pppp" fingerprint is the only identity legacy APIs
     // share with GameInput, so it is the topology correlation root. The
     // registry's unique-match rule keeps two identical models apart.
-    observation.topologyRoot = fingerprint.toLower();
+    observation.modelFingerprint = fingerprint.toLower();
+    observation.endpointId = endpointId;
+    observation.containerId = containerId;
+    observation.topologyRoot = deviceRoot;
     parseFingerprint(fingerprint, observation.vendorId, observation.productId);
     QString rekeyedFrom;
     const QString logicalId = m_registry.observe(observation, &rekeyedFrom);
@@ -114,7 +120,7 @@ CapabilityRouteResult ProviderIntegration::routeRawHidEdge(const QString& device
         ProviderObservation observation;
         observation.provider = ControllerProvider::RawHid;
         observation.providerDeviceId = deviceIdentity;
-        observation.topologyRoot = deviceIdentity.toLower();
+        observation.endpointId = deviceIdentity.toLower();
         observation.displayName = QStringLiteral("Raw HID controller");
         observation.capabilities = ControllerCapability::ExtraControls;
         parseFingerprint(deviceIdentity, observation.vendorId, observation.productId);

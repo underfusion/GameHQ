@@ -23,22 +23,35 @@ public:
 
     bool start() override;
     ControlId::DeviceProfile profile() const override;
+    ControlId::DeviceProfile profileForSlot(int slot) const;
 
     // Stable hardware identity ("vvvv:pppp") for the connected pad when the
     // Raw Input topology correlation is unambiguous, empty otherwise.
     // XInput cannot know this itself — InputEngine injects it (see
     // ControllerIdentity). With no identity, profile() keeps the honest
     // legacy "xinput.slotN" fingerprint and says so in its display name.
-    void setKnownDeviceIdentity(const QString& vidPid);
+    void setKnownDeviceIdentity(int slot, const QString& endpointId,
+                                const QString& modelFingerprint = {});
     int connectedSlotCount() const { return connectedCount(); }
     int firstConnectedSlot() const;
+    bool slotConnected(int slot) const
+    {
+        return slot >= 0 && slot < 4 && m_connected[slot];
+    }
 
 public slots:
     void rescan();   // probe empty slots for newly arrived pads
 
+signals:
+    void slotConnectionChanged(int slot, bool connected);
+
+protected:
+    // Protected test seam: tests exercise the production edge path without
+    // loading or polling a system XInput DLL.
+    void setSlotState(int slot, quint32 buttons, bool connected);
+
 private:
     void poll();     // fast-poll connected slots only
-    void setSlotState(int slot, quint32 buttons, bool connected);
     int connectedCount() const;
 
     QTimer* m_pollTimer = nullptr;     // runs only while a slot is connected
@@ -53,5 +66,6 @@ private:
     quint16 m_prevRawButtons[4] = {};
     bool m_connected[4] = {};
     bool m_anyConnected = false;       // aggregate, as last emitted
-    QString m_knownIdentity;           // "vvvv:pppp" when correlation is unambiguous
+    QString m_knownEndpoint[4];        // anonymized Raw Input endpoint when unambiguous
+    QString m_modelFingerprint[4];     // VID/PID compatibility alias only
 };
