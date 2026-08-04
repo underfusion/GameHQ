@@ -198,11 +198,13 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
             this, [this](const QString&) {
                 stopNavRepeat();
                 m_runtime->cancelAll();
+                m_legacyViewFallbackHeld.clear();
             });
     connect(m_gameInput.get(), &ModernInput::GameInputRouter::lifecycleReset,
             this, [this](const QString&, const QString&) {
                 stopNavRepeat();
                 m_runtime->cancelAll();
+                m_legacyViewFallbackHeld.clear();
             });
     connect(m_gameInput.get(), &ModernInput::GameInputRouter::logicalControllerRekeyed,
             this, [this](const QString& previous, const QString& logicalId) {
@@ -557,6 +559,16 @@ bool InputEngine::routeLegacySystemEdge(Gamepad* source,
     return result.accepted;
 }
 
+bool InputEngine::hasExplicitViewBinding(const QString& logicalProfile) const
+{
+    for (const auto& binding : m_runtime->effectiveBindings(
+             QStringLiteral("controller"), logicalProfile)) {
+        if (binding.trigger().controls.contains(ControlId::ViewBack))
+            return true;
+    }
+    return false;
+}
+
 // Keep the current backend while it remains connected. Sony > XInput > WinMM
 // is only the initial/fallback choice; real control activity may move the
 // active role later. This avoids a stale Raw Input or virtual-device path
@@ -675,6 +687,7 @@ void InputEngine::activateBackend(Gamepad* pick, const QString& reason)
         return;
     stopNavRepeat();
     m_runtime->cancelAll();
+    m_legacyViewFallbackHeld.clear();
     m_activeBackend = pick;
 
     if (pick) {
@@ -766,6 +779,7 @@ void InputEngine::setOverlayVisible(bool visible)
     // left — stop any in-flight repeat when the focus context switches.
     stopNavRepeat();
     m_runtime->cancelAll();
+    m_legacyViewFallbackHeld.clear();
     qInfo() << "Input: overlay capture"
             << (visible ? "active — routing controller to overlay only"
                         : "inactive — global triggers only");
@@ -785,6 +799,7 @@ void InputEngine::setPlaybackActive(bool active)
     m_playbackActive = active;
     stopNavRepeat();
     m_runtime->cancelAll();
+    m_legacyViewFallbackHeld.clear();
 }
 
 void InputEngine::onControlPressed(const QString& controlId, int family,
@@ -880,9 +895,13 @@ void InputEngine::deliverPress(Gamepad* source, const QString& controlId, int fa
     // no explicit View/Back pattern yet, preserve the historic built-in
     // Capture gestures as a capability fallback. As soon as the user binds
     // View/Back itself, that stable meaning wins and the alias is not entered.
-    if (!handled && controlId == ControlId::ViewBack)
-        m_runtime->press(QStringLiteral("controller"), logicalProfile, ControlId::Capture,
-                         primaryScope(), fallbackScope());
+    if (!handled && controlId == ControlId::ViewBack
+        && m_providers.allowsLegacyViewFallback(
+            providerFor(source), fingerprint, hasExplicitViewBinding(logicalProfile))) {
+        if (m_runtime->press(QStringLiteral("controller"), logicalProfile,
+                             ControlId::Capture, primaryScope(), fallbackScope()))
+            m_legacyViewFallbackHeld.insert(logicalProfile);
+    }
 }
 
 void InputEngine::onControlReleased(const QString& controlId, int, const QString&,
@@ -905,8 +924,9 @@ void InputEngine::onControlReleased(const QString& controlId, int, const QString
         && !routeLegacySystemEdge(source, fingerprint, controlId, false))
         return;
     const QString logicalProfile = canonicalProfile(source, fingerprint);
-    const bool handled = m_runtime->release(QStringLiteral("controller"), logicalProfile, controlId);
-    if (!handled && controlId == ControlId::ViewBack)
+    m_runtime->release(QStringLiteral("controller"), logicalProfile, controlId);
+    if (controlId == ControlId::ViewBack
+        && m_legacyViewFallbackHeld.remove(logicalProfile))
         m_runtime->release(QStringLiteral("controller"), logicalProfile, ControlId::Capture);
     if (controlId == m_repeatTrigger)
         stopNavRepeat();

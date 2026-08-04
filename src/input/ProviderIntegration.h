@@ -63,6 +63,9 @@ public:
                                                 const QString& providerDeviceId,
                                                 const QString& controlId, bool pressed,
                                                 quint64 timestamp);
+    bool allowsLegacyViewFallback(ControllerProvider provider,
+                                  const QString& providerDeviceId,
+                                  bool hasExplicitViewBinding) const;
 
     // Route a selective-Raw-HID edge. Observes the RawHid attachment on first
     // use so the device correlates (by "vvvv:pppp" identity) with any logical

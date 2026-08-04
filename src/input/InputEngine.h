@@ -169,6 +169,7 @@ private:
     // Returns false when the edge is a cross-provider duplicate.
     bool routeLegacySystemEdge(Gamepad* source, const QString& providerDeviceId,
                                const QString& controlId, bool pressed);
+    bool hasExplicitViewBinding(const QString& logicalProfile) const;
     void updateActiveBackend();
     void activateBackend(Gamepad* pad, const QString& reason);
     // Pending-candidate confirmation: true once `source` has carried input on
@@ -264,6 +265,7 @@ private:
     ModernInput::ProviderIntegration m_providers;
     QHash<Gamepad*, QSet<QString>> m_legacyObservedIds;
     QHash<QString, QStringList> m_profileMigrationAliases;
+    QSet<QString> m_legacyViewFallbackHeld;
     std::unique_ptr<ModernInput::GameInputRouter> m_gameInput;
     std::vector<std::unique_ptr<Gamepad>> m_pads;
     DualSenseDevice* m_sonyPad = nullptr;

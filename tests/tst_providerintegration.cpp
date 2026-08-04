@@ -217,6 +217,32 @@ private slots:
         QCOMPARE(integration.registry().controllers().size(), 2);
     }
 
+    void viewFallbackRequiresLegacyXInputWithoutTrueShareOrExplicitBinding()
+    {
+        ProviderIntegration integration;
+        const QString slot = QStringLiteral("xinput.slot0");
+        integration.observeLegacy(
+            ControllerProvider::XInput, slot, QStringLiteral("045e:0b12"),
+            QStringLiteral("Xbox pad"), ControllerCapability::StandardControls
+                | ControllerCapability::Guide, nullptr, {}, {},
+            QStringLiteral("pnp.root.view-test"));
+
+        QVERIFY(integration.allowsLegacyViewFallback(
+            ControllerProvider::XInput, slot, false));
+        QVERIFY(!integration.allowsLegacyViewFallback(
+            ControllerProvider::XInput, slot, true));
+        QVERIFY(!integration.allowsLegacyViewFallback(
+            ControllerProvider::SonyRaw, slot, false));
+
+        auto modern = gameInputObservation(QStringLiteral("gi-view-test"),
+                                           0x045E, 0x0B12,
+                                           QStringLiteral("pnp.root.view-test"));
+        modern.capabilities |= ControllerCapability::SystemShare;
+        integration.registry().observe(modern);
+        QVERIFY(!integration.allowsLegacyViewFallback(
+            ControllerProvider::XInput, slot, false));
+    }
+
     void unobservedLegacyEdgeFailsOpen()
     {
         ProviderIntegration integration;

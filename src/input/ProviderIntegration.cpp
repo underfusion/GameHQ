@@ -111,6 +111,18 @@ CapabilityRouteResult ProviderIntegration::routeLegacySystemEdge(
                                      controlId, pressed, timestamp});
 }
 
+bool ProviderIntegration::allowsLegacyViewFallback(
+    ControllerProvider provider, const QString& providerDeviceId,
+    bool hasExplicitViewBinding) const
+{
+    if (provider != ControllerProvider::XInput || hasExplicitViewBinding
+        || !providerDeviceId.startsWith(QLatin1String("xinput.slot")))
+        return false;
+    const QString logicalId = m_registry.logicalIdFor(provider, providerDeviceId);
+    const auto* logical = m_registry.controller(logicalId);
+    return logical && !logical->capabilities().testFlag(ControllerCapability::SystemShare);
+}
+
 CapabilityRouteResult ProviderIntegration::routeRawHidEdge(const QString& deviceIdentity,
                                                            const QString& controlId,
                                                            bool pressed, quint64 timestamp)
