@@ -31,6 +31,7 @@ qt_add_executable(GameHQ
     gameinput/GameInputWrapper.cpp gameinput/GameInputWrapper.h
     gameinput/GameInputRouter.cpp gameinput/GameInputRouter.h
     gameinput/ProductionGameInputApi.cpp gameinput/ProductionGameInputApi.h
+    gameinput/StandardControlMap.h
     games/GameDetector.cpp games/GameDetector.h
     input/HotkeyManager.cpp input/HotkeyManager.h
     input/Gamepad.h
@@ -50,6 +51,7 @@ qt_add_executable(GameHQ
     input/PhysicalControllerRegistry.cpp input/PhysicalControllerRegistry.h
     input/ExtraButtonCatalog.cpp input/ExtraButtonCatalog.h
     input/CapabilityEventRouter.cpp input/CapabilityEventRouter.h
+    input/ProviderIntegration.cpp input/ProviderIntegration.h
     input/SelectiveRawHidFallback.cpp input/SelectiveRawHidFallback.h
     input/InputDiagnostics.cpp input/InputDiagnostics.h
     input/InputRateMonitor.cpp input/InputRateMonitor.h
@@ -230,7 +232,9 @@ target_link_libraries(GameHQ PRIVATE
     gamehq_release_trust
     Qt6::Core Qt6::Gui Qt6::Quick Qt6::Sql Qt6::Widgets Qt6::Svg
     Qt6::Multimedia Qt6::Network
-    user32 gdi32 version winmm cfgmgr32
+    # `hid` backs the selective Raw HID fallback's report parsing
+    # (RIDI_PREPARSEDDATA + HidP_GetUsages in RawInputApi.cpp).
+    user32 gdi32 version winmm cfgmgr32 hid
     # 0.5 Windows Graphics Capture frame pump (WinRT raw-ABI path, no cppwinrt).
     windowsapp runtimeobject ole32 oleaut32 d3d11 dxgi dxguid uuid
     # t24 experimental HDR tone-map shader (runtime HLSL compile via D3DCompile).

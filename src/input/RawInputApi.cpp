@@ -6,6 +6,12 @@
 #include <QVarLengthArray>
 
 #include <windows.h>
+// MinGW's HID headers ship without extern "C" guards; without this wrap the
+// HidP_* imports mangle as C++ and never resolve against libhid.
+extern "C" {
+#include <hidsdi.h>
+#include <hidpi.h>
+}
 
 RawInputApi::~RawInputApi() = default;
 
@@ -128,8 +134,76 @@ public:
         return CloakScan{ result.hiddenPads, result.hidHidePresent };
     }
 
+    bool buttonUsages(void* deviceHandle, const Payload& payload,
+                      QList<quint32>& pressedUsages) override
+    {
+        if (!payload.reports || payload.reportSize <= 0 || payload.reportCount <= 0)
+            return false;
+
+        // The preparsed report descriptor is fetched per call rather than
+        // cached: this path only runs for devices with a bound raw-HID
+        // control or during the 3 s diagnostics probe, and a stale cached
+        // descriptor after a replug would silently misparse every report.
+        UINT bytes = 0;
+        if (GetRawInputDeviceInfoW(deviceHandle, RIDI_PREPARSEDDATA, nullptr, &bytes) != 0
+            || bytes == 0)
+            return false;
+        if (m_preparsed.size() < static_cast<qsizetype>(bytes))
+            m_preparsed.resize(static_cast<qsizetype>(bytes));
+        if (GetRawInputDeviceInfoW(deviceHandle, RIDI_PREPARSEDDATA,
+                                   m_preparsed.data(), &bytes) == static_cast<UINT>(-1))
+            return false;
+        auto* preparsed = reinterpret_cast<PHIDP_PREPARSED_DATA>(m_preparsed.data());
+
+        HIDP_CAPS caps{};
+        if (HidP_GetCaps(preparsed, &caps) != HIDP_STATUS_SUCCESS
+            || caps.NumberInputButtonCaps == 0)
+            return false;
+
+        QVarLengthArray<HIDP_BUTTON_CAPS, 8> buttonCaps(caps.NumberInputButtonCaps);
+        USHORT capsCount = caps.NumberInputButtonCaps;
+        if (HidP_GetButtonCaps(HidP_Input, buttonCaps.data(), &capsCount, preparsed)
+            != HIDP_STATUS_SUCCESS)
+            return false;
+
+        // Latest state wins: parse the LAST report in the batch.
+        const unsigned char* report = payload.reports
+            + static_cast<size_t>(payload.reportCount - 1) * payload.reportSize;
+        // HidP_GetUsages needs a mutable buffer.
+        if (m_reportCopy.size() < static_cast<qsizetype>(payload.reportSize))
+            m_reportCopy.resize(static_cast<qsizetype>(payload.reportSize));
+        memcpy(m_reportCopy.data(), report, static_cast<size_t>(payload.reportSize));
+
+        // One query per distinct button usage page the device declares.
+        QVarLengthArray<USAGE, 8> seenPages;
+        for (USHORT i = 0; i < capsCount; ++i) {
+            const USAGE page = buttonCaps[i].UsagePage;
+            bool seen = false;
+            for (const USAGE known : seenPages)
+                seen = seen || known == page;
+            if (seen)
+                continue;
+            seenPages.push_back(page);
+
+            ULONG usageCount = HidP_MaxUsageListLength(HidP_Input, page, preparsed);
+            if (usageCount == 0)
+                continue;
+            QVarLengthArray<USAGE, 64> usages(static_cast<int>(usageCount));
+            if (HidP_GetUsages(HidP_Input, page, 0, usages.data(), &usageCount,
+                               preparsed, m_reportCopy.data(),
+                               static_cast<ULONG>(payload.reportSize))
+                != HIDP_STATUS_SUCCESS)
+                continue;
+            for (ULONG u = 0; u < usageCount; ++u)
+                pressedUsages.push_back((quint32(page) << 16) | usages[u]);
+        }
+        return true;
+    }
+
 private:
     QByteArray m_buffer;
+    QByteArray m_preparsed;
+    QByteArray m_reportCopy;
 };
 } // namespace
 

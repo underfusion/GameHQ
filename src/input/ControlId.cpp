@@ -68,9 +68,13 @@ bool isCanonical(const QString& code)
         return numeric && index >= 0;
     }
     return code == FaceSouth || code == FaceEast || code == FaceNorth || code == FaceWest
+        || code == FaceC || code == FaceZ
         || code == ShoulderLeft || code == ShoulderRight
         || code == TriggerLeft || code == TriggerRight
+        || code == ThumbLeft || code == ThumbRight
         || code == DpadUp || code == DpadDown || code == DpadLeft || code == DpadRight
+        || code == PaddleLeft1 || code == PaddleLeft2
+        || code == PaddleRight1 || code == PaddleRight2
         || code == Menu || code == Guide || code == Capture || code == ViewBack;
 }
 
@@ -104,6 +108,8 @@ QString label(const QString& code, ControllerFamily family)
         if (code == Guide)         return QStringLiteral("PS");
         if (code == Capture)       return QStringLiteral("Share");
         if (code == ViewBack)      return QStringLiteral("View / Back");
+        if (code == ThumbLeft)     return QStringLiteral("L3");
+        if (code == ThumbRight)    return QStringLiteral("R3");
         break;
     case ControllerFamily::Xbox:
         if (code == FaceSouth)     return QStringLiteral("A");
@@ -118,6 +124,8 @@ QString label(const QString& code, ControllerFamily family)
         if (code == Guide)         return QStringLiteral("Guide");
         if (code == Capture)       return QStringLiteral("System Share");
         if (code == ViewBack)      return QStringLiteral("View / Back");
+        if (code == ThumbLeft)     return QStringLiteral("LS Click");
+        if (code == ThumbRight)    return QStringLiteral("RS Click");
         break;
     case ControllerFamily::Nintendo:
         // Face buttons are mirrored versus Xbox at the same physical positions.
@@ -154,6 +162,14 @@ QString label(const QString& code, ControllerFamily family)
     if (code == Guide)         return QStringLiteral("Guide");
     if (code == Capture)       return QStringLiteral("Capture");
     if (code == ViewBack)      return QStringLiteral("View / Back");
+    if (code == ThumbLeft)     return QStringLiteral("Left Stick Click");
+    if (code == ThumbRight)    return QStringLiteral("Right Stick Click");
+    if (code == FaceC)         return QStringLiteral("C");
+    if (code == FaceZ)         return QStringLiteral("Z");
+    if (code == PaddleLeft1)   return QStringLiteral("Left Paddle 1");
+    if (code == PaddleLeft2)   return QStringLiteral("Left Paddle 2");
+    if (code == PaddleRight1)  return QStringLiteral("Right Paddle 1");
+    if (code == PaddleRight2)  return QStringLiteral("Right Paddle 2");
     return QStringLiteral("?");
 }
 

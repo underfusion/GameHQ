@@ -6,6 +6,7 @@
 #include "input/InputDiagnostics.h"
 #include "input/ExtraButtonCatalog.h"
 #include "input/CapabilityEventRouter.h"
+#include "input/ProviderIntegration.h"
 
 #include <algorithm>
 
@@ -38,9 +39,34 @@ GameInputRouter::GameInputRouter(std::unique_ptr<IGameInputApi> api, SupportMode
     , m_extraButtons(std::make_unique<ExtraButtonCatalog>(database))
     , m_mode(mode)
 {
-    m_capabilityRouter = std::make_unique<CapabilityEventRouter>(&m_registry);
+    m_ownedIntegration = std::make_unique<ProviderIntegration>();
+    m_integration = m_ownedIntegration.get();
     connect(m_wrapper.get(), &GameInputWrapper::eventsReady,
             this, &GameInputRouter::handleBatch);
+}
+
+void GameInputRouter::setProviderIntegration(ProviderIntegration* integration)
+{
+    if (!integration || integration == m_integration)
+        return;
+    Q_ASSERT(m_deviceLogicalIds.isEmpty());   // must be installed before start()
+    m_integration = integration;
+    m_ownedIntegration.reset();
+}
+
+PhysicalControllerRegistry& GameInputRouter::registryRef()
+{
+    return m_integration->registry();
+}
+
+CapabilityEventRouter& GameInputRouter::routerRef()
+{
+    return m_integration->capabilityRouter();
+}
+
+const PhysicalControllerRegistry& GameInputRouter::registry() const
+{
+    return m_integration->registry();
 }
 
 GameInputRouter::~GameInputRouter()
@@ -80,9 +106,26 @@ void GameInputRouter::shutdown()
     releaseHeldControls();
     m_wrapper->shutdown();
     m_active = false;
+    detachFromRegistry();
     if (m_mode == SupportMode::Off)
         m_runtimeStatus = QStringLiteral("Off");
     emit statusChanged();
+}
+
+// GameInput stopped delivering (Off, shutdown, or session failure): its
+// attachments must leave the shared registry, otherwise preferredProvider()
+// keeps electing GameInput for Share/Guide and the shared router would
+// reject the legacy edges that are now the only live path.
+void GameInputRouter::detachFromRegistry()
+{
+    for (auto it = m_deviceLogicalIds.cbegin(); it != m_deviceLogicalIds.cend(); ++it) {
+        routerRef().disconnect(it.value());
+        registryRef().removeProvider(ControllerProvider::GameInput, it.key());
+    }
+    m_deviceLogicalIds.clear();
+    m_deviceExtraStates.clear();
+    m_deviceExtraControls.clear();
+    m_deviceStandardButtons.clear();
 }
 
 void GameInputRouter::setMode(SupportMode mode)
@@ -108,6 +151,16 @@ QString GameInputRouter::observeDevice(const GameInputDeviceDescriptor& device)
     observation.displayName = device.displayName;
     observation.vendorId = device.vendorId;
     observation.productId = device.productId;
+    // The lowercase "vvvv:pppp" fingerprint is the only identity legacy
+    // providers can also produce, so it is the topology correlation root
+    // that lets Sony Raw/XInput/WinMM attachments merge onto this logical
+    // controller (t25 cross-provider dedup). The registry's unique-match
+    // rule keeps two identical models apart.
+    if (device.vendorId != 0 || device.productId != 0) {
+        observation.topologyRoot = QStringLiteral("%1:%2")
+            .arg(device.vendorId, 4, 16, QLatin1Char('0'))
+            .arg(device.productId, 4, 16, QLatin1Char('0'));
+    }
     observation.capabilities = ControllerCapability::StandardControls;
     // Each system button is granted individually: a Guide-only pad must not
     // be reported (or routed) as Share-capable, and vice versa.
@@ -117,7 +170,7 @@ QString GameInputRouter::observeDevice(const GameInputDeviceDescriptor& device)
         observation.capabilities |= ControllerCapability::Guide;
     if (device.extraButtonCount > 0)
         observation.capabilities |= ControllerCapability::ExtraControls;
-    const QString logicalId = m_registry.observe(observation);
+    const QString logicalId = registryRef().observe(observation);
     m_deviceLogicalIds.insert(device.deviceId, logicalId);
     m_deviceNames.insert(device.deviceId, device.displayName);
     const bool firstObservation = !m_descriptors.contains(logicalId);
@@ -179,14 +232,14 @@ void GameInputRouter::handleBatch(const GameInputEventBatch& batch)
             m_deviceExtraStates.remove(event.deviceId);
             m_deviceExtraControls.remove(event.deviceId);
             m_deviceStandardButtons.remove(event.deviceId);
-            for (const QString& control : m_capabilityRouter->disconnect(logicalId)) {
+            for (const QString& control : routerRef().disconnect(logicalId)) {
                 if (!held.contains(control))
                     emit systemControlReleased(control, logicalId,
                                                m_deviceNames.value(event.deviceId));
             }
             if (event.kind == GameInputEventKind::DeviceRemoved) {
                 m_removedDevices.insert(event.deviceId);
-                m_registry.removeProvider(ControllerProvider::GameInput, event.deviceId);
+                registryRef().removeProvider(ControllerProvider::GameInput, event.deviceId);
                 emit deviceDisconnected(logicalId);
             }
             emit lifecycleReset(logicalId,
@@ -274,7 +327,7 @@ void GameInputRouter::handleBatch(const GameInputEventBatch& batch)
 QString GameInputRouter::controllerSummary() const
 {
     QStringList rows;
-    auto logicalControllers = m_registry.controllers();
+    auto logicalControllers = registry().controllers();
     std::sort(logicalControllers.begin(), logicalControllers.end(),
               [](const auto& left, const auto& right) { return left.logicalId < right.logicalId; });
     for (const auto& logical : logicalControllers) {
@@ -305,7 +358,7 @@ QString GameInputRouter::compatibilityReport() const
                                                     ? QStringLiteral("Off")
                                                     : QStringLiteral("Auto"))
     };
-    auto logicalControllers = m_registry.controllers();
+    auto logicalControllers = registry().controllers();
     std::sort(logicalControllers.begin(), logicalControllers.end(),
               [](const auto& left, const auto& right) { return left.logicalId < right.logicalId; });
     for (const auto& logical : logicalControllers) {
@@ -340,7 +393,31 @@ void GameInputRouter::publishEdge(const QString& deviceId, const QString& logica
                                   const QString& controlId, bool pressed,
                                   ControllerCapability capability, quint64 timestamp)
 {
-    const auto result = m_capabilityRouter->route(
+    if (controlId.isEmpty())
+        return;   // standard-labeled extras are filtered to an empty id
+    // Cross-provider safety gate (t25): a Share/Guide press may reach us
+    // twice — once here and once through a legacy provider (DualSense Sony
+    // Raw Capture/Guide, XInput ordinal-100 Guide). When that legacy provider
+    // is CORRELATED onto the same logical controller, the shared capability
+    // router dedups the pair and exactly one edge survives. When a legacy
+    // provider is live but NOT correlated onto this controller (ambiguous
+    // identity: two same-model pads, missing fingerprint), dedup cannot be
+    // guaranteed, so the GameInput edge stays shadowed — the proven legacy
+    // path keeps sole ownership. GameInput-only controllers route freely.
+    const bool systemCapability = capability == ControllerCapability::SystemShare
+        || capability == ControllerCapability::Guide;
+    if (systemCapability
+        && m_integration->legacyProviderConnected()
+        && !m_integration->hasLegacyAttachment(logicalId)) {
+        const bool held = m_heldSystemControls.value(deviceId).contains(controlId);
+        if (pressed || !held) {
+            // A release of a control we still hold must pass through so the
+            // action cannot stick; everything else is withheld.
+            ++m_shadowedSystemEdges;
+            return;
+        }
+    }
+    const auto result = routerRef().route(
         {logicalId, ControllerProvider::GameInput, capability, controlId, pressed, timestamp});
     for (const QString& release : result.safeReleases) {
         m_heldSystemControls[deviceId].remove(release);
@@ -355,6 +432,21 @@ void GameInputRouter::publishEdge(const QString& deviceId, const QString& logica
         m_heldSystemControls[deviceId].remove(controlId);
         emit systemControlReleased(controlId, logicalId, m_deviceNames.value(deviceId));
     }
+}
+
+int GameInputRouter::confirmLayouts()
+{
+    int confirmed = 0;
+    const auto warned = m_layoutWarnings;
+    for (const QString& logicalId : warned) {
+        if (m_extraButtons->confirm(logicalId)) {
+            m_layoutWarnings.remove(logicalId);
+            ++confirmed;
+        }
+    }
+    if (confirmed > 0)
+        emit statusChanged();
+    return confirmed;
 }
 
 void GameInputRouter::releaseHeldControls()
@@ -375,6 +467,7 @@ void GameInputRouter::failSession(const QString& reason)
     m_wrapper->shutdown();
     m_active = false;
     m_failedForSession = true;
+    detachFromRegistry();
     m_runtimeStatus = QStringLiteral("Legacy fallback: %1").arg(reason);
     InputDiagnostics::instance().noteBackendSwitch(QStringLiteral("Legacy controllers"), reason);
     emit statusChanged();

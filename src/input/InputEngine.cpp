@@ -150,8 +150,21 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
         modernOff ? ModernInput::GameInputRouter::SupportMode::Off
                   : ModernInput::GameInputRouter::SupportMode::Auto,
         m_db);
+    // One registry + one capability router across GameInput AND the legacy
+    // backends: the physical Share/Guide dedup (t25) lives in m_providers.
+    m_gameInput->setProviderIntegration(&m_providers);
+    // Bindings the user saved for "this controller" are keyed on the legacy
+    // fingerprint ("vvvv:pppp"). A correlated logical controller carries that
+    // fingerprint as its topology root, so GameInput edges resolve against
+    // the SAME profile the binding editor writes — one binding profile per
+    // physical controller, regardless of which provider delivers the edge.
+    const auto gameInputProfile = [this](const QString& logicalId) {
+        const auto* logical = m_providers.registry().controller(logicalId);
+        return (logical && !logical->topologyRoot.isEmpty()) ? logical->topologyRoot
+                                                             : logicalId;
+    };
     connect(m_gameInput.get(), &ModernInput::GameInputRouter::systemControlPressed,
-            this, [this](const QString& control, const QString& logicalId,
+            this, [this, gameInputProfile](const QString& control, const QString& logicalId,
                          const QString& displayName) {
                 InputDiagnostics::instance().noteControl(control, QStringLiteral("GameInput"));
                 m_bindingEditor->noteObservedControl(control);
@@ -159,14 +172,16 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
                 if (m_bindingEditor->captureInput(QStringLiteral("controller"), control,
                                                   ControlId::label(control, family)))
                     return;
-                m_runtime->press(QStringLiteral("controller"), logicalId, control,
-                                 primaryScope(), fallbackScope());
+                m_runtime->press(QStringLiteral("controller"), gameInputProfile(logicalId),
+                                 control, primaryScope(), fallbackScope());
                 setLastInput((displayName.isEmpty() ? QStringLiteral("Controller") : displayName)
                              + QStringLiteral(": ") + ControlId::label(control, family));
             });
     connect(m_gameInput.get(), &ModernInput::GameInputRouter::systemControlReleased,
-            this, [this](const QString& control, const QString& logicalId, const QString&) {
-                m_runtime->release(QStringLiteral("controller"), logicalId, control);
+            this, [this, gameInputProfile](const QString& control, const QString& logicalId,
+                         const QString&) {
+                m_runtime->release(QStringLiteral("controller"), gameInputProfile(logicalId),
+                                   control);
             });
     connect(m_gameInput.get(), &ModernInput::GameInputRouter::sessionFallback,
             this, [this](const QString&) {
@@ -195,6 +210,36 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
         m_winmmPad->rescan();
         updateXInputIdentity();
     });
+
+    // Production selective Raw HID path (t26): a bound button usage on a
+    // gamepad-class HID device no backend drives (WM_INPUT → usage transition
+    // → canonical raw control) routes through the shared capability router
+    // and then into the binding runtime like any other control.
+    connect(m_sonyPad, &DualSenseDevice::rawHidControl, this,
+            [this](const QString& identity, const QString& control, bool pressed) {
+                const auto result = m_providers.routeRawHidEdge(
+                    identity, control, pressed, quint64(m_controllerClock.elapsed()));
+                for (const QString& release : result.safeReleases)
+                    m_runtime->release(QStringLiteral("controller"), identity, release);
+                if (!result.accepted)
+                    return;
+                const auto family = ControlId::ControllerFamily::Generic;
+                if (pressed) {
+                    InputDiagnostics::instance().noteControl(
+                        control, QStringLiteral("Raw HID"));
+                    m_bindingEditor->noteObservedControl(control);
+                    if (m_bindingEditor->captureInput(QStringLiteral("controller"),
+                                                      control,
+                                                      ControlId::label(control, family)))
+                        return;
+                    m_runtime->press(QStringLiteral("controller"), identity, control,
+                                     primaryScope(), fallbackScope());
+                } else {
+                    m_runtime->release(QStringLiteral("controller"), identity, control);
+                    if (control == m_repeatTrigger)
+                        stopNavRepeat();
+                }
+            });
 
     // Surface cloaked pads (present in Windows, hidden from apps by a HID
     // filter driver) in Settings instead of silently detecting nothing.
@@ -345,6 +390,10 @@ void InputEngine::attachGamepad(std::unique_ptr<Gamepad> pad, const QString& dis
         else if (raw == m_winmmPad)
             m_winmmConnected = c;
 
+        if (c)
+            observeLegacyBackend(raw);
+        else
+            removeLegacyBackend(raw);
         if (!c) {
             m_backendLastControlMs.remove(raw);
             m_backendCandidateFirstMs.remove(raw);
@@ -358,6 +407,68 @@ void InputEngine::attachGamepad(std::unique_ptr<Gamepad> pad, const QString& dis
             setLastInput(displayName + QStringLiteral(" disconnected"));
     });
     m_pads.push_back(std::move(pad));
+}
+
+ModernInput::ControllerProvider InputEngine::providerFor(const Gamepad* pad) const
+{
+    if (pad == m_sonyPad)
+        return ModernInput::ControllerProvider::SonyRaw;
+    if (pad == m_xinputPad)
+        return ModernInput::ControllerProvider::XInput;
+    return ModernInput::ControllerProvider::WinMM;
+}
+
+// Report (or refresh) a connected legacy backend's attachment in the shared
+// registry. The fingerprint doubles as the provider device id; when it
+// changes (XInput slot → correlated hardware identity) the old attachment is
+// replaced so the registry never holds a stale one.
+void InputEngine::observeLegacyBackend(Gamepad* pad)
+{
+    const auto profile = pad->profile();
+    if (profile.fingerprint.isEmpty())
+        return;
+    const QString previous = m_legacyObservedIds.value(pad);
+    if (previous == profile.fingerprint)
+        return;
+    if (!previous.isEmpty())
+        m_providers.removeLegacy(providerFor(pad), previous);
+
+    ModernInput::ControllerCapabilities capabilities =
+        ModernInput::ControllerCapability::StandardControls;
+    if (pad == m_sonyPad) {
+        // DualSense/DS4 report a true Create/Share and the PS button.
+        capabilities |= ModernInput::ControllerCapability::SystemShare;
+        capabilities |= ModernInput::ControllerCapability::Guide;
+    } else if (pad == m_xinputPad) {
+        // Standard XInput has no Share; Guide arrives via ordinal 100.
+        capabilities |= ModernInput::ControllerCapability::Guide;
+    } else if (profile.family == ControlId::ControllerFamily::PlayStation) {
+        // WinMM with the Sony button order carries Share and PS.
+        capabilities |= ModernInput::ControllerCapability::SystemShare;
+        capabilities |= ModernInput::ControllerCapability::Guide;
+    }
+    m_providers.observeLegacy(providerFor(pad), profile.fingerprint,
+                              profile.fingerprint, profile.displayName, capabilities);
+    m_legacyObservedIds.insert(pad, profile.fingerprint);
+}
+
+void InputEngine::removeLegacyBackend(Gamepad* pad)
+{
+    const QString observed = m_legacyObservedIds.take(pad);
+    if (!observed.isEmpty())
+        m_providers.removeLegacy(providerFor(pad), observed);
+}
+
+bool InputEngine::routeLegacySystemEdge(Gamepad* source, const QString& controlId,
+                                        bool pressed)
+{
+    const auto result = m_providers.routeLegacySystemEdge(
+        providerFor(source), m_legacyObservedIds.value(source), controlId, pressed,
+        quint64(m_controllerClock.elapsed()));
+    for (const QString& release : result.safeReleases)
+        m_runtime->release(QStringLiteral("controller"),
+                           source->profile().fingerprint, release);
+    return result.accepted;
 }
 
 // Keep the current backend while it remains connected. Sony > XInput > WinMM
@@ -548,6 +659,11 @@ void InputEngine::updateXInputIdentity()
                                    ControllerIdentity::legacySlotFingerprint(slot));
     if (m_activeBackend == m_xinputPad)
         m_bindingEditor->setControllerProfile(m_xinputPad->profile());
+    // The fingerprint (slot → stable hardware identity or back) is also the
+    // registry attachment id — refresh it so cross-provider correlation and
+    // Share/Guide dedup key on the identity the pad currently reports.
+    if (m_xinputConnected)
+        observeLegacyBackend(m_xinputPad);
 }
 
 void InputEngine::setOverlayVisible(bool visible)
@@ -635,6 +751,12 @@ void InputEngine::onControlPressed(const QString& controlId, int family,
 void InputEngine::deliverPress(Gamepad* source, const QString& controlId, int family,
                                const QString& fingerprint)
 {
+    // Capture/Guide may also arrive through GameInput for the same physical
+    // controller; the shared capability router guarantees exactly one edge.
+    // A duplicate here means GameInput already delivered this press.
+    if ((controlId == ControlId::Capture || controlId == ControlId::Guide)
+        && !routeLegacySystemEdge(source, controlId, true))
+        return;
     InputDiagnostics::instance().noteControl(controlId, backendDisplayName(source));
     // Which controls the pad genuinely delivers is only knowable by observation:
     // the editor uses it to warn about a button another app is intercepting.
@@ -673,6 +795,9 @@ void InputEngine::onControlReleased(const QString& controlId, int, const QString
         return;
     }
     if (source != m_activeBackend)
+        return;
+    if ((controlId == ControlId::Capture || controlId == ControlId::Guide)
+        && !routeLegacySystemEdge(source, controlId, false))
         return;
     const bool handled = m_runtime->release(QStringLiteral("controller"), fingerprint, controlId);
     if (!handled && controlId == ControlId::ViewBack)
@@ -860,6 +985,15 @@ void InputEngine::copyControllerCompatibilityReport() const
 {
     if (m_gameInput && QGuiApplication::clipboard())
         QGuiApplication::clipboard()->setText(m_gameInput->compatibilityReport());
+}
+
+void InputEngine::confirmModernControllerLayout()
+{
+    if (!m_gameInput)
+        return;
+    const int confirmed = m_gameInput->confirmLayouts();
+    qInfo() << "Input: extra-button layout confirmed for" << confirmed << "controller(s)";
+    emit modernControllerChanged();
 }
 
 void InputEngine::fixHiddenController()

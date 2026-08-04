@@ -26,6 +26,17 @@ inline const QString Menu           = QStringLiteral("gamepad.menu");    // Opti
 inline const QString Guide          = QStringLiteral("gamepad.guide");   // PS / Xbox Guide / Home
 inline const QString Capture        = QStringLiteral("gamepad.capture"); // true Share / Create / Capture
 inline const QString ViewBack       = QStringLiteral("gamepad.view_back"); // XInput View / Back legacy control
+// Standard controls the pinned GameInput v3 header exposes beyond the legacy
+// 15-button set. Thumbstick clicks are L3/R3; C/Z appear on 6-face-button
+// pads; the four paddle flags are real header flags, not invented positions.
+inline const QString ThumbLeft      = QStringLiteral("gamepad.thumb_left");   // L3 / LS click
+inline const QString ThumbRight     = QStringLiteral("gamepad.thumb_right");  // R3 / RS click
+inline const QString FaceC          = QStringLiteral("gamepad.face_c");
+inline const QString FaceZ          = QStringLiteral("gamepad.face_z");
+inline const QString PaddleLeft1    = QStringLiteral("gamepad.paddle_left1");
+inline const QString PaddleLeft2    = QStringLiteral("gamepad.paddle_left2");
+inline const QString PaddleRight1   = QStringLiteral("gamepad.paddle_right1");
+inline const QString PaddleRight2   = QStringLiteral("gamepad.paddle_right2");
 
 // Unknown WinMM buttons stay bindable without a known position: "gamepad.button.3".
 QString genericButton(int index);

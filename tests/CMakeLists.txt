@@ -109,6 +109,7 @@ gamehq_add_test(tst_gameinputrouter
     "${CMAKE_SOURCE_DIR}/src/gameinput/GameInputRouter.h"
     "${CMAKE_SOURCE_DIR}/src/input/PhysicalControllerRegistry.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/CapabilityEventRouter.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ProviderIntegration.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/ExtraButtonCatalog.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/InputDiagnostics.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp"
@@ -133,6 +134,16 @@ gamehq_add_test(tst_physicalcontrollerregistry
 
 gamehq_add_test(tst_capabilityeventrouter
     tst_capabilityeventrouter.cpp
+    "${CMAKE_SOURCE_DIR}/src/input/CapabilityEventRouter.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/PhysicalControllerRegistry.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp")
+
+# t25 cross-provider integration: shared registry + capability router across
+# Sony Raw / GameInput / XInput / WinMM / Raw HID, exactly-one-edge dedup,
+# identity upgrade, and the complete v3 standard-control map.
+gamehq_add_test(tst_providerintegration
+    tst_providerintegration.cpp
+    "${CMAKE_SOURCE_DIR}/src/input/ProviderIntegration.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/CapabilityEventRouter.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/PhysicalControllerRegistry.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp")
@@ -169,8 +180,9 @@ gamehq_add_test(tst_rawinputflood
     "${CMAKE_SOURCE_DIR}/src/input/InputRateMonitor.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/RawInputApi.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/HidCloakMonitor.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/SelectiveRawHidFallback.cpp"
     "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp")
-target_link_libraries(tst_rawinputflood PRIVATE user32 cfgmgr32)
+target_link_libraries(tst_rawinputflood PRIVATE user32 cfgmgr32 hid)
 
 gamehq_add_test(tst_configmanager
     tst_configmanager.cpp

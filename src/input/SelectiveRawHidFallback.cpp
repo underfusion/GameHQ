@@ -13,17 +13,35 @@ SelectiveRawHidFallback& SelectiveRawHidFallback::instance()
 void SelectiveRawHidFallback::beginProbe()
 {
     m_probeActive = true;
+    ++m_generation;
     m_observations.clear();
 }
 
 void SelectiveRawHidFallback::endProbe()
 {
     m_probeActive = false;
+    ++m_generation;
 }
 
 void SelectiveRawHidFallback::setBoundControls(const QStringList& controlIds)
 {
     m_boundControls = QSet<QString>(controlIds.cbegin(), controlIds.cend());
+    ++m_generation;
+}
+
+bool SelectiveRawHidFallback::hasBindingsFor(const QString& deviceIdentity) const
+{
+    if (m_boundControls.isEmpty())
+        return false;
+    // rawHidUsage() anonymizes the identity into the code's third segment;
+    // rebuild that prefix and match. Called only on eligibility-cache misses.
+    const QString prefix = ControlId::rawHidUsage(deviceIdentity, 0, 0)
+        .section(QLatin1Char('.'), 0, 2) + QLatin1Char('.');
+    for (const QString& control : m_boundControls) {
+        if (control.startsWith(prefix))
+            return true;
+    }
+    return false;
 }
 
 bool SelectiveRawHidFallback::shouldObserve(const QString& deviceIdentity,

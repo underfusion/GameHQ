@@ -436,6 +436,20 @@ SettingsPage {
             }
         }
         SettingsRow {
+            visible: input.modernLayoutWarning
+            label: "Controller button layout changed"
+            description: "Old extra-button bindings stay disabled until you confirm. Review buttons runs the 3-second probe so you can check what each button reports, then confirm to re-enable the current layout."
+            AccentButton {
+                label: "Review buttons"
+                quiet: true
+                onClicked: input.startButtonProbe()
+            }
+            AccentButton {
+                label: "Confirm current layout"
+                onClicked: input.confirmModernControllerLayout()
+            }
+        }
+        SettingsRow {
             label: "GameInput runtime"
             description: input.modernControllerStatus
             Text {

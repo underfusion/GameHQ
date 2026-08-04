@@ -1,6 +1,8 @@
 #include "gameinput/FakeGameInputApi.h"
 #include "gameinput/GameInputRouter.h"
 #include "input/ControlId.h"
+#include "input/ExtraButtonCatalog.h"
+#include "input/ProviderIntegration.h"
 #include "storage/CaptureDatabase.h"
 
 #include <QSignalSpy>
@@ -277,6 +279,172 @@ private slots:
         QCOMPARE(released.at(0).at(1).toString(),
                  router.registry().logicalIdFor(ControllerProvider::GameInput,
                                                 QStringLiteral("device-a")));
+    }
+
+    void sharedIntegrationDedupsAgainstCorrelatedLegacyProvider()
+    {
+        ProviderIntegration integration;
+        integration.observeLegacy(ControllerProvider::SonyRaw,
+                                  QStringLiteral("1234:5678"), QStringLiteral("1234:5678"),
+                                  QStringLiteral("DualSense"),
+                                  ControllerCapability::StandardControls
+                                      | ControllerCapability::SystemShare
+                                      | ControllerCapability::Guide);
+        auto api = std::make_unique<FakeGameInputApi>();
+        auto* raw = api.get();
+        GameInputRouter router(std::move(api));
+        router.setProviderIntegration(&integration);
+        QSignalSpy pressed(&router, &GameInputRouter::systemControlPressed);
+        QVERIFY(router.start());
+
+        // makeEvent's pad is VID 1234 / PID 5678 — same topology root as the
+        // legacy attachment, so the two providers merge onto one controller.
+        raw->emitDevice(makeEvent(GameInputEventKind::DeviceAdded));
+        raw->emitSystem(makeEvent(GameInputEventKind::SystemButtonPressed, ControlId::Capture));
+        QTRY_COMPARE(pressed.size(), 1);
+        const QString logicalId = pressed.at(0).at(1).toString();
+        QVERIFY(integration.hasLegacyAttachment(logicalId));
+
+        // The mirrored legacy edge for the same physical press is refused —
+        // exactly one Capture edge for one physical Share press.
+        const auto legacy = integration.routeLegacySystemEdge(
+            ControllerProvider::SonyRaw, QStringLiteral("1234:5678"),
+            ControlId::Capture, true, 5);
+        QVERIFY(!legacy.accepted);
+
+        raw->emitSystem(makeEvent(GameInputEventKind::SystemButtonReleased, ControlId::Capture));
+        QTRY_COMPARE(router.shadowedSystemEdgeCount(), 0);
+
+        // Off detaches GameInput from the shared registry: the legacy path
+        // must own Share again immediately.
+        router.setMode(GameInputRouter::SupportMode::Off);
+        const auto legacyAfterOff = integration.routeLegacySystemEdge(
+            ControllerProvider::SonyRaw, QStringLiteral("1234:5678"),
+            ControlId::Capture, true, 500);
+        QVERIFY(legacyAfterOff.accepted);
+    }
+
+    void uncorrelatedLegacyProviderShadowsSystemButtons()
+    {
+        ProviderIntegration integration;
+        // A legacy pad with a DIFFERENT identity than the GameInput device:
+        // it could be the same physical controller behind a remapper, so
+        // dedup cannot be proven and GameInput Share/Guide must stay shadow.
+        integration.observeLegacy(ControllerProvider::SonyRaw,
+                                  QStringLiteral("054c:0ce6"), QStringLiteral("054c:0ce6"),
+                                  QStringLiteral("DualSense"),
+                                  ControllerCapability::StandardControls
+                                      | ControllerCapability::SystemShare
+                                      | ControllerCapability::Guide);
+        auto api = std::make_unique<FakeGameInputApi>();
+        auto* raw = api.get();
+        GameInputRouter router(std::move(api));
+        router.setProviderIntegration(&integration);
+        QSignalSpy pressed(&router, &GameInputRouter::systemControlPressed);
+        QVERIFY(router.start());
+
+        raw->emitDevice(makeEvent(GameInputEventKind::DeviceAdded));
+        raw->emitSystem(makeEvent(GameInputEventKind::SystemButtonPressed, ControlId::Capture));
+        raw->emitSystem(makeEvent(GameInputEventKind::SystemButtonReleased, ControlId::Capture));
+        QTRY_VERIFY(router.shadowedSystemEdgeCount() >= 1);
+        QCOMPARE(pressed.size(), 0);
+
+        // Legacy Capture keeps working through its own dedup route.
+        const auto legacy = integration.routeLegacySystemEdge(
+            ControllerProvider::SonyRaw, QStringLiteral("054c:0ce6"),
+            ControlId::Capture, true, 10);
+        QVERIFY(legacy.accepted);
+    }
+
+    void autoOffAutoRestartStressTwentyCycles()
+    {
+        ProviderIntegration integration;
+        auto api = std::make_unique<FakeGameInputApi>();
+        auto* raw = api.get();
+        GameInputRouter router(std::move(api));
+        router.setProviderIntegration(&integration);
+        QSignalSpy pressed(&router, &GameInputRouter::systemControlPressed);
+        QSignalSpy released(&router, &GameInputRouter::systemControlReleased);
+        QVERIFY(router.start());
+
+        for (int cycle = 0; cycle < 20; ++cycle) {
+            raw->emitDevice(makeEvent(GameInputEventKind::DeviceAdded));
+            raw->emitSystem(makeEvent(GameInputEventKind::SystemButtonPressed,
+                                      ControlId::Capture));
+            raw->emitSystem(makeEvent(GameInputEventKind::SystemButtonReleased,
+                                      ControlId::Capture));
+            // Exactly one edge pair per cycle: duplicates would race ahead of
+            // the cycle count, lost edges would trail it.
+            QTRY_COMPARE(pressed.size(), cycle + 1);
+            QTRY_COMPARE(released.size(), cycle + 1);
+
+            router.setMode(GameInputRouter::SupportMode::Off);
+            // A late callback after Off must be swallowed, not queued for the
+            // next session and not delivered as a duplicate action.
+            raw->emitRetired(makeEvent(GameInputEventKind::SystemButtonPressed,
+                                       ControlId::Capture));
+            QCOMPARE(pressed.size(), cycle + 1);
+            // Off detaches the shared-registry attachment each cycle.
+            QVERIFY(integration.registry()
+                        .logicalIdFor(ControllerProvider::GameInput,
+                                      QStringLiteral("device-a")).isEmpty());
+            router.setMode(GameInputRouter::SupportMode::Auto);
+            QVERIFY(router.active());
+        }
+        // One live callback registration set: every register call from the 20
+        // restarts has a matching stop/unregister except the final session's.
+        const QStringList log = raw->callLog();
+        int registers = 0;
+        int unregisters = 0;
+        for (const QString& entry : log) {
+            if (entry.startsWith(QLatin1String("register:")))
+                ++registers;
+            else if (entry.startsWith(QLatin1String("unregister:")))
+                ++unregisters;
+        }
+        QCOMPARE(registers - unregisters, 3);   // device + reading + system
+    }
+
+    void extraCatalogBlanksStandardLabeledButtons()
+    {
+        ExtraButtonCatalog catalog;   // no database: pure layout logic
+        const auto layout = catalog.observe(
+            QStringLiteral("controller-test"), 4,
+            {QStringLiteral("A"), QStringLiteral("M1"),
+             QStringLiteral("Left Thumbstick"), QStringLiteral("Share")});
+        QCOMPARE(layout.controlIds.size(), 4);
+        QVERIFY(layout.controlIds.at(0).isEmpty());   // A = standard face button
+        QVERIFY(!layout.controlIds.at(1).isEmpty());  // M1 = genuine extra
+        QVERIFY(layout.controlIds.at(2).isEmpty());   // L3 = standard
+        QVERIFY(layout.controlIds.at(3).isEmpty());   // Share = system button
+        // Index alignment with the reading's state array is preserved.
+        QCOMPARE(layout.labels.size(), 4);
+    }
+
+    void standardLabeledExtraButtonNeverRoutes()
+    {
+        auto api = std::make_unique<FakeGameInputApi>();
+        auto* raw = api.get();
+        GameInputRouter router(std::move(api));
+        QSignalSpy pressed(&router, &GameInputRouter::systemControlPressed);
+        QVERIFY(router.start());
+
+        auto reading = makeEvent(GameInputEventKind::Reading);
+        reading.buttonStates.fill(0, 2);
+        reading.device.extraButtonCount = 2;
+        reading.device.buttonLabels = {QStringLiteral("A"), QStringLiteral("M1")};
+        raw->emitReading(reading);
+        QTRY_COMPARE(router.shadowReadingCount(), 1);
+
+        // The standard-labeled index toggling must not produce an extra edge;
+        // the genuine extra still routes.
+        reading.buttonStates[0] = 1;
+        reading.buttonStates[1] = 1;
+        raw->emitReading(reading);
+        QTRY_COMPARE(pressed.size(), 1);
+        QCOMPARE(ControlId::label(pressed.at(0).at(0).toString(),
+                                  ControlId::ControllerFamily::Generic),
+                 QStringLiteral("Extra Button 2"));
     }
 
     void compatibilityReportIsUsefulAndRedacted()

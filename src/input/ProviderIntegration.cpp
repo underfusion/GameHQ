@@ -1,0 +1,120 @@
+#include "input/ProviderIntegration.h"
+
+#include "input/ControlId.h"
+
+namespace ModernInput {
+
+namespace {
+bool parseFingerprint(const QString& fingerprint, quint16& vendorId, quint16& productId)
+{
+    const int colon = fingerprint.indexOf(QLatin1Char(':'));
+    if (colon <= 0)
+        return false;
+    bool vendorOk = false;
+    bool productOk = false;
+    const uint vendor = fingerprint.left(colon).toUInt(&vendorOk, 16);
+    const uint product = fingerprint.mid(colon + 1).toUInt(&productOk, 16);
+    if (!vendorOk || !productOk)
+        return false;
+    vendorId = quint16(vendor);
+    productId = quint16(product);
+    return true;
+}
+} // namespace
+
+QString ProviderIntegration::legacyKey(ControllerProvider provider,
+                                       const QString& providerDeviceId)
+{
+    return QStringLiteral("%1:%2").arg(int(provider)).arg(providerDeviceId);
+}
+
+QString ProviderIntegration::observeLegacy(ControllerProvider provider,
+                                           const QString& providerDeviceId,
+                                           const QString& fingerprint,
+                                           const QString& displayName,
+                                           ControllerCapabilities capabilities)
+{
+    if (providerDeviceId.isEmpty())
+        return {};
+    ProviderObservation observation;
+    observation.provider = provider;
+    observation.providerDeviceId = providerDeviceId;
+    observation.displayName = displayName;
+    observation.capabilities = capabilities;
+    // The lowercase "vvvv:pppp" fingerprint is the only identity legacy APIs
+    // share with GameInput, so it is the topology correlation root. The
+    // registry's unique-match rule keeps two identical models apart.
+    observation.topologyRoot = fingerprint.toLower();
+    parseFingerprint(fingerprint, observation.vendorId, observation.productId);
+    const QString logicalId = m_registry.observe(observation);
+    m_legacyKeys.insert(legacyKey(provider, providerDeviceId));
+    return logicalId;
+}
+
+void ProviderIntegration::removeLegacy(ControllerProvider provider,
+                                       const QString& providerDeviceId)
+{
+    if (!m_legacyKeys.remove(legacyKey(provider, providerDeviceId)))
+        return;
+    const QString logicalId = m_registry.logicalIdFor(provider, providerDeviceId);
+    m_registry.removeProvider(provider, providerDeviceId);
+    if (!logicalId.isEmpty())
+        m_capabilityRouter.disconnect(logicalId);
+}
+
+bool ProviderIntegration::hasLegacyAttachment(const QString& logicalId) const
+{
+    const auto* logical = m_registry.controller(logicalId);
+    if (!logical)
+        return false;
+    return logical->hasProvider(ControllerProvider::SonyRaw)
+        || logical->hasProvider(ControllerProvider::XInput)
+        || logical->hasProvider(ControllerProvider::WinMM);
+}
+
+ControllerCapability ProviderIntegration::systemCapabilityFor(const QString& controlId)
+{
+    return controlId == ControlId::Capture ? ControllerCapability::SystemShare
+                                           : ControllerCapability::Guide;
+}
+
+CapabilityRouteResult ProviderIntegration::routeLegacySystemEdge(
+    ControllerProvider provider, const QString& providerDeviceId,
+    const QString& controlId, bool pressed, quint64 timestamp)
+{
+    const QString logicalId = m_registry.logicalIdFor(provider, providerDeviceId);
+    if (logicalId.isEmpty()) {
+        // Never observed (edge raced the connection bookkeeping): fail open.
+        // Losing a proven legacy press to dedup bookkeeping would be worse
+        // than the double-fire this path exists to prevent.
+        CapabilityRouteResult result;
+        result.accepted = true;
+        return result;
+    }
+    return m_capabilityRouter.route({logicalId, provider, systemCapabilityFor(controlId),
+                                     controlId, pressed, timestamp});
+}
+
+CapabilityRouteResult ProviderIntegration::routeRawHidEdge(const QString& deviceIdentity,
+                                                           const QString& controlId,
+                                                           bool pressed, quint64 timestamp)
+{
+    if (!m_rawHidObserved.contains(deviceIdentity)) {
+        ProviderObservation observation;
+        observation.provider = ControllerProvider::RawHid;
+        observation.providerDeviceId = deviceIdentity;
+        observation.topologyRoot = deviceIdentity.toLower();
+        observation.displayName = QStringLiteral("Raw HID controller");
+        observation.capabilities = ControllerCapability::ExtraControls;
+        parseFingerprint(deviceIdentity, observation.vendorId, observation.productId);
+        m_registry.observe(observation);
+        m_rawHidObserved.insert(deviceIdentity);
+    }
+    const QString logicalId = m_registry.logicalIdFor(ControllerProvider::RawHid,
+                                                      deviceIdentity);
+    return m_capabilityRouter.route({logicalId, ControllerProvider::RawHid,
+                                     ControllerCapability::ExtraControls,
+                                     controlId, pressed, timestamp});
+}
+
+} // namespace ModernInput

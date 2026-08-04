@@ -2,6 +2,7 @@
 
 #include "input/ControllerArbitration.h"
 #include "input/InputDiagnostics.h"
+#include "input/SelectiveRawHidFallback.h"
 #include "input/SonyReportLayout.h"
 #include "input/StickNav.h"
 
@@ -307,9 +308,94 @@ DualSenseDevice::DeviceState* DualSenseDevice::ignoreDevice(void* handle, const 
 // only valid while the handle is live.
 void DualSenseDevice::forgetClassification(void* handle)
 {
+    dropRawHidState(handle);
     m_ignoredHandles.remove(handle);
     m_xinputClass.remove(handle);
     m_rates.forget(handle);
+}
+
+// The device vanished (or its verdict is being re-evaluated): a raw-HID
+// button physically held at that moment must not stay logically held, so a
+// release is synthesized for every pressed usage before the state is dropped.
+void DualSenseDevice::dropRawHidState(void* handle)
+{
+    m_rawHidEligible.remove(handle);
+    const auto held = m_rawHidPressed.take(handle);
+    if (held.isEmpty())
+        return;
+    const QString identity = m_ignoredHandles.value(handle);
+    if (identity.isEmpty())
+        return;
+    auto& fallback = ModernInput::SelectiveRawHidFallback::instance();
+    for (const quint32 usage : held) {
+        const QString control = fallback.observeUsage(
+            identity, quint16(usage >> 16), quint16(usage & 0xFFFF), false);
+        if (!control.isEmpty())
+            emit rawHidControl(identity, control, false);
+    }
+}
+
+void DualSenseDevice::rawHidFallbackEvent(void* handle, void* hRawInputV)
+{
+    auto& fallback = ModernInput::SelectiveRawHidFallback::instance();
+    // Idle guarantee: with nothing bound and no probe open this costs two
+    // branches — no lookup, no insert, no allocation (tst_rawinputflood).
+    if (!fallback.probeActive() && !fallback.hasAnyBindings())
+        return;
+    const int generation = fallback.generation();
+    if (generation != m_rawHidGeneration) {
+        // Binding set or probe state changed: eligibility verdicts are stale.
+        // Pressed usages survive so a held button still releases.
+        m_rawHidGeneration = generation;
+        m_rawHidEligible.clear();
+    }
+
+    int eligible = m_rawHidEligible.value(handle, 0);
+    if (eligible == 0) {
+        const QString identity = m_ignoredHandles.value(handle);
+        if (identity.isEmpty()
+            || (!fallback.probeActive() && !fallback.hasBindingsFor(identity))) {
+            eligible = -1;
+        } else {
+            const RawInputApi::DeviceInfo info = m_api->describeDevice(handle);
+            if (!info.queried)
+                return;   // transient failure — never cache as a verdict
+            eligible = (info.isHid && isGamepadUsage(info.usagePage, info.usage)) ? 1 : -1;
+        }
+        m_rawHidEligible.insert(handle, eligible);
+    }
+    if (eligible < 0)
+        return;
+
+    RawInputApi::Payload payload;
+    if (!m_api->readPayload(hRawInputV, payload))
+        return;
+    QList<quint32> pressedList;
+    if (!m_api->buttonUsages(handle, payload, pressedList))
+        return;   // descriptor unavailable/unparseable: no fallback for this device
+
+    const QString identity = m_ignoredHandles.value(handle);
+    QSet<quint32> current(pressedList.cbegin(), pressedList.cend());
+    QSet<quint32>& previous = m_rawHidPressed[handle];
+    if (current == previous)
+        return;
+    for (const quint32 usage : current) {
+        if (previous.contains(usage))
+            continue;
+        const QString control = fallback.observeUsage(
+            identity, quint16(usage >> 16), quint16(usage & 0xFFFF), true);
+        if (!control.isEmpty())
+            emit rawHidControl(identity, control, true);
+    }
+    for (const quint32 usage : previous) {
+        if (current.contains(usage))
+            continue;
+        const QString control = fallback.observeUsage(
+            identity, quint16(usage >> 16), quint16(usage & 0xFFFF), false);
+        if (!control.isEmpty())
+            emit rawHidControl(identity, control, false);
+    }
+    previous = std::move(current);
 }
 
 QStringList DualSenseDevice::xinputClassIdentities() const
@@ -389,6 +475,7 @@ void DualSenseDevice::reconcileDevices()
             ++it;
             continue;
         }
+        dropRawHidState(it.key());
         m_rates.forget(it.key());
         m_xinputClass.remove(it.key());
         it = m_ignoredHandles.erase(it);
@@ -519,10 +606,13 @@ void DualSenseDevice::onRawInput(void* hRawInputV)
     }
     if (m_ignoredHandles.contains(handle)) {
         noteEvent(handle, true);
-        // Only the diagnostics probe ever looks past an ignored verdict, and
-        // only inside its bounded window — the idle cost stays one branch.
+        // Only the diagnostics probe and the selective Raw HID fallback ever
+        // look past an ignored verdict. The probe is bounded by its window;
+        // the fallback costs one generation check plus one hash lookup per
+        // event unless this device carries a bound raw-HID control.
         if (m_probing)
             probeIgnoredEvent(handle, hRawInputV);
+        rawHidFallbackEvent(handle, hRawInputV);
         return;
     }
 

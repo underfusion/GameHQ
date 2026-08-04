@@ -8,6 +8,7 @@
 #include "input/DualSenseDevice.h"
 #include "input/InputDiagnostics.h"
 #include "input/RawInputApi.h"
+#include "input/SelectiveRawHidFallback.h"
 
 // Allocation counter. Replacing the global operator new is the only way to
 // answer "did this path allocate?" for code compiled into this executable.
@@ -81,6 +82,8 @@ public:
         DevicePath path;
         QByteArray report;
         DeviceType type = DeviceType::Hid;
+        QList<quint32> pressedUsages;   // (page << 16) | usage for buttonUsages()
+        bool usagesParseable = true;
         bool present = true;            // listed by enumerateDevices()
         int describeFailures = 0;       // transient RIDI_DEVICEINFO failures to serve first
         int pathFailures = 0;           // transient RIDI_DEVICENAME failures to serve first
@@ -174,6 +177,20 @@ public:
     }
 
     CloakScan scanHiddenPads(const QSet<QString>&) override { return {}; }
+
+    // Selective Raw HID fallback: the fake "parses" the report descriptor by
+    // returning the pressed usages staged on the device.
+    int usageParses = 0;
+    bool buttonUsages(void* deviceHandle, const Payload&,
+                      QList<quint32>& pressedUsages) override
+    {
+        ++usageParses;
+        auto it = devices.constFind(deviceHandle);
+        if (it == devices.cend() || !it->usagesParseable)
+            return false;
+        pressedUsages = it->pressedUsages;
+        return true;
+    }
 };
 } // namespace
 
@@ -570,6 +587,108 @@ private slots:
         QCOMPARE(api->payloadReads, 0);     // its reports are never captured
         QCOMPARE(api->describeCalls, 1);    // eligibility settled once
         InputDiagnostics::instance().clear();
+    }
+
+    // t26 end-to-end: WM_INPUT payload → HID usage transition →
+    // SelectiveRawHidFallback → canonical ControlId → rawHidControl edge.
+    // InputEngine routes that edge through ProviderIntegration into the
+    // binding runtime (covered by tst_providerintegration); this test proves
+    // the production producer itself against the fake Raw Input surface.
+    void boundRawHidUsageProducesPressAndReleaseEdges()
+    {
+        auto& fallback = ModernInput::SelectiveRawHidFallback::instance();
+        auto* api = new FakeRawInputApi;
+        DualSenseDevice pad(api);
+        void* gamesir = handle(0x8010);
+        auto device = FakeRawInputApi::hidDevice(kGameSirVid, kGameSirPid, kUsageGamepad);
+        device.report = QByteArray(8, '\0');
+        api->devices.insert(gamesir, device);
+        pad.onRawInput(gamesir);            // classify -> ignored (not a Sony pad)
+
+        const QString identity = QStringLiteral("3537:1004");
+        const QString control = ControlId::rawHidUsage(identity, 0x09, 0x15);
+        fallback.setBoundControls({control});
+        QSignalSpy edges(&pad, &DualSenseDevice::rawHidControl);
+
+        api->devices[gamesir].pressedUsages = {(quint32(0x09) << 16) | 0x15};
+        pad.onRawInput(gamesir);
+        QCOMPARE(edges.size(), 1);
+        QCOMPARE(edges.at(0).at(0).toString(), identity);
+        QCOMPARE(edges.at(0).at(1).toString(), control);
+        QCOMPARE(edges.at(0).at(2).toBool(), true);
+
+        // Held: no repeat edge while the usage stays pressed.
+        pad.onRawInput(gamesir);
+        QCOMPARE(edges.size(), 1);
+
+        api->devices[gamesir].pressedUsages = {};
+        pad.onRawInput(gamesir);
+        QCOMPARE(edges.size(), 2);
+        QCOMPARE(edges.at(1).at(2).toBool(), false);
+
+        // An UNBOUND usage on the same device produces no edge.
+        api->devices[gamesir].pressedUsages = {(quint32(0x09) << 16) | 0x33};
+        pad.onRawInput(gamesir);
+        api->devices[gamesir].pressedUsages = {};
+        pad.onRawInput(gamesir);
+        QCOMPARE(edges.size(), 2);
+
+        fallback.setBoundControls({});      // singleton: never leak into other tests
+    }
+
+    void unboundDevicesNeverPayForTheRawHidFallback()
+    {
+        auto& fallback = ModernInput::SelectiveRawHidFallback::instance();
+        auto* api = new FakeRawInputApi;
+        DualSenseDevice pad(api);
+        void* gamesir = handle(0x8011);
+        auto device = FakeRawInputApi::hidDevice(kGameSirVid, kGameSirPid, kUsageGamepad);
+        device.report = QByteArray(8, '\0');
+        api->devices.insert(gamesir, device);
+        pad.onRawInput(gamesir);            // classify -> ignored
+
+        // A binding for a DIFFERENT device identity: this device settles its
+        // ineligibility once and returns to the one-lookup fast path.
+        fallback.setBoundControls(
+            {ControlId::rawHidUsage(QStringLiteral("8bdo:3106"), 0x09, 0x01)});
+        api->resetCounters();
+        for (int i = 0; i < 1000; ++i)
+            pad.onRawInput(gamesir);
+        QCOMPARE(api->payloadReads, 0);
+        QCOMPARE(api->usageParses, 0);
+        QCOMPARE(api->describeCalls, 0);    // identity mismatch settled without an OS query
+
+        fallback.setBoundControls({});
+    }
+
+    void rawHidStateSurvivesBindingEditsAndSynthesizesReleaseOnRemoval()
+    {
+        auto& fallback = ModernInput::SelectiveRawHidFallback::instance();
+        auto* api = new FakeRawInputApi;
+        DualSenseDevice pad(api);
+        void* gamesir = handle(0x8012);
+        auto device = FakeRawInputApi::hidDevice(kGameSirVid, kGameSirPid, kUsageGamepad);
+        device.report = QByteArray(8, '\0');
+        api->devices.insert(gamesir, device);
+        pad.onRawInput(gamesir);
+
+        const QString identity = QStringLiteral("3537:1004");
+        const QString control = ControlId::rawHidUsage(identity, 0x09, 0x15);
+        fallback.setBoundControls({control});
+        QSignalSpy edges(&pad, &DualSenseDevice::rawHidControl);
+
+        api->devices[gamesir].pressedUsages = {(quint32(0x09) << 16) | 0x15};
+        pad.onRawInput(gamesir);
+        QCOMPARE(edges.size(), 1);
+
+        // Device disappears while the button is held: the fallback must
+        // synthesize the release instead of leaving a stuck control.
+        api->devices[gamesir].present = false;
+        pad.onDeviceChange(false, gamesir);
+        QTRY_COMPARE(edges.size(), 2);
+        QCOMPARE(edges.at(1).at(2).toBool(), false);
+
+        fallback.setBoundControls({});
     }
 };
 

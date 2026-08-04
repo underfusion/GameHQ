@@ -88,6 +88,15 @@ signals:
     // HidHide. Empty list = previously hidden pads are visible again.
     void hiddenPadsChanged(const QStringList& padNames, bool hidHidePresent);
 
+    // Production selective-Raw-HID path (t26): a bound (or probe-observed)
+    // HID button usage on a gamepad-class device this backend does NOT drive
+    // changed state. `deviceIdentity` is the stable "vvvv:pppp" identity;
+    // `controlId` is the canonical ControlId::rawHidUsage code bindings
+    // persist. InputEngine routes these through ProviderIntegration into the
+    // binding runtime.
+    void rawHidControl(const QString& deviceIdentity, const QString& controlId,
+                       bool pressed);
+
 private:
     struct DeviceState {
         int layout = 0;             // ReportLayout (DualSense / DS4)
@@ -121,6 +130,11 @@ private:
     void routeReport(void* handle, const DeviceState& st, quint32 s, bool changed,
                      unsigned char reportId, const unsigned char* d, int len);
     void emitEdges(quint32 buttons);
+    // Selective Raw HID fallback producer: reached only for ignored HID
+    // handles; costs one generation compare + hash lookup unless the device
+    // carries a bound raw-HID control or the diagnostics probe is open.
+    void rawHidFallbackEvent(void* handle, void* hRawInput);
+    void dropRawHidState(void* handle);   // synthesizes releases for held usages
     // Probe helpers: called only while m_probing (never on the idle fast path).
     void probeIgnoredEvent(void* handle, void* hRawInput);
     void noteProbeButtonChange(const DeviceState& st, quint32 before, quint32 after);
@@ -150,6 +164,15 @@ private:
     bool m_connectedState = false;           // connected(bool) as last emitted
     bool m_sawInput = false;                 // first WM_INPUT diagnostic logged?
     QStringList m_lastHiddenPads;            // last cloak-scan result (change detection)
+
+    // Selective Raw HID fallback state. Eligibility is cached per handle and
+    // keyed to SelectiveRawHidFallback::generation() so binding edits and
+    // probe transitions re-evaluate without a replug. Pressed usages persist
+    // across generations so a button held through a binding edit still
+    // releases cleanly.
+    int m_rawHidGeneration = -1;
+    QHash<void*, int> m_rawHidEligible;      // 1 = bound gamepad HID, -1 = not ours
+    QHash<void*, QSet<quint32>> m_rawHidPressed;   // (page<<16)|usage held per handle
 
     // Diagnostics probe state; all cleared when the probe window closes.
     bool m_probing = false;                  // one branch on the hot path when idle

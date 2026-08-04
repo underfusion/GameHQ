@@ -4,6 +4,7 @@
 #include "storage/CaptureDatabase.h"
 
 #include <QCryptographicHash>
+#include <QSet>
 
 namespace ModernInput {
 
@@ -16,6 +17,46 @@ QString ExtraButtonCatalog::signatureFor(int buttonCount, const QStringList& lab
     }
     return QString::fromLatin1(
         QCryptographicHash::hash(material, QCryptographicHash::Sha256).toHex().left(16));
+}
+
+bool ExtraButtonCatalog::isStandardControlLabel(const QString& label)
+{
+    QString normalized;
+    normalized.reserve(label.size());
+    for (const QChar character : label) {
+        if (character.isLetterOrNumber())
+            normalized.append(character.toLower());
+    }
+    static const QSet<QString> kStandardNames = {
+        // Face buttons across families.
+        QStringLiteral("a"), QStringLiteral("b"), QStringLiteral("c"),
+        QStringLiteral("x"), QStringLiteral("y"), QStringLiteral("z"),
+        QStringLiteral("cross"), QStringLiteral("circle"),
+        QStringLiteral("square"), QStringLiteral("triangle"),
+        // Menu / view family.
+        QStringLiteral("menu"), QStringLiteral("start"), QStringLiteral("options"),
+        QStringLiteral("view"), QStringLiteral("back"), QStringLiteral("select"),
+        // D-pad.
+        QStringLiteral("dpadup"), QStringLiteral("dpaddown"),
+        QStringLiteral("dpadleft"), QStringLiteral("dpadright"),
+        // Shoulders / triggers / thumbstick clicks.
+        QStringLiteral("leftshoulder"), QStringLiteral("rightshoulder"),
+        QStringLiteral("lb"), QStringLiteral("rb"),
+        QStringLiteral("l1"), QStringLiteral("r1"),
+        QStringLiteral("lefttrigger"), QStringLiteral("righttrigger"),
+        QStringLiteral("lefttriggerbutton"), QStringLiteral("righttriggerbutton"),
+        QStringLiteral("lt"), QStringLiteral("rt"),
+        QStringLiteral("l2"), QStringLiteral("r2"),
+        QStringLiteral("leftthumbstick"), QStringLiteral("rightthumbstick"),
+        QStringLiteral("leftstick"), QStringLiteral("rightstick"),
+        QStringLiteral("ls"), QStringLiteral("rs"),
+        QStringLiteral("l3"), QStringLiteral("r3"),
+        // System buttons (already routed through the system path).
+        QStringLiteral("guide"), QStringLiteral("home"), QStringLiteral("xbox"),
+        QStringLiteral("ps"), QStringLiteral("share"), QStringLiteral("capture"),
+        QStringLiteral("create"),
+    };
+    return kStandardNames.contains(normalized);
 }
 
 ExtraButtonCatalog::Layout ExtraButtonCatalog::observe(
@@ -34,7 +75,9 @@ ExtraButtonCatalog::Layout ExtraButtonCatalog::observe(
         const QString reported = index < reportedLabels.size() ? reportedLabels.at(index) : QString();
         result.labels.push_back(reported.isEmpty()
             ? QStringLiteral("Extra Button %1").arg(index + 1) : reported);
-        result.controlIds.push_back(ControlId::deviceButton(logicalId, result.signature, index));
+        result.controlIds.push_back(isStandardControlLabel(reported)
+            ? QString()
+            : ControlId::deviceButton(logicalId, result.signature, index));
     }
 
     if (!m_database || logicalId.isEmpty())

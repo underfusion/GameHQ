@@ -80,6 +80,12 @@ QString PhysicalControllerRegistry::findCorrelatedMatch(const ProviderObservatio
     for (auto it = m_controllers.cbegin(); it != m_controllers.cend(); ++it) {
         if (it->topologyRoot != observation.topologyRoot)
             continue;
+        // One provider observes each physical device separately: a controller
+        // that already carries a live attachment from this provider cannot be
+        // the same physical pad — it is its identical twin. Without this, a
+        // second same-model pad would silently merge into the first.
+        if (it->hasProvider(observation.provider))
+            continue;
         if (!observation.appLocalDeviceId.isEmpty() && !it->appLocalDeviceId.isEmpty()
             && observation.appLocalDeviceId != it->appLocalDeviceId)
             continue;
@@ -119,6 +125,31 @@ QString PhysicalControllerRegistry::observe(const ProviderObservation& observati
     if (logicalId.isEmpty()) {
         logicalId = findCorrelatedMatch(observation);
         confidence = IdentityConfidence::Correlated;
+    }
+    // A strong observation merging into a controller that was created from a
+    // weak identity (a legacy provider observed first) upgrades the logical
+    // ID to the deterministic strong hash. Persisted per-controller state
+    // (binding profiles, extra-button layouts) is keyed on that ID, so the
+    // upgrade is what reconnects a device to its saved profile regardless of
+    // which provider observed it first this session.
+    if (!logicalId.isEmpty()
+        && (!observation.appLocalDeviceId.isEmpty() || !observation.containerId.isEmpty())) {
+        const auto existing = m_controllers.constFind(logicalId);
+        if (existing != m_controllers.cend()
+            && existing->appLocalDeviceId.isEmpty() && existing->containerId.isEmpty()) {
+            const QString upgradedId = createLogicalId(observation, 0);
+            if (upgradedId != logicalId && !m_controllers.contains(upgradedId)) {
+                LogicalController moved = m_controllers.take(logicalId);
+                moved.logicalId = upgradedId;
+                m_controllers.insert(upgradedId, moved);
+                for (auto it = m_attachmentToLogical.begin();
+                     it != m_attachmentToLogical.end(); ++it) {
+                    if (it.value() == logicalId)
+                        it.value() = upgradedId;
+                }
+                logicalId = upgradedId;
+            }
+        }
     }
     if (logicalId.isEmpty()) {
         logicalId = createLogicalId(observation, ++m_generation);

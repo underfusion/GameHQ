@@ -6,6 +6,33 @@ All notable public releases of GameHQ are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Cross-provider controller integration (0.7.3). All input providers — Sony
+  Raw Input, GameInput, XInput, WinMM and the selective Raw HID fallback —
+  now report into one shared physical-controller registry and route
+  Share/Guide presses through one shared capability router, so a single
+  physical button press can never execute twice through two provider
+  pipelines. GameInput Share/Guide stays withheld for a controller that
+  cannot be safely correlated with a connected legacy pad (for example two
+  identical controllers, or a remapper changing the reported identity).
+  Bindings saved for "this controller" now fire regardless of which provider
+  delivers the edge and survive reconnects.
+- The selective Raw HID fallback is now a real input producer: a bound button
+  on a gamepad-class HID device no backend drives is decoded from its own
+  HID report descriptor (press and release), routed through the shared
+  dedup, and executes its assigned action. Devices without bound buttons
+  keep the zero-cost ignored path.
+- Settings → Input now shows a "Controller button layout changed" row with
+  "Review buttons" (3-second probe) and "Confirm current layout" actions, so
+  extra buttons can be re-enabled after a firmware or mode change instead of
+  staying silently disabled.
+- The complete GameInput v3 standard-control map (including L3/R3 stick
+  clicks, C/Z face buttons and the four paddle flags) is defined and tested,
+  and buttons whose reported label names a standard control are excluded
+  from "Extra Button N" enumeration so one physical button cannot appear
+  under two identities.
+
 ### Fixed
 
 - Modern-controller correction gate (post-audit, pre-beta). GameInput

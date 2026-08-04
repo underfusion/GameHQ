@@ -91,6 +91,20 @@ public:
 
     virtual CloakScan scanHiddenPads(const QSet<QString>& visibleRawPathsLower) = 0;
 
+    // Pressed button usages ((usagePage << 16) | usage) decoded from the LAST
+    // report in `payload` using the device's own HID report descriptor
+    // (production: RIDI_PREPARSEDDATA + HidP_GetUsages). Returns false when
+    // the device's descriptor cannot be obtained or parsed — the caller must
+    // treat that as "no fallback available", never as "all released".
+    // Only reached for devices the selective Raw HID fallback explicitly
+    // observes (bound controls or an active probe), never on the idle path.
+    virtual bool buttonUsages(void* deviceHandle, const Payload& payload,
+                              QList<quint32>& pressedUsages)
+    {
+        Q_UNUSED(deviceHandle) Q_UNUSED(payload) Q_UNUSED(pressedUsages)
+        return false;
+    }
+
     // Win32-backed implementation. Caller owns the returned object.
     static RawInputApi* createSystem();
 };

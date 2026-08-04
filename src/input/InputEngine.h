@@ -1,5 +1,6 @@
 #pragma once
 #include "input/ActionCatalog.h"
+#include "input/ProviderIntegration.h"
 #include <QElapsedTimer>
 #include <QHash>
 #include <QObject>
@@ -79,6 +80,11 @@ public:
     QString modernControllerSummary() const;
     bool modernLayoutWarning() const;
     Q_INVOKABLE void copyControllerCompatibilityReport() const;
+    // "Confirm current layout" in Settings → Input: accepts the observed
+    // extra-button layout of every controller carrying a layout warning, so
+    // extra buttons resume routing after a firmware/mode change. The user
+    // reviews the detected buttons via the 3 s probe / summary first.
+    Q_INVOKABLE void confirmModernControllerLayout();
 
 public slots:
     void setOverlayVisible(bool visible);
@@ -147,6 +153,16 @@ private:
                            const QString& backend, const QString& fingerprint,
                            const QString& displayName);
     void attachGamepad(std::unique_ptr<Gamepad> pad, const QString& displayName);
+    // t25 provider-integration bookkeeping: which shared-registry provider a
+    // legacy backend reports as, and (re-)observing its attachment when it
+    // connects, disconnects, or changes fingerprint.
+    ModernInput::ControllerProvider providerFor(const Gamepad* pad) const;
+    void observeLegacyBackend(Gamepad* pad);
+    void removeLegacyBackend(Gamepad* pad);
+    // Routes a legacy Capture/Guide edge through the shared capability router
+    // so the same physical press arriving via GameInput cannot double-fire.
+    // Returns false when the edge is a cross-provider duplicate.
+    bool routeLegacySystemEdge(Gamepad* source, const QString& controlId, bool pressed);
     void updateActiveBackend();
     void activateBackend(Gamepad* pad, const QString& reason);
     // Pending-candidate confirmation: true once `source` has carried input on
@@ -235,6 +251,12 @@ private:
     std::unique_ptr<BindingRuntime> m_runtime;
     std::unique_ptr<BindingEditorModel> m_bindingEditor;
     std::unique_ptr<MouseHookDevice> m_mouse;
+    // Shared t25 integration: one PhysicalControllerRegistry and one
+    // CapabilityEventRouter for every provider (Sony Raw, GameInput, XInput,
+    // WinMM, selective Raw HID). Declared before m_gameInput, which holds a
+    // pointer into it.
+    ModernInput::ProviderIntegration m_providers;
+    QHash<Gamepad*, QString> m_legacyObservedIds;   // providerDeviceId per observed backend
     std::unique_ptr<ModernInput::GameInputRouter> m_gameInput;
     std::vector<std::unique_ptr<Gamepad>> m_pads;
     DualSenseDevice* m_sonyPad = nullptr;

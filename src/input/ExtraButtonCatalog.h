@@ -26,6 +26,13 @@ public:
                    const QStringList& reportedLabels);
     bool confirm(const QString& logicalId);
     static QString signatureFor(int buttonCount, const QStringList& labels);
+    // True when a device-reported button label names a STANDARD control (A,
+    // View, Left Thumbstick, Share, ...). Such an index is excluded from
+    // extra-button routing — its controlId stays empty so one physical button
+    // can never surface both as a canonical standard control and as
+    // "Extra Button N". Indices are never removed, only blanked, because the
+    // control list must stay aligned with the reading's button-state array.
+    static bool isStandardControlLabel(const QString& label);
 
 private:
     CaptureDatabase* m_database = nullptr;
