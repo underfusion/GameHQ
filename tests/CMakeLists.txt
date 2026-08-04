@@ -160,6 +160,30 @@ gamehq_add_test(tst_providerintegration
 target_include_directories(tst_providerintegration PRIVATE
     "${CMAKE_SOURCE_DIR}/third_party/gameinput/include")
 
+gamehq_add_test(tst_controlleracceptance
+    tst_controlleracceptance.cpp
+    "${CMAKE_SOURCE_DIR}/src/input/ActionCatalog.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/BindingPattern.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/BindingRuntime.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/BindingResolver.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/BindingRelation.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ContextOverrideCatalog.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/InputPatternRecognizer.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/InputDiagnostics.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/ProviderIntegration.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/CapabilityEventRouter.cpp"
+    "${CMAKE_SOURCE_DIR}/src/input/PhysicalControllerRegistry.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/CaptureDatabase.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/CaptureQueries.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameRowRepair.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameMetadataBackfill.cpp"
+    "${CMAKE_SOURCE_DIR}/src/storage/GameIconCache.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/Paths.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/LegacyMigration.cpp"
+    "${CMAKE_SOURCE_DIR}/src/core/GameIdentity.cpp")
+target_link_libraries(tst_controlleracceptance PRIVATE Qt6::Sql Qt6::Gui Qt6::Widgets)
+
 target_include_directories(tst_gameinputrouter PRIVATE
     "${CMAKE_SOURCE_DIR}/third_party/gameinput/include")
 

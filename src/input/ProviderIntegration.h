@@ -16,12 +16,9 @@ namespace ModernInput {
 // routed through the shared CapabilityEventRouter so one physical button can
 // never fire twice through two provider pipelines.
 //
-// Correlation model: legacy providers carry no GameInput appLocalDeviceId, so
-// they correlate through topologyRoot = the lowercase "vvvv:pppp" hardware
-// fingerprint. PhysicalControllerRegistry accepts a topology correlation only
-// when it identifies exactly ONE logical controller — two identical pads stay
-// distinct (and therefore keep GameInput routing shadowed, which is the safe
-// answer when identity is ambiguous).
+// Correlation model: APP_LOCAL_DEVICE_ID, PnP container/root, or endpoint
+// evidence may merge providers. VID/PID remains a weak model hint and never
+// merges two attachments by itself, so identical pads stay independent.
 //
 // Threading: main (Qt GUI) thread only, like the registry and router it owns.
 // GameInput callbacks never reach this object directly — they cross the
@@ -35,9 +32,8 @@ public:
     const PhysicalControllerRegistry& registry() const { return m_registry; }
     CapabilityEventRouter& capabilityRouter() { return m_capabilityRouter; }
 
-    // A legacy backend became active. `fingerprint` is the backend's stable
-    // hardware identity ("054c:0ce6"); it doubles as the topology correlation
-    // root. Returns the logical controller id the attachment landed on.
+    // A legacy backend became active. `fingerprint` is a weak model hint;
+    // endpoint/container/root carry the physical correlation evidence.
     QString observeLegacy(ControllerProvider provider, const QString& providerDeviceId,
                           const QString& fingerprint, const QString& displayName,
                           ControllerCapabilities capabilities,
@@ -67,9 +63,8 @@ public:
                                   const QString& providerDeviceId,
                                   bool hasExplicitViewBinding) const;
 
-    // Route a selective-Raw-HID edge. Observes the RawHid attachment on first
-    // use so the device correlates (by "vvvv:pppp" identity) with any logical
-    // controller other providers already reported.
+    // Route a selective-Raw-HID edge. The identity is a stable anonymized
+    // endpoint, allowing strong correlation without exposing a device path.
     CapabilityRouteResult routeRawHidEdge(const QString& deviceIdentity,
                                           const QString& controlId, bool pressed,
                                           quint64 timestamp);

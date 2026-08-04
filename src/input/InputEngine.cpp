@@ -163,11 +163,8 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
     // One registry + one capability router across GameInput AND the legacy
     // backends: the physical Share/Guide dedup (t25) lives in m_providers.
     m_gameInput->setProviderIntegration(&m_providers);
-    // Bindings the user saved for "this controller" are keyed on the legacy
-    // fingerprint ("vvvv:pppp"). A correlated logical controller carries that
-    // fingerprint as its topology root, so GameInput edges resolve against
-    // the SAME profile the binding editor writes — one binding profile per
-    // physical controller, regardless of which provider delivers the edge.
+    // Every provider executes under the canonical logical-controller profile.
+    // Legacy fingerprints and slot names are compatibility aliases only.
     const auto gameInputProfile = [this](const QString& logicalId) {
         configureLogicalProfile(logicalId);
         return logicalId;
