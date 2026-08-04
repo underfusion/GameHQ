@@ -67,6 +67,10 @@ $realExe = Join-Path $source 'GameHQ.exe'
 $launcherExe = Join-Path $source 'GameHQLauncher.exe'
 $updaterExe = Join-Path $source 'GameHQUpdater.exe'
 $deployTool = Join-Path $qtBin 'windeployqt.exe'
+$gameInputToolchain = Import-PowerShellDataFile (Join-Path $PSScriptRoot 'gameinput-toolchain.psd1')
+$gameInputRuntime = Join-Path $root "tools\GameInput\$($gameInputToolchain.Version)\GameInputRedist.dll"
+
+& (Join-Path $PSScriptRoot 'bootstrap-gameinput.ps1')
 
 foreach ($required in @($realExe, $launcherExe, $updaterExe, $deployTool)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
@@ -100,6 +104,7 @@ New-Item -ItemType Directory -Path $app -Force | Out-Null
 # Qt expects the real executable, its shared libraries, QML imports, and plugin
 # subdirectories to live in one deployment tree.
 Copy-Item -LiteralPath $realExe -Destination $app
+Copy-Item -LiteralPath $gameInputRuntime -Destination $app
 & $deployTool --verbose 0 --qmldir (Join-Path $root 'src\ui\qml') --compiler-runtime (Join-Path $app 'GameHQ.exe')
 if ($LASTEXITCODE -ne 0) {
     throw "windeployqt failed ($LASTEXITCODE)"
