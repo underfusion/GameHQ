@@ -198,9 +198,16 @@ bool InputPatternRecognizer::press(const Context& context, const QString& contro
 // this, anchored to the original physical press instead of to the timeout.
 void InputPatternRecognizer::beginSinglePress(ControlState* state, bool keepPressClock)
 {
-    if (state->facts.hasPress)
+    if (state->facts.hasPress) {
         emit recognized(state->context, TriggerSpec::single(state->control),
                         GestureSpec::press());
+        // The action just dispatched may have invalidated every pending
+        // pattern (toggling the overlay does, through cancelAll). The reset
+        // already cleared this state — arming tap/hold clocks on it now would
+        // resurrect a pattern the invalidation meant to kill.
+        if (state->generation != m_generation)
+            return;
+    }
     if (state->facts.tapCountMask == 0 && state->facts.holdThresholdsMs.isEmpty()) {
         // Press-only (or unbound) control: nothing is pending afterwards.
         reset(state);
@@ -279,6 +286,10 @@ void InputPatternRecognizer::abandonChordCandidate(ControlState* state)
                               wasReleased ? QStringLiteral("released early")
                                           : QStringLiteral("window expired")));
     beginSinglePress(state, /*keepPressClock=*/true);
+    // The replayed press may have invalidated the recognizer (see
+    // beginSinglePress) — this state is dead, nothing left to replay on it.
+    if (state->generation != m_generation)
+        return;
     if (wasReleased) {
         // Released before the window closed: replay the release immediately so
         // a quick tap of a chord's first button stays a tap. No hold can fire
@@ -385,6 +396,13 @@ void InputPatternRecognizer::fireDueHolds(ControlState* state)
         // capture at 1 s, bulk select at 2 s) must each fire only their own.
         emit recognized(state->context, TriggerSpec::single(state->control),
                         GestureSpec::hold(threshold));
+        // The hold's action may have invalidated the recognizer reentrantly
+        // (Toggle Overlay does: show → setOverlayVisible → cancelAll). The
+        // reset put nextHoldIndex back to 0 while this loop is mid-iteration;
+        // continuing would re-fire the same hold forever — the overlay
+        // show/hide loop that exhausts the process's window-handle quota.
+        if (state->generation != m_generation || !state->down)
+            return;
     }
     scheduleNextHold(state);
 }

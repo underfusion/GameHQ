@@ -6,6 +6,18 @@ All notable public releases of GameHQ are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Binding a Hold gesture to Toggle Overlay no longer locks the app in an
+  endless overlay show/hide loop (0.7.3). Opening the overlay cancels all
+  pending input patterns; that cancellation could land in the middle of the
+  hold dispatch and rewind it, so the same hold re-fired the toggle roughly
+  20 times per second — regardless of releasing the button — until the
+  process ran out of Window Manager handles and crashed. The pattern
+  recognizer now detects the mid-dispatch invalidation and stops, so the
+  hold fires exactly once. The same guard covers Press bindings whose action
+  closes or opens the overlay.
+
 ### Added
 
 - Cross-provider controller integration (0.7.3). All input providers — Sony

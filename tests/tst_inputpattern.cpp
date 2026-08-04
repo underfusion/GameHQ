@@ -338,6 +338,50 @@ private slots:
         QCOMPARE(m_spy->count(), 0);
     }
 
+    void aHoldWhoseActionInvalidatesTheRecognizerFiresExactlyOnce()
+    {
+        // Toggle Overlay bound to a hold: the action synchronously invalidates
+        // the recognizer (overlay shown → setOverlayVisible → cancelAll). The
+        // reentrant reset used to put nextHoldIndex back to 0 while
+        // fireDueHolds was still iterating, re-firing the same hold forever —
+        // the overlay show/hide loop that ran the process out of window
+        // handles. The hold must fire exactly once.
+        Facts facts;
+        facts.holdThresholdsMs = {kHoldMs};
+        setFacts(facts);
+        connect(m_recognizer, &InputPatternRecognizer::recognized, m_recognizer,
+                [this] { m_recognizer->invalidate(); });
+
+        m_recognizer->press(ctx(), kControl);
+        QTRY_COMPARE(m_spy->count(), 1);
+        QTest::qWait(kSettleMs);
+        QCOMPARE(m_spy->count(), 1);
+
+        // The invalidation already killed the pattern; the physical release
+        // that follows must not produce anything either.
+        m_recognizer->release(ctx(), kControl);
+        QTest::qWait(kSettleMs);
+        QCOMPARE(m_spy->count(), 1);
+    }
+
+    void aPressWhoseActionInvalidatesTheRecognizerArmsNoStaleClocks()
+    {
+        // Press and hold both bound (the default press binding kept next to a
+        // user-added hold). The press action invalidates the recognizer; the
+        // hold clock must not be armed on the state the reset just cleared.
+        Facts facts;
+        facts.hasPress = true;
+        facts.holdThresholdsMs = {kHoldMs};
+        setFacts(facts);
+        connect(m_recognizer, &InputPatternRecognizer::recognized, m_recognizer,
+                [this] { m_recognizer->invalidate(); });
+
+        m_recognizer->press(ctx(), kControl);
+        QCOMPARE(m_spy->count(), 1);
+        QTest::qWait(kHoldMs * 4);
+        QCOMPARE(m_spy->count(), 1);
+    }
+
     void changingTheTimingCancelsWhatWasSnapshotted()
     {
         Facts facts;
