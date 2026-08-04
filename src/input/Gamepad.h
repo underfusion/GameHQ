@@ -109,17 +109,36 @@ signals:
     void connected(bool isConnected);
 
 protected:
+    // Direct publication is the canonical backend path. Modern providers use
+    // stable string IDs because their device-local controls are not limited by
+    // the legacy 32-bit button mask.
+    void publishControlPressed(const QString& controlId)
+    {
+        if (controlId.isEmpty())
+            return;
+        const auto device = profile();
+        emit controlPressed(controlId, static_cast<int>(device.family),
+                            device.backend, device.fingerprint, device.displayName);
+    }
+
+    void publishControlReleased(const QString& controlId)
+    {
+        if (controlId.isEmpty())
+            return;
+        const auto device = profile();
+        emit controlReleased(controlId, static_cast<int>(device.family),
+                             device.backend, device.fingerprint, device.displayName);
+    }
+
+    // Existing integer backends remain adapters; their enum values and bitmask
+    // layouts stay byte-for-byte compatible.
     void publishButtonPressed(int button)
     {
-        const auto device = profile();
-        emit controlPressed(controlIdFor(button), static_cast<int>(device.family),
-                            device.backend, device.fingerprint, device.displayName);
+        publishControlPressed(controlIdFor(button));
     }
 
     void publishButtonReleased(int button)
     {
-        const auto device = profile();
-        emit controlReleased(controlIdFor(button), static_cast<int>(device.family),
-                             device.backend, device.fingerprint, device.displayName);
+        publishControlReleased(controlIdFor(button));
     }
 };

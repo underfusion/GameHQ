@@ -97,6 +97,11 @@ gamehq_add_test(tst_gameinputwrapper
     "${CMAKE_SOURCE_DIR}/src/gameinput/GameInputWrapper.cpp"
     "${CMAKE_SOURCE_DIR}/src/gameinput/GameInputWrapper.h")
 
+gamehq_add_test(tst_gamepadcontrols
+    tst_gamepadcontrols.cpp
+    "${CMAKE_SOURCE_DIR}/src/input/Gamepad.h"
+    "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp")
+
 # Pure logic: bounded rings, probe window, privacy redaction, export layout.
 gamehq_add_test(tst_inputdiagnostics
     tst_inputdiagnostics.cpp
