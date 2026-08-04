@@ -46,6 +46,7 @@ qt_add_executable(GameHQ
     input/BindingEditorModel.cpp input/BindingEditorModel.h
     input/ControlId.cpp input/ControlId.h
     input/ControllerIdentity.cpp input/ControllerIdentity.h
+    input/PhysicalControllerRegistry.cpp input/PhysicalControllerRegistry.h
     input/InputDiagnostics.cpp input/InputDiagnostics.h
     input/InputRateMonitor.cpp input/InputRateMonitor.h
     input/RawInputApi.cpp input/RawInputApi.h

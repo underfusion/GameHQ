@@ -102,6 +102,10 @@ gamehq_add_test(tst_gamepadcontrols
     "${CMAKE_SOURCE_DIR}/src/input/Gamepad.h"
     "${CMAKE_SOURCE_DIR}/src/input/ControlId.cpp")
 
+gamehq_add_test(tst_physicalcontrollerregistry
+    tst_physicalcontrollerregistry.cpp
+    "${CMAKE_SOURCE_DIR}/src/input/PhysicalControllerRegistry.cpp")
+
 # Pure logic: bounded rings, probe window, privacy redaction, export layout.
 gamehq_add_test(tst_inputdiagnostics
     tst_inputdiagnostics.cpp
