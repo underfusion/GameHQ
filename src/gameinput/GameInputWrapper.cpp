@@ -7,6 +7,8 @@ GameInputWrapper::GameInputWrapper(std::unique_ptr<IGameInputApi> api,
                                    QObject* parent)
     : QObject(parent)
     , m_api(std::move(api))
+    , m_queueCapacity(queueCapacity)
+    , m_emergencyReserve(emergencyReserve)
     , m_queue(std::make_shared<GameInputEventQueue>(queueCapacity, emergencyReserve))
 {
 }
@@ -27,6 +29,13 @@ bool GameInputWrapper::start(QString& error)
         return true;
     if (!m_api || !m_api->initialize(error))
         return false;
+
+    // A previous shutdown() permanently stops the old queue so late callbacks
+    // stay harmless. A restart (Auto → Off → Auto) therefore needs a fresh
+    // queue; stale callbacks still hold only the old, stopped instance.
+    if (!m_queue->accepting())
+        m_queue = std::make_shared<GameInputEventQueue>(m_queueCapacity,
+                                                        m_emergencyReserve);
 
     m_dispatcher = std::make_unique<GameInputQtDispatcher>(m_queue);
     connect(m_dispatcher.get(), &GameInputQtDispatcher::eventsReady,

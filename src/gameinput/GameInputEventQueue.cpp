@@ -22,19 +22,39 @@ bool GameInputEventQueue::push(GameInputEvent event)
         return false;
 
     event.sequence = m_nextSequence++;
-    const int pending = m_discrete.size() + m_latestStates.size();
 
-    if (event.isCoalescibleState()) {
-        if (m_latestStates.contains(event.deviceId)) {
-            m_latestStates.insert(event.deviceId, std::move(event));
-        } else if (pending < m_normalCapacity) {
-            m_latestStates.insert(event.deviceId, std::move(event));
-        } else {
-            noteOverflowLocked(event.deviceId);
+    if (event.kind == GameInputEventKind::Reading) {
+        // Only a reading that leaves every button bit unchanged may coalesce.
+        // Button transitions are lossless, ordered edges: coalescing them
+        // could erase a quick press→release that lands before one drain.
+        const auto last = m_lastButtons.constFind(event.deviceId);
+        const bool buttonsChanged = last == m_lastButtons.cend()
+            || last->standardButtons != event.standardButtons
+            || last->buttonStates != event.buttonStates;
+        if (!buttonsChanged) {
+            const int pending = m_discrete.size() + m_latestStates.size();
+            if (m_latestStates.contains(event.deviceId)
+                || pending < m_normalCapacity) {
+                m_latestStates.insert(event.deviceId, std::move(event));
+            } else {
+                noteOverflowLocked(event.deviceId);
+            }
+            m_available.wakeOne();
+            return true;
         }
-        m_available.wakeOne();
-        return true;
+        m_lastButtons.insert(event.deviceId,
+                             {event.standardButtons, event.buttonStates});
+        // Any pending coalesced reading is older than this edge; delivering
+        // it after the edge would replay stale state. Drop it.
+        m_latestStates.remove(event.deviceId);
+    } else if (event.kind == GameInputEventKind::DeviceRemoved) {
+        // Readings queued before the removal must not be delivered after it:
+        // the consumer would re-observe a device that is already gone.
+        m_latestStates.remove(event.deviceId);
+        m_lastButtons.remove(event.deviceId);
     }
+
+    const int pending = m_discrete.size() + m_latestStates.size();
 
     // Discrete edges outrank coalescible readings. Evict one reading before
     // entering the emergency reserve; no press/release/lifecycle event is
@@ -90,8 +110,9 @@ GameInputEventBatch GameInputEventQueue::takeLocked()
     while (!m_discrete.isEmpty())
         batch.events.push_back(m_discrete.dequeue());
 
-    // State order is intentionally unspecified: each device contributes only
-    // its newest complete reading after every discrete edge already queued.
+    // State order is intentionally unspecified: coalesced readings are
+    // button-stable by construction, so each device contributes only its
+    // newest edge-free reading after every discrete event already queued.
     for (auto it = m_latestStates.cbegin(); it != m_latestStates.cend(); ++it)
         batch.events.push_back(it.value());
     m_latestStates.clear();

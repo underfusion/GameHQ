@@ -29,6 +29,8 @@ signals:
 
 private:
     std::unique_ptr<IGameInputApi> m_api;
+    const int m_queueCapacity;
+    const int m_emergencyReserve;
     std::shared_ptr<GameInputEventQueue> m_queue;
     std::unique_ptr<GameInputQtDispatcher> m_dispatcher;
     GameInputCallbackRegistration m_deviceRegistration;

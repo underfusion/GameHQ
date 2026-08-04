@@ -2,7 +2,7 @@
 
 ## Provider model
 
-GameHQ combines providers per physical controller and capability. Sony Raw Input is preferred for Sony standard controls; GameInput provides true System Share, Guide, extra controls, and accepted generic standard controls; XInput and WinMM remain fallbacks. One physical edge is routed once.
+GameHQ combines providers per physical controller and capability. Sony Raw Input is preferred for Sony standard controls; GameInput provides true System Share, Guide, and extra controls; XInput and WinMM remain fallbacks. GameInput standard-control readings are currently shadow-only (diagnostics): legacy providers do not yet feed the shared controller registry, so routing them would double-fire one physical press. One physical edge is routed once.
 
 Identity is merged only from strong OS or app-local identifiers, or an unambiguous correlated topology. VID/PID and display names alone never merge two controllers. Strong reconnects restore the same profile; weak/new identities remain separate and can be copied or linked explicitly.
 
@@ -22,7 +22,7 @@ The report includes device name, anonymous ID, VID/PID, providers, runtime statu
 
 ## Wireless and reconnects
 
-USB, Bluetooth, and 2.4 GHz receivers use the same lifecycle. Disconnect, sleep, receiver removal, and uncertain state synthesize safe releases and cancel tap/hold/chord and navigation-repeat state. Strong reconnects restore the profile. A changed firmware mode may legitimately produce a new or reconfirmation-required layout.
+USB, Bluetooth, and 2.4 GHz receivers use the same lifecycle. Disconnect, receiver removal, and uncertain state synthesize safe releases and cancel tap/hold/chord and navigation-repeat state. GameInput reports no distinct sleep/wake signal: a controller going to sleep is observed as a normal disconnect and its wake as a reconnect. Strong reconnects restore the profile. A changed firmware mode may legitimately produce a new or reconfirmation-required layout.
 
 ## Gestures
 

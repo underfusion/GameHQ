@@ -21,8 +21,15 @@ QString ExtraButtonCatalog::signatureFor(int buttonCount, const QStringList& lab
 ExtraButtonCatalog::Layout ExtraButtonCatalog::observe(
     const QString& logicalId, int buttonCount, const QStringList& reportedLabels)
 {
+    const QString signature = signatureFor(buttonCount, reportedLabels);
+    // Hot path: an unchanged layout is answered from memory with zero
+    // database reads or writes.
+    if (const auto cached = m_cache.constFind(logicalId);
+        cached != m_cache.cend() && cached->signature == signature)
+        return *cached;
+
     Layout result;
-    result.signature = signatureFor(buttonCount, reportedLabels);
+    result.signature = signature;
     for (int index = 0; index < buttonCount; ++index) {
         const QString reported = index < reportedLabels.size() ? reportedLabels.at(index) : QString();
         result.labels.push_back(reported.isEmpty()
@@ -36,13 +43,22 @@ ExtraButtonCatalog::Layout ExtraButtonCatalog::observe(
     result.changed = !previous.logicalId.isEmpty()
         && previous.layoutSignature != result.signature;
     result.needsReconfirmation = result.changed || previous.needsReconfirmation;
-    m_database->upsertControllerLayout(
-        {logicalId, result.signature, result.labels, result.needsReconfirmation});
+    if (previous.logicalId.isEmpty() || result.changed
+        || previous.needsReconfirmation != result.needsReconfirmation) {
+        m_database->upsertControllerLayout(
+            {logicalId, result.signature, result.labels, result.needsReconfirmation});
+    }
+    // `changed` is a transition flag: it must fire once per signature change,
+    // not once per reading, so the cached copy reports stable state.
+    Layout cachedCopy = result;
+    cachedCopy.changed = false;
+    m_cache.insert(logicalId, cachedCopy);
     return result;
 }
 
 bool ExtraButtonCatalog::confirm(const QString& logicalId)
 {
+    m_cache.remove(logicalId);
     return !m_database || m_database->confirmControllerLayout(logicalId);
 }
 

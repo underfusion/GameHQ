@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QString>
 #include <QStringList>
 
@@ -28,6 +29,9 @@ public:
 
 private:
     CaptureDatabase* m_database = nullptr;
+    // observe() runs per delivered reading; the database is touched only when
+    // the layout signature or reconfirmation state actually changes.
+    QHash<QString, Layout> m_cache;
 };
 
 } // namespace ModernInput

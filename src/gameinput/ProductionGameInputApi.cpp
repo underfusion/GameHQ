@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QMutex>
 #include <QMutexLocker>
+#include <QVarLengthArray>
 
 #include <atomic>
 #include <memory>
@@ -63,6 +64,7 @@ public:
         std::atomic_bool active{true};
         EventSink sink;
         CallbackKind kind = CallbackKind::Reading;
+        Impl* owner = nullptr;
     };
 
     using InitializeFn = HRESULT (WINAPI*)(REFIID, void**);
@@ -126,6 +128,7 @@ public:
         auto context = std::make_unique<CallbackContext>();
         context->sink = std::move(sink);
         context->kind = kind;
+        context->owner = this;
         GI::GameInputCallbackToken token = 0;
         HRESULT hr = E_FAIL;
         if (kind == CallbackKind::Device) {
@@ -183,6 +186,34 @@ public:
         // Device pointers are callback-local and released before returning;
         // this explicit phase remains in the lifecycle for future retained
         // device handles and is asserted by the fake implementation.
+        QMutexLocker lock(&descriptorMutex);
+        descriptorCache.clear();
+    }
+
+    // Reading callbacks fire at controller report rate (up to kHz). The full
+    // descriptor (GetDeviceInfo, ID conversions, label list) is built only on
+    // device lifecycle callbacks and served from this cache per reading.
+    GameInputDeviceDescriptor cachedDescriptor(GI::IGameInputDevice* device,
+                                               bool refresh)
+    {
+        if (!device)
+            return {};
+        if (!refresh) {
+            QMutexLocker lock(&descriptorMutex);
+            if (const auto it = descriptorCache.find(device);
+                it != descriptorCache.end())
+                return it->second;
+        }
+        GameInputDeviceDescriptor descriptor = describeDevice(device);
+        QMutexLocker lock(&descriptorMutex);
+        descriptorCache[device] = descriptor;
+        return descriptor;
+    }
+
+    void dropDescriptor(GI::IGameInputDevice* device)
+    {
+        QMutexLocker lock(&descriptorMutex);
+        descriptorCache.erase(device);
     }
 
     void unload()
@@ -221,7 +252,9 @@ public:
             return;
         GameInputEvent event;
         event.timestamp = timestamp;
-        event.device = describeDevice(device);
+        // Lifecycle callbacks are the only place the descriptor is rebuilt;
+        // readings and system buttons reuse the cached copy.
+        event.device = context->owner->cachedDescriptor(device, /*refresh=*/true);
         event.deviceId = event.device.deviceId;
         const bool connected = (currentStatus & GI::GameInputDeviceConnected) != 0;
         const bool wasConnected = (previousStatus & GI::GameInputDeviceConnected) != 0;
@@ -230,6 +263,8 @@ public:
                                    : GameInputEventKind::DeviceRemoved;
         else
             event.kind = GameInputEventKind::CapabilityChanged;
+        if (event.kind == GameInputEventKind::DeviceRemoved)
+            context->owner->dropDescriptor(device);
         context->sink(std::move(event));
     }
 
@@ -246,7 +281,10 @@ public:
         event.timestamp = reading->GetTimestamp();
         GI::IGameInputDevice* device = nullptr;
         reading->GetDevice(&device);
-        event.device = describeDevice(device);
+        // Hot path: descriptor comes from the lifecycle cache (implicitly
+        // shared copy) — no GetDeviceInfo, ID conversion or label rebuild
+        // per reading.
+        event.device = context->owner->cachedDescriptor(device, /*refresh=*/false);
         event.deviceId = event.device.deviceId;
         if (device)
             device->Release();
@@ -257,8 +295,8 @@ public:
 
         const quint32 count = reading->GetControllerButtonCount();
         if (count > 0) {
-            std::unique_ptr<bool[]> states(new bool[count]);
-            const quint32 written = reading->GetControllerButtonState(count, states.get());
+            QVarLengthArray<bool, 64> states(static_cast<int>(count));
+            const quint32 written = reading->GetControllerButtonState(count, states.data());
             event.buttonStates.reserve(int(written));
             for (quint32 i = 0; i < written; ++i)
                 event.buttonStates.push_back(states[i] ? 1 : 0);
@@ -275,7 +313,8 @@ public:
         if (!context || !context->active.load(std::memory_order_acquire))
             return;
         const auto changed = GI::GameInputSystemButtons(currentButtons ^ previousButtons);
-        const GameInputDeviceDescriptor descriptor = describeDevice(device);
+        const GameInputDeviceDescriptor descriptor =
+            context->owner->cachedDescriptor(device, /*refresh=*/false);
         const auto publish = [&](GI::GameInputSystemButtons button, const QString& controlId) {
             if ((changed & button) == 0)
                 return;
@@ -299,6 +338,8 @@ public:
     GI::IGameInput* input = nullptr;
     QMutex mutex;
     std::unordered_map<CallbackToken, std::unique_ptr<CallbackContext>> callbacks;
+    QMutex descriptorMutex;
+    std::unordered_map<GI::IGameInputDevice*, GameInputDeviceDescriptor> descriptorCache;
 };
 
 ProductionGameInputApi::ProductionGameInputApi(QString runtimeOverride)

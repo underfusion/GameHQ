@@ -79,6 +79,7 @@ private:
     QHash<QString, QStringList> m_deviceExtraControls;
     QHash<QString, quint32> m_deviceStandardButtons;
     QSet<QString> m_seenLogicalIds;
+    QSet<QString> m_removedDevices;
     QHash<QString, GameInputDeviceDescriptor> m_descriptors;
     QSet<QString> m_layoutWarnings;
 };

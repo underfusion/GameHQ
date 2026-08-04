@@ -12,6 +12,11 @@
 namespace ModernInput {
 
 namespace {
+// Mirror of GameInputSystemButtons (GameInput.h); redeclared so this
+// translation unit stays buildable without the vendored SDK header.
+constexpr quint32 kSystemButtonGuide = 0x00000001u;
+constexpr quint32 kSystemButtonShare = 0x00000002u;
+
 QString providerLabel(ControllerProvider provider)
 {
     switch (provider) {
@@ -104,9 +109,12 @@ QString GameInputRouter::observeDevice(const GameInputDeviceDescriptor& device)
     observation.vendorId = device.vendorId;
     observation.productId = device.productId;
     observation.capabilities = ControllerCapability::StandardControls;
-    if (device.supportedSystemButtons != 0)
-        observation.capabilities |= ControllerCapability::SystemShare
-            | ControllerCapability::Guide;
+    // Each system button is granted individually: a Guide-only pad must not
+    // be reported (or routed) as Share-capable, and vice versa.
+    if (device.supportedSystemButtons & kSystemButtonShare)
+        observation.capabilities |= ControllerCapability::SystemShare;
+    if (device.supportedSystemButtons & kSystemButtonGuide)
+        observation.capabilities |= ControllerCapability::Guide;
     if (device.extraButtonCount > 0)
         observation.capabilities |= ControllerCapability::ExtraControls;
     const QString logicalId = m_registry.observe(observation);
@@ -133,6 +141,17 @@ void GameInputRouter::handleBatch(const GameInputEventBatch& batch)
     }
 
     for (const auto& event : batch.events) {
+        if (event.kind == GameInputEventKind::DeviceAdded
+            || event.kind == GameInputEventKind::Wake)
+            m_removedDevices.remove(event.deviceId);
+        // A reading or button event trailing its device's removal (late
+        // callback or queue tail) must not resurrect the device; only a new
+        // DeviceAdded/Wake may clear the tombstone.
+        if (m_removedDevices.contains(event.deviceId)
+            && (event.kind == GameInputEventKind::Reading
+                || event.kind == GameInputEventKind::SystemButtonPressed
+                || event.kind == GameInputEventKind::SystemButtonReleased))
+            continue;
         QString logicalId = m_deviceLogicalIds.value(event.deviceId);
         if (!event.device.deviceId.isEmpty())
             logicalId = observeDevice(event.device);
@@ -144,6 +163,9 @@ void GameInputRouter::handleBatch(const GameInputEventBatch& batch)
             break;
         }
         case GameInputEventKind::CapabilityChanged:
+            // observeDevice already refreshed the attachment's capabilities
+            // in the registry; surface the change to Settings/diagnostics.
+            emit statusChanged();
             break;
         case GameInputEventKind::Wake:
             emit deviceConnected(logicalId, m_seenLogicalIds.contains(logicalId));
@@ -163,6 +185,7 @@ void GameInputRouter::handleBatch(const GameInputEventBatch& batch)
                                                m_deviceNames.value(event.deviceId));
             }
             if (event.kind == GameInputEventKind::DeviceRemoved) {
+                m_removedDevices.insert(event.deviceId);
                 m_registry.removeProvider(ControllerProvider::GameInput, event.deviceId);
                 emit deviceDisconnected(logicalId);
             }
@@ -173,63 +196,54 @@ void GameInputRouter::handleBatch(const GameInputEventBatch& batch)
             break;
         }
         case GameInputEventKind::Reading:
-            // Stage A diagnostics remain counted; after the t25 acceptance
-            // gate, Stage C also publishes preferred standard-control edges.
+            // Standard-control readings stay SHADOW-ONLY (Stage A): Sony Raw
+            // Input, XInput and WinMM still own standard controls through
+            // InputEngine's legacy arbitration and do not feed
+            // PhysicalControllerRegistry yet, so routing them here too would
+            // double-fire one physical press through two pipelines. Stage C
+            // may only return once every legacy provider reports into the
+            // same registry and cross-provider dedup is proven end to end
+            // (plan t25). System Share/Guide and extra buttons are
+            // GameInput-exclusive and keep routing.
             ++m_shadowReadingCount;
-            {
-                struct StandardMapping { quint32 mask; const QString* control; };
-                const StandardMapping mappings[] = {
-                    {0x00000001u, &ControlId::Menu}, {0x00000002u, &ControlId::ViewBack},
-                    {0x00000004u, &ControlId::FaceSouth}, {0x00000008u, &ControlId::FaceEast},
-                    {0x00000010u, &ControlId::FaceWest}, {0x00000020u, &ControlId::FaceNorth},
-                    {0x00000040u, &ControlId::DpadUp}, {0x00000080u, &ControlId::DpadDown},
-                    {0x00000100u, &ControlId::DpadLeft}, {0x00000200u, &ControlId::DpadRight},
-                    {0x00000400u, &ControlId::ShoulderLeft}, {0x00000800u, &ControlId::ShoulderRight},
-                    {0x00010000u, &ControlId::TriggerLeft}, {0x00020000u, &ControlId::TriggerRight},
-                };
-                const quint32 previousButtons = m_deviceStandardButtons.value(event.deviceId);
-                const quint32 changed = previousButtons ^ event.standardButtons;
-                for (const auto& mapping : mappings) {
-                    if ((changed & mapping.mask) == 0)
-                        continue;
-                    publishEdge(event.deviceId, logicalId, *mapping.control,
-                                (event.standardButtons & mapping.mask) != 0,
-                                ControllerCapability::StandardControls, event.timestamp);
-                }
-                m_deviceStandardButtons.insert(event.deviceId, event.standardButtons);
-            }
+            m_deviceStandardButtons.insert(event.deviceId, event.standardButtons);
             if (!event.buttonStates.isEmpty()) {
                 const auto layout = m_extraButtons->observe(
                     logicalId, event.buttonStates.size(), event.device.buttonLabels);
-                const auto previous = m_deviceExtraStates.value(event.deviceId);
-                const auto oldControls = m_deviceExtraControls.value(event.deviceId);
+                auto previous = m_deviceExtraStates.value(event.deviceId);
                 if (layout.changed) {
                     if (!m_layoutWarnings.contains(logicalId)) {
                         m_layoutWarnings.insert(logicalId);
                         emit statusChanged();
                     }
+                    // Release the old layout's held controls through the
+                    // capability router so its own held/generation state
+                    // stays consistent, then forget the old index states —
+                    // an old index must never lend its meaning to a new
+                    // layout's button.
+                    const auto oldControls = m_deviceExtraControls.value(event.deviceId);
                     const auto held = m_heldSystemControls.value(event.deviceId);
                     for (const QString& control : oldControls) {
                         if (held.contains(control))
-                            emit systemControlReleased(control, logicalId,
-                                                       m_deviceNames.value(event.deviceId));
-                        m_heldSystemControls[event.deviceId].remove(control);
+                            publishEdge(event.deviceId, logicalId, control, false,
+                                        ControllerCapability::ExtraControls,
+                                        event.timestamp);
                     }
+                    previous = QVector<quint8>(event.buttonStates.size(), 0);
                 }
-                for (int index = 0; index < event.buttonStates.size(); ++index) {
-                    const bool wasPressed = index < previous.size() && previous.at(index) != 0;
-                    const bool isPressed = event.buttonStates.at(index) != 0;
-                    if (wasPressed == isPressed)
-                        continue;
-                    const QString control = layout.controlIds.at(index);
-                    if (isPressed) {
-                        m_heldSystemControls[event.deviceId].insert(control);
-                        publishEdge(event.deviceId, logicalId, control, true,
-                                    ControllerCapability::ExtraControls, event.timestamp);
-                    } else {
-                        m_heldSystemControls[event.deviceId].remove(control);
-                        publishEdge(event.deviceId, logicalId, control, false,
-                                    ControllerCapability::ExtraControls, event.timestamp);
+                // A changed layout routes nothing until the user reconfirms
+                // it; state keeps tracking so confirmation resumes cleanly.
+                if (!layout.needsReconfirmation) {
+                    for (int index = 0; index < event.buttonStates.size(); ++index) {
+                        const bool wasPressed = index < previous.size()
+                            && previous.at(index) != 0;
+                        const bool isPressed = event.buttonStates.at(index) != 0;
+                        if (wasPressed == isPressed)
+                            continue;
+                        publishEdge(event.deviceId, logicalId,
+                                    layout.controlIds.at(index), isPressed,
+                                    ControllerCapability::ExtraControls,
+                                    event.timestamp);
                     }
                 }
                 m_deviceExtraStates.insert(event.deviceId, event.buttonStates);

@@ -13,8 +13,10 @@
 namespace ModernInput {
 
 // Multi-producer/single-consumer queue used by GameInput callback threads.
-// Discrete events retain arrival order. Readings are latest-state-only per
-// logical device and never consume the emergency reserve.
+// Discrete events retain arrival order. Only button-stable readings are
+// latest-state-only per logical device; a reading that changes any button
+// bit is a real edge and is queued discretely so a press→release pair that
+// arrives before one drain can never be coalesced away.
 class GameInputEventQueue
 {
 public:
@@ -29,6 +31,12 @@ public:
     int pendingCount() const;
 
 private:
+    struct LastButtons
+    {
+        quint32 standardButtons = 0;
+        QVector<quint8> buttonStates;
+    };
+
     GameInputEventBatch takeLocked();
     void noteOverflowLocked(const QString& deviceId);
 
@@ -38,6 +46,7 @@ private:
     QWaitCondition m_available;
     QQueue<GameInputEvent> m_discrete;
     QHash<QString, GameInputEvent> m_latestStates;
+    QHash<QString, LastButtons> m_lastButtons;
     QSet<QString> m_uncertainDevices;
     quint64 m_nextSequence = 1;
     quint64 m_overflowCount = 0;

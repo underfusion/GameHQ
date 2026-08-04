@@ -71,6 +71,82 @@ private slots:
         QVERIFY(thirdId != secondId);
     }
 
+    void reversedObservationOrderYieldsSameStrongLogicalId()
+    {
+        // The logical ID is persisted (binding profiles, controller_layouts):
+        // it must not depend on which provider observed the device first.
+        ProviderObservation sony{ControllerProvider::SonyRaw, QStringLiteral("raw-1")};
+        sony.appLocalDeviceId = QStringLiteral("app-local-1");
+        ProviderObservation gameInput{ControllerProvider::GameInput, QStringLiteral("gi-1")};
+        gameInput.appLocalDeviceId = sony.appLocalDeviceId;
+
+        PhysicalControllerRegistry first;
+        const QString firstId = first.observe(sony);
+        QCOMPARE(first.observe(gameInput), firstId);
+
+        PhysicalControllerRegistry second;
+        const QString secondId = second.observe(gameInput);
+        QCOMPARE(second.observe(sony), secondId);
+
+        QCOMPARE(firstId, secondId);
+    }
+
+    void reversedOrderKeepsTwoDevicesDistinctAndStable()
+    {
+        ProviderObservation padA{ControllerProvider::GameInput, QStringLiteral("gi-a")};
+        padA.appLocalDeviceId = QStringLiteral("app-a");
+        ProviderObservation padB{ControllerProvider::GameInput, QStringLiteral("gi-b")};
+        padB.appLocalDeviceId = QStringLiteral("app-b");
+
+        PhysicalControllerRegistry first;
+        const QString aFirst = first.observe(padA);
+        const QString bFirst = first.observe(padB);
+        PhysicalControllerRegistry second;
+        const QString bSecond = second.observe(padB);
+        const QString aSecond = second.observe(padA);
+
+        QVERIFY(aFirst != bFirst);
+        QCOMPARE(aFirst, aSecond);
+        QCOMPARE(bFirst, bSecond);
+    }
+
+    void conflictingStrongIdsInSameContainerNeverMerge()
+    {
+        // A hub/receiver container can hold several endpoints: matching
+        // containers must never override conflicting strong device IDs.
+        PhysicalControllerRegistry registry;
+        ProviderObservation one{ControllerProvider::GameInput, QStringLiteral("gi-1")};
+        one.appLocalDeviceId = QStringLiteral("app-1");
+        one.containerId = QStringLiteral("shared-container");
+        ProviderObservation two{ControllerProvider::GameInput, QStringLiteral("gi-2")};
+        two.appLocalDeviceId = QStringLiteral("app-2");
+        two.containerId = one.containerId;
+
+        const QString firstId = registry.observe(one);
+        const QString secondId = registry.observe(two);
+        QVERIFY(firstId != secondId);
+        QCOMPARE(registry.controllers().size(), 2);
+    }
+
+    void reObservationRefreshesAttachmentCapabilities()
+    {
+        PhysicalControllerRegistry registry;
+        ProviderObservation gameInput{ControllerProvider::GameInput, QStringLiteral("gi-1")};
+        gameInput.appLocalDeviceId = QStringLiteral("app-1");
+        gameInput.capabilities = ControllerCapability::StandardControls;
+        const QString id = registry.observe(gameInput);
+        QVERIFY(!registry.controller(id)->capabilities()
+                     .testFlag(ControllerCapability::SystemShare));
+
+        // CapabilityChanged re-observes the same attachment with new flags.
+        gameInput.capabilities = ControllerCapability::StandardControls
+            | ControllerCapability::SystemShare;
+        QCOMPARE(registry.observe(gameInput), id);
+        QCOMPARE(registry.controller(id)->providers.size(), 1);
+        QVERIFY(registry.controller(id)->capabilities()
+                    .testFlag(ControllerCapability::SystemShare));
+    }
+
     void providerRemovalKeepsRemainingLogicalController()
     {
         PhysicalControllerRegistry registry;

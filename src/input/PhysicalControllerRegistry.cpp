@@ -29,13 +29,23 @@ QString PhysicalControllerRegistry::attachmentKey(ControllerProvider provider,
 QString PhysicalControllerRegistry::createLogicalId(const ProviderObservation& observation,
                                                      quint64 generation)
 {
+    // A strong identity hashes deterministically from the identity namespace
+    // alone: the same physical device must produce the same logical ID
+    // regardless of provider arrival order, detection order, or session —
+    // this ID is persisted in binding profiles and controller_layouts. Only
+    // weak identities (nothing stable to hash) stay session-local through
+    // the generation counter.
+    const bool strongIdentity = !observation.appLocalDeviceId.isEmpty()
+        || !observation.containerId.isEmpty();
     const QString strongest = !observation.appLocalDeviceId.isEmpty()
         ? observation.appLocalDeviceId
         : (!observation.containerId.isEmpty() ? observation.containerId
                                               : observation.providerDeviceId);
-    const QByteArray material = QStringLiteral("%1|%2|%3")
-        .arg(static_cast<int>(observation.provider)).arg(strongest).arg(generation)
-        .toUtf8();
+    const QByteArray material = strongIdentity
+        ? QStringLiteral("strong|%1").arg(strongest).toUtf8()
+        : QStringLiteral("weak|%1|%2|%3")
+              .arg(static_cast<int>(observation.provider))
+              .arg(strongest).arg(generation).toUtf8();
     return QStringLiteral("controller-%1").arg(QString::fromLatin1(
         QCryptographicHash::hash(material, QCryptographicHash::Sha256).toHex().left(16)));
 }
@@ -47,9 +57,16 @@ QString PhysicalControllerRegistry::findStrongMatch(const ProviderObservation& o
         if (!observation.appLocalDeviceId.isEmpty()
             && observation.appLocalDeviceId == current.appLocalDeviceId)
             return it.key();
+        // A shared container may hold several endpoints (hub, receiver): a
+        // container match must never merge two conflicting strong device IDs.
         if (!observation.containerId.isEmpty()
-            && observation.containerId == current.containerId)
+            && observation.containerId == current.containerId) {
+            if (!observation.appLocalDeviceId.isEmpty()
+                && !current.appLocalDeviceId.isEmpty()
+                && observation.appLocalDeviceId != current.appLocalDeviceId)
+                continue;
             return it.key();
+        }
     }
     return {};
 }
@@ -82,8 +99,20 @@ QString PhysicalControllerRegistry::observe(const ProviderObservation& observati
 {
     const QString key = attachmentKey(observation.provider, observation.providerDeviceId);
     if (const auto existing = m_attachmentToLogical.constFind(key);
-        existing != m_attachmentToLogical.cend())
+        existing != m_attachmentToLogical.cend()) {
+        // Re-observation of a live attachment (e.g. CapabilityChanged) must
+        // refresh its capabilities and fill in missing metadata, not no-op.
+        if (const auto it = m_controllers.find(*existing); it != m_controllers.end()) {
+            for (auto& attachment : it->providers) {
+                if (attachment.provider == observation.provider
+                    && attachment.providerDeviceId == observation.providerDeviceId)
+                    attachment.capabilities = observation.capabilities;
+            }
+            if (it->displayName.isEmpty())
+                it->displayName = observation.displayName;
+        }
         return *existing;
+    }
 
     QString logicalId = findStrongMatch(observation);
     IdentityConfidence confidence = IdentityConfidence::Strong;

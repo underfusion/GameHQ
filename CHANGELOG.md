@@ -6,6 +6,23 @@ All notable public releases of GameHQ are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Modern-controller correction gate (post-audit, pre-beta). GameInput
+  standard-control readings are shadow-only again until Sony/XInput/WinMM feed
+  the same physical-controller registry — routing both pipelines could execute
+  one physical press twice. A quick button tap can no longer be lost when
+  readings coalesce under load, and a stale reading can no longer resurrect a
+  just-removed controller. Turning modern controller support Off and back to
+  Auto works again. A controller's anonymous identity is now deterministic
+  across sessions and detection order, conflicting device IDs behind one
+  container are never merged, and capability changes update the existing
+  registry entry. Share and Guide availability are reported per button instead
+  of jointly. A changed extra-button layout now releases its held controls
+  through the capability router and stays silent until reconfirmed. GameInput
+  reading callbacks no longer rebuild device descriptors or touch the layout
+  database on every reading.
+
 ### Added
 
 - Groundwork for modern controller support: GameHQ now pins Microsoft's

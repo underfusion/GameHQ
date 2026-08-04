@@ -45,16 +45,6 @@ struct GameInputEvent
     GameInputDeviceDescriptor device;
     quint32 standardButtons = 0;
     QVector<quint8> buttonStates;
-
-    bool isCoalescibleState() const
-    {
-        return kind == GameInputEventKind::Reading;
-    }
-
-    bool isDiscrete() const
-    {
-        return !isCoalescibleState();
-    }
 };
 
 struct GameInputEventBatch
