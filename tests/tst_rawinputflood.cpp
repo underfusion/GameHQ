@@ -686,6 +686,67 @@ private slots:
         fallback.setBoundControls({});
     }
 
+    // 0.7.3 hardening regression: the FIRST rawHidControl edge of a batch
+    // synchronously tears the device down (the shape a binding reload,
+    // provider detach or removal would take). Before the fix,
+    // routeRawHidUsageReport held a reference into m_rawHidPressed across the
+    // emit — dropRawHidState erased that entry and the loop kept using a
+    // dangling reference. Now delivery must stop after the teardown, held
+    // usages must still release, and no late press edges may leak out.
+    void reentrantTeardownDuringRawHidDeliveryIsSafe()
+    {
+        auto& fallback = ModernInput::SelectiveRawHidFallback::instance();
+        auto* api = new FakeRawInputApi;
+        DualSenseDevice pad(api);
+        void* gamesir = handle(0x8016);
+        auto device = FakeRawInputApi::hidDevice(
+            kGameSirVid, kGameSirPid, kUsageGamepad,
+            QStringLiteral("\\\\?\\HID#VID_3537&PID_1004#reentrant"));
+        device.report = QByteArray(8, '\0');
+        api->devices.insert(gamesir, device);
+        pad.onRawInput(gamesir);            // classify -> ignored (not a Sony pad)
+
+        const QString identity = ControllerIdentity::endpointFingerprint(device.path.value);
+        const quint32 usageA = (quint32(0x09) << 16) | 0x15;
+        const quint32 usageB = (quint32(0x09) << 16) | 0x16;
+        const QString controlA = ControlId::rawHidUsage(identity, 0x09, 0x15);
+        const QString controlB = ControlId::rawHidUsage(identity, 0x09, 0x16);
+        fallback.setBoundControls({controlA, controlB});
+
+        QSignalSpy edges(&pad, &DualSenseDevice::rawHidControl);
+        bool tornDown = false;
+        connect(&pad, &DualSenseDevice::rawHidControl, &pad,
+                [&tornDown, &pad, gamesir](const QString&, const QString&, bool) {
+                    if (tornDown)
+                        return;   // the teardown itself re-emits (synthesized releases)
+                    tornDown = true;
+                    pad.onDeviceChange(false, gamesir);
+                });
+
+        // Two transitions pending in one report; the first delivery kills the device.
+        api->devices[gamesir].pressedUsages = {usageA, usageB};
+        pad.onRawInput(gamesir);
+
+        QVERIFY(tornDown);
+        QCOMPARE(edges.size(), 3);
+        QCOMPARE(edges.at(0).at(1).toString(), controlA);
+        QCOMPARE(edges.at(0).at(2).toBool(), true);
+        // dropRawHidState synthesized releases for everything held (A and the
+        // committed-but-undelivered B); the pending PRESS for B never fired.
+        QVERIFY(!edges.at(1).at(2).toBool());
+        QVERIFY(!edges.at(2).at(2).toBool());
+        const QSet<QString> releasedControls{ edges.at(1).at(1).toString(),
+                                              edges.at(2).at(1).toString() };
+        QCOMPARE(releasedControls, (QSet<QString>{ controlA, controlB }));
+
+        // The handle reclassifies from scratch with no ghost pressed state.
+        edges.clear();
+        api->devices[gamesir].pressedUsages = {};
+        pad.onRawInput(gamesir);
+        QCOMPARE(edges.size(), 0);
+        fallback.setBoundControls({});      // singleton: never leak into other tests
+    }
+
     void identicalRawHidModelsUseDistinctEndpointNamespaces()
     {
         auto& fallback = ModernInput::SelectiveRawHidFallback::instance();

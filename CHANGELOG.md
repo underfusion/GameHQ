@@ -17,6 +17,15 @@ All notable public releases of GameHQ are documented here. The format follows
   recognizer now detects the mid-dispatch invalidation and stops, so the
   hold fires exactly once. The same guard covers Press bindings whose action
   closes or opens the overlay.
+- Two defensive reentrancy guards in the input path (0.7.3, pre-release
+  hardening of the same bug class). Raw HID fallback delivery no longer holds
+  a reference into the per-device pressed-state store while emitting control
+  edges, so a handler that tears the device down mid-batch (binding reload,
+  provider detach, disconnect) can no longer leave delivery running on freed
+  state; held buttons still release exactly once. Keyboard-hotkey dispatch
+  now copies its action id before emitting, so a handler that clears or
+  rebinds the same hotkey during dispatch cannot invalidate the action being
+  delivered. Both guards are covered by new regression tests.
 
 ### Added
 

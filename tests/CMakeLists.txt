@@ -224,6 +224,13 @@ gamehq_add_test(tst_rawinputflood
     "${CMAKE_SOURCE_DIR}/src/input/ControllerIdentity.cpp")
 target_link_libraries(tst_rawinputflood PRIVATE user32 cfgmgr32 hid)
 
+# WM_HOTKEY dispatch reentrancy: synthesized messages through the real native
+# event filter. Registers real (exotic) chords, so it skips if the OS refuses.
+gamehq_add_test(tst_hotkeyreentrancy
+    tst_hotkeyreentrancy.cpp
+    "${CMAKE_SOURCE_DIR}/src/input/HotkeyManager.cpp")
+target_link_libraries(tst_hotkeyreentrancy PRIVATE user32)
+
 gamehq_add_test(tst_configmanager
     tst_configmanager.cpp
     "${CMAKE_SOURCE_DIR}/src/config/ConfigManager.cpp")

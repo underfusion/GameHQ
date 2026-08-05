@@ -139,8 +139,8 @@ private:
     // handles; costs one generation compare + hash lookup unless the device
     // carries a bound raw-HID control or the diagnostics probe is open.
     void rawHidFallbackEvent(void* handle, void* hRawInput);
-    void routeRawHidUsageReport(const QString& identity, QSet<quint32>& previous,
-                                const QList<quint32>& current);
+    void routeRawHidUsageReport(void* handle, const QString& identity,
+                                quint64 stateEpoch, const QList<quint32>& current);
     void dropRawHidState(void* handle);   // synthesizes releases for held usages
     // Probe helpers: called only while m_probing (never on the idle fast path).
     void probeIgnoredEvent(void* handle, void* hRawInput);
@@ -182,6 +182,10 @@ private:
     int m_rawHidGeneration = -1;
     QHash<void*, int> m_rawHidEligible;      // 1 = bound gamepad HID, -1 = not ours
     QHash<void*, QSet<quint32>> m_rawHidPressed;   // (page<<16)|usage held per handle
+    // Bumped by every dropRawHidState(): a rawHidControl handler may tear a
+    // device down synchronously, so in-flight delivery must notice that its
+    // captured pressed-state snapshot is no longer valid and stop.
+    quint64 m_rawHidStateEpoch = 0;
 
     // Diagnostics probe state; all cleared when the probe window closes.
     bool m_probing = false;                  // one branch on the hot path when idle

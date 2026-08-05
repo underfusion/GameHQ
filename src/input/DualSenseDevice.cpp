@@ -9,6 +9,7 @@
 
 #include <QDebug>
 #include <QTimer>
+#include <QVarLengthArray>
 
 #include <windows.h>
 
@@ -334,6 +335,7 @@ void DualSenseDevice::forgetClassification(void* handle)
 // release is synthesized for every pressed usage before the state is dropped.
 void DualSenseDevice::dropRawHidState(void* handle)
 {
+    ++m_rawHidStateEpoch;   // invalidates any delivery loop currently in flight
     m_rawHidEligible.remove(handle);
     const auto held = m_rawHidPressed.take(handle);
     if (held.isEmpty())
@@ -386,49 +388,78 @@ void DualSenseDevice::rawHidFallbackEvent(void* handle, void* hRawInputV)
     if (!m_api->readPayload(hRawInputV, payload))
         return;
     const QString identity = m_ignoredHandles.value(handle);
-    QSet<quint32>& previous = m_rawHidPressed[handle];
     struct VisitContext {
         DualSenseDevice* device = nullptr;
+        void* handle = nullptr;
         const QString* identity = nullptr;
-        QSet<quint32>* previous = nullptr;
-    } context{this, &identity, &previous};
+        quint64 stateEpoch = 0;
+    } context{this, handle, &identity, m_rawHidStateEpoch};
     if (!m_api->visitButtonUsageReports(
             handle, payload, &context,
             [](void* opaque, const QList<quint32>& current) {
                 auto* visit = static_cast<VisitContext*>(opaque);
                 visit->device->routeRawHidUsageReport(
-                    *visit->identity, *visit->previous, current);
+                    visit->handle, *visit->identity, visit->stateEpoch, current);
             }))
         return;   // descriptor unavailable/unparseable: no fallback for this device
 }
 
-void DualSenseDevice::routeRawHidUsageReport(const QString& identity,
-                                             QSet<quint32>& previous,
+// A rawHidControl handler may synchronously tear this device down (binding
+// reload, provider detach, device removal → dropRawHidState), so no reference
+// or iterator into m_rawHidPressed may survive an emit: edges are computed
+// first, the stored state is fully committed, and only then are the edges
+// delivered from a local list, re-checking the state epoch after every emit.
+void DualSenseDevice::routeRawHidUsageReport(void* handle, const QString& identity,
+                                             quint64 stateEpoch,
                                              const QList<quint32>& current)
 {
-    auto& fallback = ModernInput::SelectiveRawHidFallback::instance();
-    // Preserve transitions inside one RAWINPUTHID batch instead of reducing
-    // the batch to its final state.
+    if (stateEpoch != m_rawHidStateEpoch)
+        return;   // state dropped earlier in this same RAWINPUTHID batch
+
+    // Preserve transitions inside one batch instead of reducing the batch to
+    // its final state. Inline capacity keeps the active-path allocation
+    // guarantee at 1/4/8 kHz (tst_rawinputflood).
+    QSet<quint32>& previous = m_rawHidPressed[handle];
+    QVarLengthArray<quint32, 8> pressed;
+    QVarLengthArray<quint32, 8> released;
     for (const quint32 usage : current) {
-        if (previous.contains(usage))
-            continue;
+        if (!previous.contains(usage))
+            pressed.append(usage);
+    }
+    for (const quint32 usage : previous) {
+        if (!current.contains(usage))
+            released.append(usage);
+    }
+    if (pressed.isEmpty() && released.isEmpty())
+        return;
+    for (const quint32 usage : pressed)
         previous.insert(usage);
+    for (const quint32 usage : released)
+        previous.remove(usage);
+    // `previous` must not be used past this point.
+
+    auto& fallback = ModernInput::SelectiveRawHidFallback::instance();
+    struct Edge {
+        QString control;
+        bool down = false;
+    };
+    QVarLengthArray<Edge, 8> edges;
+    for (const quint32 usage : pressed) {
         const QString control = fallback.observeUsage(
             identity, quint16(usage >> 16), quint16(usage & 0xFFFF), true);
         if (!control.isEmpty())
-            emit rawHidControl(identity, control, true);
+            edges.append({control, true});
     }
-    for (auto it = previous.begin(); it != previous.end();) {
-        if (current.contains(*it)) {
-            ++it;
-            continue;
-        }
-        const quint32 usage = *it;
-        it = previous.erase(it);
+    for (const quint32 usage : released) {
         const QString control = fallback.observeUsage(
             identity, quint16(usage >> 16), quint16(usage & 0xFFFF), false);
         if (!control.isEmpty())
-            emit rawHidControl(identity, control, false);
+            edges.append({control, false});
+    }
+    for (const Edge& edge : edges) {
+        emit rawHidControl(identity, edge.control, edge.down);
+        if (stateEpoch != m_rawHidStateEpoch)
+            return;   // handler tore the device down; releases were synthesized
     }
 }
 
