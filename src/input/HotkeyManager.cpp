@@ -221,7 +221,9 @@ void HotkeyManager::dispatch(const QString& bindingKey)
         return;   // duplicate delivery (e.g. injected input) — swallow
     it->lastFire.restart();
 
-    const QString& actionId = it->actionId;
+    // Copy, not reference: a synchronous slot on the signals below may rebind
+    // or clear this very binding, invalidating `it` and anything it points at.
+    const QString actionId = it->actionId;
     if (actionId == QLatin1String("global.toggle_overlay"))
         emit overlayTogglePressed();
     else if (actionId == QLatin1String("global.screenshot"))

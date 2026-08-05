@@ -1,5 +1,6 @@
 import QtQuick
 import GameHQ
+import "../helpers/PadNav.js" as PadNav
 
 // Reusable modal confirmation dialog (scrim + centred card + Cancel/confirm).
 // Styled from Theme. open()/close(); emits confirmed() or canceled().
@@ -16,8 +17,40 @@ Item {
     visible: false
     opacity: 0
 
-    function open()  { visible = true }
+    function open() {
+        visible = true
+        // Cancel is the safe pad landing spot; Cross must not destroy anything
+        // until the user deliberately moves to the confirm button.
+        Qt.callLater(function() { if (root.visible) cancelButton.forceActiveFocus() })
+    }
     function close() { visible = false }
+
+    // Pad routing while modal (see SettingsPage.padOverlay): Left/Right and
+    // Up/Down move between the two buttons, Cross fires the focused one,
+    // Circle cancels.
+    function padStep(direction) { padHorizontal(direction) }
+    function padHorizontal(direction) {
+        const active = Window.window ? Window.window.activeFocusItem : null
+        if (!active || !PadNav.isInside(active, root)) {
+            cancelButton.forceActiveFocus()
+            sounds.play("nav_tick")
+            return
+        }
+        const target = PadNav.horizontalTarget(root, active, direction)
+        if (target) {
+            target.forceActiveFocus()
+            sounds.play("nav_tick")
+        }
+    }
+    function padConfirm() {
+        const active = Window.window ? Window.window.activeFocusItem : null
+        if (active && PadNav.isInside(active, root) && active.clicked)
+            active.clicked()
+    }
+    function padBack() {
+        root.canceled()
+        root.close()
+    }
 
     Behavior on opacity { NumberAnimation { duration: Theme.durFast } }
     states: State {
@@ -76,6 +109,7 @@ Item {
                 anchors.right: parent.right
                 spacing: Theme.s12
                 AccentButton {
+                    id: cancelButton
                     label: root.cancelLabel
                     onClicked: { root.canceled(); root.close() }
                 }

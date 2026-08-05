@@ -36,6 +36,7 @@ everything in a controller-friendly overlay.</p>
 - **In-game gallery** — browse, play, favorite, reveal, and delete captures
   without leaving your game.
 - **Controller-first controls** — DualSense, XInput, keyboard, and mouse support
+- **Modern controller support** — app-local GameInput, true Share/Guide, extra buttons, and safe legacy fallback ([getting started](docs/getting-started.md), [compatibility guide](docs/controller-compatibility.md))
   with fully configurable bindings.
 - **One organized library** — GameHQ captures alongside watched Steam, Game Bar,
   NVIDIA, and OBS folders.

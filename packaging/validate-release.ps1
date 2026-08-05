@@ -50,6 +50,8 @@ $sourceZip = Join-Path $releaseRoot $sourceName
 $sourceChecksum = Join-Path $releaseRoot $sourceChecksumName
 $checksum = "$updateZip.sha256"
 $payloadRoot = Join-Path $root 'dist\.program-payload'
+$gameInputToolchain = Import-PowerShellDataFile (Join-Path $PSScriptRoot 'gameinput-toolchain.psd1')
+$gameInputRuntimeRelative = 'app/GameInputRedist.dll'
 foreach ($required in @($setup, $portableZip, $updateZip, $checksum, $sourceZip, $sourceChecksum)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Missing release artifact: $required" }
 }
@@ -126,6 +128,14 @@ foreach ($forbidden in @('portable.flag', 'Captures', 'gamehq-data', 'saveplay-d
 foreach ($entry in $payloadRoots) {
     if ($entry -notin $requiredPayloadRoots) { throw "Neutral payload contains unexpected path: $entry" }
 }
+$payloadGameInput = Join-Path $payloadRoot 'app\GameInputRedist.dll'
+if (-not (Test-Path -LiteralPath $payloadGameInput -PathType Leaf)) {
+    throw 'Neutral payload is missing the app-local GameInput runtime.'
+}
+$payloadGameInputHash = (Get-FileHash -LiteralPath $payloadGameInput -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($payloadGameInputHash -ne $gameInputToolchain.X64RuntimeSha256) {
+    throw "Neutral payload has an unpinned GameInput runtime: $payloadGameInputHash"
+}
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 function Get-ZipEntries([string]$Path) {
@@ -135,10 +145,12 @@ function Get-ZipEntries([string]$Path) {
 }
 $portableEntries = Get-ZipEntries $portableZip
 $updateEntries = Get-ZipEntries $updateZip
-foreach ($required in @('GameHQ.exe', 'GameHQUpdater.exe', 'portable.flag', 'app/GameHQ.exe')) {
+foreach ($required in @('GameHQ.exe', 'GameHQUpdater.exe', 'portable.flag', 'app/GameHQ.exe',
+        $gameInputRuntimeRelative)) {
     if ($portableEntries -notcontains $required) { throw "Portable ZIP is missing $required" }
 }
-foreach ($required in @('GameHQ.exe', 'GameHQUpdater.pending.exe', 'app/GameHQ.exe', 'update-package.json')) {
+foreach ($required in @('GameHQ.exe', 'GameHQUpdater.pending.exe', 'app/GameHQ.exe',
+        $gameInputRuntimeRelative, 'update-package.json')) {
     if ($updateEntries -notcontains $required) { throw "Update ZIP is missing $required" }
 }
 $allowedRoots = @('GameHQ.exe', 'GameHQUpdater.pending.exe', 'README.txt', 'LICENSE.txt',

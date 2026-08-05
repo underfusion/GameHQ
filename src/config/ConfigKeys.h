@@ -32,7 +32,15 @@ inline constexpr QLatin1StringView ReplaySegmentSeconds{ "replay.segment_seconds
 inline constexpr QLatin1StringView ReplayAuto{ "replay.auto" };                      // auto-arm master switch
 
 // input.* / audio.*
-inline constexpr QLatin1StringView InputShareHoldMs{ "input.share_hold_ms" };
+// Gesture timing. All three are read by the pattern recognizer; the editor
+// shows the same numbers, so a notice like "waits up to 300 ms" is never a
+// guess. InputShareHoldMs is the pre-0.7.3 name for the hold duration and is
+// migrated into InputDefaultHoldMs once, override-only.
+inline constexpr QLatin1StringView InputShareHoldMs{ "input.share_hold_ms" };      // LEGACY, read once
+inline constexpr QLatin1StringView InputDefaultHoldMs{ "input.default_hold_ms" };
+inline constexpr QLatin1StringView InputMultiTapIntervalMs{ "input.multi_tap_interval_ms" };
+inline constexpr QLatin1StringView InputChordWindowMs{ "input.chord_window_ms" };
+inline constexpr QLatin1StringView InputModernControllerSupport{ "input.modern_controller_support" }; // auto | off
 inline constexpr QLatin1StringView AudioEnabled{ "audio.enabled" };
 
 // storage.* — empty means "use the managed default root" (see CaptureLocations).

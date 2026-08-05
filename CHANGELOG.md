@@ -4,6 +4,314 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.3] - 2026-08-05
+
+### Highlights
+
+- **Controller bindings redesigned.** Assign button combinations, triple taps,
+  configurable gestures, and complete assignments from one editor.
+- **Modern controller foundation.** A GameInput pipeline adds dedicated
+  Share/Capture identities, extra-button discovery, wireless and hot-plug
+  handling, plus safe legacy fallback. Individual controller models remain
+  unverified until hardware-tested.
+- **Controller-first interface.** Settings and other scrollable screens now
+  support reliable pad navigation, automatic follow-scroll, right-stick
+  scrolling, and visible scrollbars.
+- **PS-button desktop shortcut.** Hold PS for two seconds to bring GameHQ
+  forward; hold it again to hide GameHQ and return focus to the previous game
+  or application.
+- **Major input hardening.** Duplicate actions, lost presses, high-polling
+  controller slowdown, and crashes caused by reentrant dispatch are prevented.
+
+### Fixed
+
+- Settings can now be driven entirely with a controller (0.7.3). Right from
+  the category list enters the options panel on its topmost control; Up/Down
+  jump to the nearest control in the row below/above instead of visiting
+  every segment of a segmented control; Left/Right move within the focused
+  row — including between the Primary and Secondary assignment slots of a
+  binding card — before backing out to the category list. Cross on an
+  assignment slot opens the assignment editor, and while any Input dialog is
+  open (assignment editor, conflict, compatibility, restore-defaults) all
+  pad directions stay trapped inside it, Cross activates the focused control,
+  and Circle is the only way out (cancelling a running capture first).
+  Dialogs land the pad cursor on their safe button when they open, closing
+  one returns focus to the control that opened it, and quiet buttons such as
+  the editor's Change/Record now show a visible focus ring.
+- After scrolling a Settings page with the right stick, the next D-pad press
+  now continues from what is on screen instead of jumping back to the row the
+  pad cursor was left on (0.7.3). Down enters at the top of the visible area
+  and Up at the bottom, so the view no longer snaps away from the section the
+  user just scrolled to. Entering the options panel from the category list
+  behaves the same way, and Left still backs out to the categories.
+- The blue "modified" indicator on customized binding rows and assignment
+  slots is now half-height and vertically centred, so it no longer pokes
+  past the cards' rounded left corners (0.7.3).
+- Binding a Hold gesture to Toggle Overlay no longer locks the app in an
+  endless overlay show/hide loop (0.7.3). Opening the overlay cancels all
+  pending input patterns; that cancellation could land in the middle of the
+  hold dispatch and rewind it, so the same hold re-fired the toggle roughly
+  20 times per second — regardless of releasing the button — until the
+  process ran out of Window Manager handles and crashed. The pattern
+  recognizer now detects the mid-dispatch invalidation and stops, so the
+  hold fires exactly once. The same guard covers Press bindings whose action
+  closes or opens the overlay.
+- Two defensive reentrancy guards in the input path (0.7.3, pre-release
+  hardening of the same bug class). Raw HID fallback delivery no longer holds
+  a reference into the per-device pressed-state store while emitting control
+  edges, so a handler that tears the device down mid-batch (binding reload,
+  provider detach, disconnect) can no longer leave delivery running on freed
+  state; held buttons still release exactly once. Keyboard-hotkey dispatch
+  now copies its action id before emitting, so a handler that clears or
+  rebinds the same hotkey during dispatch cannot invalidate the action being
+  delivered. Both guards are covered by new regression tests.
+- Losing the window focus now cancels every in-flight desktop gesture (0.7.3,
+  release hardening). A button pressed in the gallery — Cross for confirm, or
+  its one-second bulk-select hold — could previously complete after focus had
+  already moved to a game, firing a desktop action into the background. Focus
+  changes now cancel pending patterns the same way opening the overlay does,
+  so the PS-hold Show/Hide GameHQ handoff performs each action exactly once.
+- Upgrading from 0.7.1 with a saved PS-button (Guide) "Press" assignment no
+  longer disables the new two-second PS hold (0.7.3). The stored overlay
+  toggle is migrated from Press to a single Tap — it still toggles the
+  overlay, now on release — so it can coexist with the hold. A Guide Press
+  the user bound to a different action is preserved untouched; the default
+  PS-hold action is instead switched off for that controller profile (never
+  both actions from one press) and can be re-assigned in Settings → Input.
+- L1/R1 can no longer switch the Settings category while a dropdown opened
+  with the pad is still showing (0.7.3); the dropdown keeps the pad to itself
+  until it commits or cancels.
+
+### Changed
+
+- Scrollable sections now show a scrollbar (0.7.3). Settings pages, the
+  assignment editor dialog, Help, and the release notes share one themed
+  scrollbar that is visible whenever the content overflows — not only while
+  scrolling — so it is obvious a section scrolls before the first move.
+- The pad cursor survives its own actions (0.7.3). Activating a control that
+  rebuilds or disables itself — most visibly "Restore defaults", which
+  reloads every binding card — used to strand the controller focus so no
+  further navigation worked; focus now returns to that control, or to
+  whatever sits closest to its old position.
+- Simpler gallery navigation with the pad (0.7.3). The thumbnail grid no
+  longer row-wraps: pressing Left on the leftmost column enters the sidebar,
+  pressing Right on a row's last thumbnail simply stops, and pressing Right
+  in the sidebar returns to the grid. Up/Down (held for auto-repeat) remain
+  the way to move between rows. L1/R1 keep jumping between the panels as a
+  shortcut for now.
+
+### Added
+
+- Hold the PS button for 2 seconds to summon the GameHQ window over the game
+  with real focus — hold again while it is focused to hide it and return
+  focus to the game (0.7.3). Exposed as a new bindable action ("Show / Hide
+  GameHQ Window") in Settings → Input. The PS overlay toggle consequently
+  moved from press to tap, so a hold no longer opens the overlay on the way;
+  if the overlay is open when the window is summoned, it steps aside and the
+  game still gets focus back afterwards.
+- Right-stick scrolling on the desktop window (0.7.3). The right stick now
+  works like a mouse wheel wherever a view can scroll: the gallery grid, the
+  Settings options pages, the assignment editor dialog, Help, and the full
+  release notes. Scrolling moves only the viewport — the selection stays put,
+  and the next D-pad move snaps the view back to the selected item. Exposed
+  as bindable "Scroll Up"/"Scroll Down" desktop actions (Sony and XInput
+  backends; WinMM pads have no reliable right-stick axis mapping).
+- Pad selection now always stays on screen (0.7.3). The gallery grid
+  guarantees the selected tile is fully visible after every D-pad step, and
+  the sidebar's games list follows the pad cursor when it walks rows outside
+  the clipped viewport — previously the cursor could disappear above or
+  below the view with no auto-scroll. The Settings options panel now really
+  follows the pad focus too: its reveal-on-focus hookup targeted the window
+  through a non-Item attached property, so it silently never connected and
+  the focused control could walk out of view.
+- Cross-provider controller integration (0.7.3). All input providers — Sony
+  Raw Input, GameInput, XInput, WinMM and the selective Raw HID fallback —
+  now report into one shared physical-controller registry and route
+  Share/Guide presses through one shared capability router, so a single
+  physical button press can never execute twice through two provider
+  pipelines. GameInput Share/Guide stays withheld for a controller that
+  cannot be safely correlated with a connected legacy pad (for example two
+  identical controllers, or a remapper changing the reported identity).
+  Bindings saved for "this controller" now fire regardless of which provider
+  delivers the edge and survive reconnects.
+- The selective Raw HID fallback is now a real input producer: a bound button
+  on a gamepad-class HID device no backend drives is decoded from its own
+  HID report descriptor (press and release), routed through the shared
+  dedup, and executes its assigned action. Devices without bound buttons
+  keep the zero-cost ignored path.
+- Settings → Input now shows a "Controller button layout changed" row with
+  "Review buttons" (3-second probe) and "Confirm current layout" actions, so
+  extra buttons can be re-enabled after a firmware or mode change instead of
+  staying silently disabled.
+- The complete GameInput v3 standard-control map (including L3/R3 stick
+  clicks, C/Z face buttons and the four paddle flags) is defined and tested,
+  and buttons whose reported label names a standard control are excluded
+  from "Extra Button N" enumeration so one physical button cannot appear
+  under two identities.
+
+### Fixed
+
+- Modern-controller correction gate (post-audit, pre-beta). GameInput
+  standard-control readings are shadow-only again until Sony/XInput/WinMM feed
+  the same physical-controller registry — routing both pipelines could execute
+  one physical press twice. A quick button tap can no longer be lost when
+  readings coalesce under load, and a stale reading can no longer resurrect a
+  just-removed controller. Turning modern controller support Off and back to
+  Auto works again. A controller's anonymous identity is now deterministic
+  across sessions and detection order, conflicting device IDs behind one
+  container are never merged, and capability changes update the existing
+  registry entry. Share and Guide availability are reported per button instead
+  of jointly. A changed extra-button layout now releases its held controls
+  through the capability router and stays silent until reconfirmed. GameInput
+  reading callbacks no longer rebuild device descriptors or touch the layout
+  database on every reading.
+
+### Added
+
+- Groundwork for modern controller support: GameHQ now pins Microsoft's
+  GameInput 3.5.262, ships the MIT-licensed header and loader in-tree, and a
+  small probe tool verifies that the runtime can be found — bundled next to
+  the app, installed system-wide, or not at all, in which case the existing
+  controller support simply keeps working.
+
+- **Button combinations.** A controller action can now be assigned to two
+  buttons: hold the first, press the second. Several combinations can share the
+  same first button — the second one decides which action runs. Combinations are
+  controller-only, and the buttons keep their normal jobs when the combination
+  is not completed.
+- **Triple tap**, alongside single and double tap. Tapping three times runs the
+  triple-tap action only; it no longer also runs the single and double ones on
+  the way there.
+- **Edit Assignment dialog.** Assigning a button now opens one dialog that shows
+  the whole assignment: single button or combination, how it is pressed, and how
+  long a hold takes. Recording a button is an explicit step, so your controller
+  keeps navigating the dialog until you ask it to listen — and while it is
+  listening, pressing Share records Share instead of taking a screenshot.
+- Settings → Input → Gesture timing now also exposes the **multi-tap interval**
+  and the **combination window**, and the dialog explains in plain words when an
+  action has to wait for one of them.
+- The copied diagnostics now include the gesture timing, your controller
+  assignments, the last recognized patterns, and whether the Guide/PS button has
+  ever reached GameHQ this session — the usual reason a combination never fires.
+
+### Changed
+
+- Controller gestures now count taps instead of hard-coding "double tap", which
+  is what will make triple taps assignable. Every existing assignment keeps
+  working exactly as before, including per-controller and cleared ones.
+- The hold threshold in Settings is now the single source of truth for how long
+  "hold" means. Built-in hold bindings follow that setting instead of keeping a
+  copy of it, so changing it applies everywhere at once. Hold-to-bulk-select in
+  the gallery keeps its own shorter, deliberate one second.
+
+### Fixed
+
+- A controller or keyboard assignment that has become unreadable — corrupted in
+  the database, or saved by a newer version of GameHQ that this one does not
+  understand — is now ignored and the action falls back to its built-in default
+  instead of being guessed at and possibly firing the wrong thing. Every
+  ignored assignment is listed in the copied diagnostics so it is obvious which
+  one needs to be set again.
+
+- Assigning a controller button to an empty binding slot now keeps the gesture
+  that slot really means — a second Screenshot button is a tap, a second Save
+  Replay button is a hold — instead of a plain press that was then reported as
+  conflicting with everything else sharing the button. The capture prompt now
+  shows the gesture being assigned, and clearing a binding no longer quietly
+  turns its tap, hold, or double-tap into a press on the next assignment.
+- Settings cards no longer log a warning and now fade smoothly when a card
+  changes colour, for example when a binding notice appears.
+- Choosing Replace in the binding conflict dialog no longer risks losing the
+  displaced action's custom assignment if saving fails halfway: the previous
+  assignment is put back exactly as it was, not reset to the factory default.
+- The overlay now verifies that Windows actually gave it the screen focus when
+  it opens, retrying briefly when the system refuses. If focus could not be
+  taken, the overlay says so with a small notice instead of silently leaving
+  the game reacting to your controller behind it.
+- Backend switching (for example DSX changing between Sony and Xbox modes) was
+  hardened to preserve the first press and prevent duplicate actions: the
+  first button press after a switch is held briefly and then performed once
+  the old input path proves it has really gone quiet. A quick tap that waited
+  stays a tap — it never turns into a hold — and a press that was only an
+  echo of the old path is still discarded.
+- The controller button probe now listens for the full three seconds it
+  advertises and reads every report from pads up to 8000 Hz, so a quick tap at
+  any moment of the window is caught. Only an extreme flood makes it sample,
+  spread evenly across the window, and it says so in the result.
+- Binding problems now say what actually went wrong instead of sharing one
+  message: a shortcut Windows already owns, a binding that could not be saved,
+  and a controller button your controller never reports are three different
+  notices.
+- One button press can no longer trigger two actions when controller software
+  (such as DSX) makes the same pad visible to Windows through several input
+  APIs at once. GameHQ now treats near-simultaneous reports from a second API
+  as echoes of the same press, and only hands control to another API when the
+  current one goes silent, disconnects, or a better connection to the same
+  controller appears.
+- Custom bindings for Xbox-type controllers now follow the physical controller
+  where it can be identified, instead of whichever controller happens to sit
+  in the same slot. When the controller cannot be identified, Settings says so
+  plainly, and a new "Adopt per-slot bindings" action lets you copy older
+  slot-based assignments to a recognized controller — nothing is migrated or
+  deleted behind your back.
+
+- Pressing the Share button while a clip is playing now grabs one frame from
+  that clip. It previously grabbed the frame *and* took a desktop screenshot
+  from the same press, saving two files where the user asked for one. Holding
+  the same button still saves the replay, and double-tapping it still opens
+  the overlay.
+- A keyboard shortcut that Windows or another application already owns is no
+  longer saved as if it worked. GameHQ now claims the shortcut first and tells
+  you when it cannot, leaving your previous shortcut in place instead of
+  showing one that silently does nothing until the next restart.
+
+### Changed
+
+- Settings now explains what a button assignment actually does instead of
+  refusing anything that looks similar. A genuine clash — two things that
+  would fire at once — opens a dialog offering Replace, Choose another, or
+  Cancel. Assignments that only *look* like clashes are kept and explained:
+  sharing one button between a tap and a hold, an assignment that replaces
+  another only while a clip is playing, and a duplicate that has no effect
+  each get their own note.
+- Assigning the same action to two different keys is no longer reported as a
+  conflict. Having both Ctrl+Shift+S and F12 take a screenshot is valid and
+  now works without a warning.
+
+### Added
+
+- Controller diagnostics in the copied summary (Settings → Advanced → Copy
+  diagnostics): which controller backend is active and every switch, each
+  device Windows offered with how GameHQ classified it, measured event rates,
+  the last controller inputs received, whether the overlay actually took
+  focus, whether a pad is hidden by HidHide, and whether the previous session
+  ended unexpectedly. Serial numbers and full device paths are never included.
+- "Identify a controller button" in Settings → Input: press it, then press any
+  button on your controller within 3 seconds — GameHQ records what actually
+  arrived, including buttons it does not recognize, so unsupported controllers
+  (such as the GameSir G7 Pro) can be mapped from a report instead of
+  guesswork.
+- A design document for Exclusive Controller Mode, the feature that would stop
+  games receiving input while the overlay is open
+  (`docs/design/exclusive-controller-mode.md`). It is not implemented; the
+  document records why, and what a future implementation would have to
+  guarantee.
+
+### Additional reliability improvements
+
+- Controllers that GameHQ does not drive can no longer slow the app down.
+  A pad polling at up to 8000 times a second — several current models
+  advertise this — was re-examined on every single report, on the same thread
+  that draws the interface. Each device is now identified once and then
+  recognised instantly, and its reports are not read any further.
+- The Windows raw-input messages GameHQ receives while a game is in the
+  foreground are now completed the way Windows documents, instead of being
+  dropped once handled.
+
+- The log now records how many controller reports each device sends per
+  second, summarised on an interval and only when the number changes
+  meaningfully, so a flooding controller is visible without filling the log.
+
 ## [0.7.1] - 2026-07-26
 
 ### Added

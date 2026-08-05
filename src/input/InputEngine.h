@@ -1,9 +1,13 @@
 #pragma once
 #include "input/ActionCatalog.h"
+#include "input/ControlId.h"
+#include "input/ProviderIntegration.h"
 #include <QElapsedTimer>
 #include <QHash>
+#include <QSet>
 #include <QObject>
 #include <QString>
+#include <QVariantList>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -19,6 +23,7 @@ class BindingEditorModel;
 class HotkeyManager;
 class MouseHookDevice;
 class QTimer;
+namespace ModernInput { class GameInputRouter; }
 
 // Owns the controller backends (Sony Raw Input, XInput, WinMM) + Share
 // tap/hold detector and maps buttons onto GameHQ actions
@@ -45,6 +50,15 @@ class InputEngine : public QObject
     Q_PROPERTY(QString controllerWarning READ controllerWarning NOTIFY controllerWarningChanged)
     Q_PROPERTY(bool controllerFixAvailable READ controllerFixAvailable NOTIFY controllerWarningChanged)
     Q_PROPERTY(QObject* bindingEditor READ bindingEditor CONSTANT)
+    // Diagnostics button probe (Settings → Input): startButtonProbe() opens a
+    // 3 s window in which raw button changes — including ones GameHQ normally
+    // ignores — are summarized into probeStatus and the diagnostics export.
+    Q_PROPERTY(QString probeStatus READ probeStatus NOTIFY probeStatusChanged)
+    Q_PROPERTY(bool probeRunning READ probeRunning NOTIFY probeStatusChanged)
+    Q_PROPERTY(QString modernControllerStatus READ modernControllerStatus NOTIFY modernControllerChanged)
+    Q_PROPERTY(QString modernControllerSummary READ modernControllerSummary NOTIFY modernControllerChanged)
+    Q_PROPERTY(bool modernLayoutWarning READ modernLayoutWarning NOTIFY modernControllerChanged)
+    Q_PROPERTY(QVariantList modernLayoutWarnings READ modernLayoutWarnings NOTIFY modernControllerChanged)
 public:
     InputEngine(ConfigManager* config, CaptureDatabase* db, HotkeyManager* hotkeys,
                 QObject* parent = nullptr);
@@ -63,6 +77,20 @@ public:
     // reported through controllerWarning.
     Q_INVOKABLE void fixHiddenController();
 
+    QString probeStatus() const { return m_probeStatus; }
+    bool probeRunning() const { return m_probeRunning; }
+    Q_INVOKABLE void startButtonProbe();
+    QString modernControllerStatus() const;
+    QString modernControllerSummary() const;
+    bool modernLayoutWarning() const;
+    QVariantList modernLayoutWarnings() const;
+    Q_INVOKABLE void copyControllerCompatibilityReport() const;
+    // "Confirm current layout" in Settings → Input: accepts the observed
+    // extra-button layout of every controller carrying a layout warning, so
+    // extra buttons resume routing after a firmware/mode change. The user
+    // reviews the detected buttons via the 3 s probe / summary first.
+    Q_INVOKABLE void confirmModernControllerLayout(const QString& logicalId);
+
 public slots:
     void setOverlayVisible(bool visible);
     // Desktop gallery window's OS focus state (Main.qml binds this to
@@ -80,6 +108,9 @@ signals:
     void screenshotRequested();
     void replayRequested();
     void overlayToggleRequested();
+    // Hold PS (2 s): summon the desktop window over the game with focus, or
+    // dismiss it again. Consumed by App, which owns the window + foreground.
+    void desktopWindowToggleRequested();
     // Circle: consumed entirely in QML now (OverlayWindow.qml) — pops the
     // action menu / sidebar focus first, only closes the overlay at the
     // root level. Kept named "HideRequested" since Esc still means "close".
@@ -104,6 +135,7 @@ signals:
     void desktopTabStep(int direction);   // L1/R1: switch panel focus (sidebar ↔ grid), -1/+1
     void desktopSettings();               // Options: open Settings
     void desktopZoom(int direction);      // L2/R2: thumbnail size, -1/+1
+    void desktopScroll(int direction);    // right stick: wheel-like scroll, -1/+1
     void desktopBulkToggle();             // Cross held: enter/leave bulk selection
     void playbackPlayPause();
     void playbackSeek(int direction);
@@ -115,8 +147,14 @@ signals:
     void lastInputChanged();
     void controllerStatusChanged();
     void controllerWarningChanged();
+    void probeStatusChanged();
+    void modernControllerChanged();
 
 private:
+    void migrateLegacyHoldSetting();
+    void applyGestureTiming();
+    QString m_lastTimingDescription;
+
     void onControlPressed(const QString& controlId, int family,
                           const QString& backend, const QString& fingerprint,
                           const QString& displayName);
@@ -124,10 +162,42 @@ private:
                            const QString& backend, const QString& fingerprint,
                            const QString& displayName);
     void attachGamepad(std::unique_ptr<Gamepad> pad, const QString& displayName);
+    // t25 provider-integration bookkeeping: which shared-registry provider a
+    // legacy backend reports as, and (re-)observing its attachment when it
+    // connects, disconnects, or changes fingerprint.
+    ModernInput::ControllerProvider providerFor(const Gamepad* pad) const;
+    void observeLegacyBackend(Gamepad* pad, const ControlId::DeviceProfile& profile);
+    void removeLegacyBackend(Gamepad* pad, const QString& providerDeviceId = {});
+    QString canonicalProfile(Gamepad* pad, const QString& providerDeviceId) const;
+    void configureLogicalProfile(const QString& logicalId,
+                                 const QStringList& migrationAliases = {});
+    // Routes a legacy Capture/Guide edge through the shared capability router
+    // so the same physical press arriving via GameInput cannot double-fire.
+    // Returns false when the edge is a cross-provider duplicate.
+    bool routeLegacySystemEdge(Gamepad* source, const QString& providerDeviceId,
+                               const QString& controlId, bool pressed);
+    bool hasExplicitViewBinding(const QString& logicalProfile) const;
     void updateActiveBackend();
     void activateBackend(Gamepad* pad, const QString& reason);
+    // Pending-candidate confirmation: true once `source` has carried input on
+    // its own long enough to take the active role before the silence threshold.
+    bool confirmCandidate(Gamepad* source, qint64 now, qint64 activeLastControlMs);
+    // Hold / drop / deliver the first press of an unconfirmed candidate.
+    void holdCandidatePress(Gamepad* source, const QString& controlId, int family,
+                            const QString& fingerprint, qint64 pressedMs);
+    void clearPendingCandidate();
+    void resolvePendingCandidate(int generation);
+    struct PendingPress;
+    void replayPendingPress(const PendingPress& press);
+    void deliverPress(Gamepad* source, const QString& controlId, int family,
+                      const QString& fingerprint);
     bool backendConnected(const Gamepad* pad) const;
     QString backendDisplayName(const Gamepad* pad) const;
+    int backendPriority(const Gamepad* pad) const;   // Sony 3 > XInput 2 > WinMM 1
+    // Correlates the XInput pad with the IG_ devices Raw Input sees and, when
+    // unambiguous, keys its bindings on real hardware identity instead of
+    // the slot number (see ControllerIdentity).
+    void updateXInputIdentity();
     void setLastInput(const QString& text);
     void setControllerStatus(const QString& text);
     bool desktopCanReceiveInput() const;
@@ -143,6 +213,7 @@ private:
     void handleScreenshot(const QString&)             { emit screenshotRequested(); }
     void handleSaveReplay(const QString&)             { emit replayRequested(); }
     void handleToggleOverlay(const QString&)          { emit overlayToggleRequested(); }
+    void handleToggleDesktop(const QString&)          { emit desktopWindowToggleRequested(); }
     void handleOverlayNavigateLeft(const QString& tc)  { startNavRepeat(tc, -1, [this](int d) { emit overlayNavigate(d); }); }
     void handleOverlayNavigateRight(const QString& tc) { startNavRepeat(tc,  1, [this](int d) { emit overlayNavigate(d); }); }
     void handleOverlayNavigateUp(const QString& tc)    { startNavRepeat(tc, -1, [this](int d) { emit overlayNavigateVertical(d); }); }
@@ -169,6 +240,8 @@ private:
     // R2 should sweep the thumbnails up, not step once per pull.
     void handleDesktopZoomOut(const QString& tc)       { startNavRepeat(tc, -1, [this](int d) { emit desktopZoom(d); }); }
     void handleDesktopZoomIn(const QString& tc)        { startNavRepeat(tc,  1, [this](int d) { emit desktopZoom(d); }); }
+    void handleDesktopScrollUp(const QString& tc)      { startNavRepeat(tc, -1, [this](int d) { emit desktopScroll(d); }); }
+    void handleDesktopScrollDown(const QString& tc)    { startNavRepeat(tc,  1, [this](int d) { emit desktopScroll(d); }); }
     void handleDesktopBulkToggle(const QString&)       { emit desktopBulkToggle(); }
     void handlePlaybackPlayPause(const QString&)       { emit playbackPlayPause(); }
     void handlePlaybackSeekBack(const QString& tc)     { startNavRepeat(tc, -1, [this](int d) { emit playbackSeek(d); }); }
@@ -195,6 +268,15 @@ private:
     std::unique_ptr<BindingRuntime> m_runtime;
     std::unique_ptr<BindingEditorModel> m_bindingEditor;
     std::unique_ptr<MouseHookDevice> m_mouse;
+    // Shared t25 integration: one PhysicalControllerRegistry and one
+    // CapabilityEventRouter for every provider (Sony Raw, GameInput, XInput,
+    // WinMM, selective Raw HID). Declared before m_gameInput, which holds a
+    // pointer into it.
+    ModernInput::ProviderIntegration m_providers;
+    QHash<Gamepad*, QSet<QString>> m_legacyObservedIds;
+    QHash<QString, QStringList> m_profileMigrationAliases;
+    QSet<QString> m_legacyViewFallbackHeld;
+    std::unique_ptr<ModernInput::GameInputRouter> m_gameInput;
     std::vector<std::unique_ptr<Gamepad>> m_pads;
     DualSenseDevice* m_sonyPad = nullptr;
     XInputDevice* m_xinputPad = nullptr;
@@ -202,7 +284,22 @@ private:
     Gamepad* m_activeBackend = nullptr;   // the one backend whose events route
     QElapsedTimer m_controllerClock;
     QHash<Gamepad*, qint64> m_backendLastControlMs;
-    QHash<Gamepad*, QString> m_backendLastControlId;
+    // First event of each non-active backend's current pending run; cleared on
+    // takeover and on disconnect, restarted whenever the active backend speaks.
+    QHash<Gamepad*, qint64> m_backendCandidateFirstMs;
+    // The one press held while a candidate backend is being confirmed. Empty
+    // source = nothing held. `released` records that the user already let go,
+    // so the replay stays a tap.
+    struct PendingPress {
+        Gamepad* source = nullptr;
+        QString controlId;
+        QString fingerprint;
+        int family = 0;
+        qint64 pressedMs = 0;
+        bool released = false;
+    };
+    PendingPress m_pending;
+    int m_pendingGeneration = 0;   // cancels a superseded confirmation timer
     bool m_sonyConnected = false;
     bool m_xinputConnected = false;
     bool m_winmmConnected = false;
@@ -212,6 +309,8 @@ private:
     QString m_lastInput;
     QString m_controllerStatus;
     QString m_controllerWarning;
+    QString m_probeStatus;
+    bool m_probeRunning = false;
     bool m_controllerFixAvailable = false;
     void setControllerWarning(const QString& text, bool fixAvailable);
     QTimer* m_fixWatch = nullptr;        // polls the elevated helper process

@@ -70,7 +70,9 @@ quint32 mapWinMMState(const JOYINFOEX& info, bool ds4Layout)
 
     // Unsigned 0..65535 axes centered mid-range, Y growing downward. No
     // hysteresis here (return zone == deadzone), matching how this backend has
-    // always behaved.
+    // always behaved. The right stick is deliberately NOT decoded here: which
+    // of the Z/R/U/V axes it lands on is not standardized across generic pads,
+    // and a wrong guess would turn a trigger into phantom scrolling.
     constexpr StickNav::AxisConfig kNav{ 32767, 16000, 16000, false };
     s |= StickNav::bits(kNav, static_cast<int>(info.dwXpos), static_cast<int>(info.dwYpos));
 
@@ -107,13 +109,18 @@ ControlId::DeviceProfile WinMMDevice::profile() const
 {
     if (!m_connected)
         return {};
+    const QString model = QStringLiteral("%1:%2")
+                              .arg(m_vendorId, 4, 16, QLatin1Char('0'))
+                              .arg(m_productId, 4, 16, QLatin1Char('0'));
+    const QString endpoint = QStringLiteral("winmm.slot%1").arg(m_activeId);
     return ControlId::DeviceProfile{
         QStringLiteral("WinMM joystick"),
-        QStringLiteral("%1:%2").arg(m_vendorId, 4, 16, QLatin1Char('0'))
-                                .arg(m_productId, 4, 16, QLatin1Char('0')),
+        endpoint,
         m_ds4Layout ? ControlId::ControllerFamily::PlayStation : ControlId::ControllerFamily::Xbox,
         m_ds4Layout ? QStringLiteral("WinMM joystick (Sony layout)")
                     : QStringLiteral("WinMM joystick (Xbox layout)"),
+        model,
+        endpoint,
     };
 }
 
@@ -204,10 +211,12 @@ void WinMMDevice::emitEdges(quint32 buttons)
         const quint32 mask = 1u << b;
         if (!(changed & mask))
             continue;
+        const QString control = (b == Share && !m_ds4Layout)
+            ? ControlId::ViewBack : controlIdFor(b);
         if (buttons & mask)
-            publishButtonPressed(b);
+            publishControlPressed(control);
         else
-            publishButtonReleased(b);
+            publishControlReleased(control);
     }
     m_prevButtons = buttons;
 }

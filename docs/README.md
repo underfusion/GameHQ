@@ -4,6 +4,9 @@ Technical and product documentation for contributors and maintainers.
 
 ## Start here
 
+- [Getting Started](getting-started.md) — screenshots, replay, overlay, bindings, and controller probe.
+- [Controller Compatibility](controller-compatibility.md) — providers, Share/View, extras, reconnects, and reports.
+
 - [Development Setup](dev-setup.md) — toolchain, configure, and build steps.
 - [Architecture](architecture.md) — modules, data flow, and repository layout.
 - [Product Specification](product-spec.md) — intended behavior and user flows.

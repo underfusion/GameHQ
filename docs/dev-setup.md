@@ -127,6 +127,18 @@ SQLite trigger that raises `ABORT`, then asserts the whole pass rolled back —
 including the "repairs done" marker, so the pass is retried instead of skipped
 forever.
 
+`tst_rawinputflood` is the second exception, for the same reason in a different
+shape: it drives the real `DualSenseDevice` through the injectable
+`RawInputApi` seam, because the property under test — a controller polling at
+8000 Hz costs one header read and one hash lookup, with no payload fetch and no
+allocation — only exists in the backend, and a real `HRAWINPUT` cannot be
+fabricated. The fake overrides every OS call, so the test never touches the
+machine's devices; it links the Win32 implementation only because the
+production constructor references it. It also replaces the global
+`operator new` to count allocations. That counter sees this executable's own
+allocations, not Qt's (those happen inside `Qt6Core.dll`), so the seam's
+payload-read counter — not the allocation count — is the primary evidence.
+
 ## MSVC note
 
 The production project currently uses the MinGW raw-ABI path for Windows

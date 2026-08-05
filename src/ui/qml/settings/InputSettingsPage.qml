@@ -9,6 +9,14 @@ SettingsPage {
     pageDescription: "Configure controller, keyboard, and mouse shortcuts without changing navigation behavior."
     readonly property var editor: input.bindingEditor
 
+    // Whichever modal is up owns the pad (ordered by stacking: the conflict
+    // and compatibility prompts sit above the assignment editor).
+    padOverlay: compatibilityDialog.visible ? compatibilityDialog
+              : conflictDialog.visible ? conflictDialog
+              : resetProfileDialog.visible ? resetProfileDialog
+              : assignmentDialog.visible ? assignmentDialog
+              : null
+
     SettingsSection {
         eyebrow: "Devices"
         title: "Input devices"
@@ -63,6 +71,50 @@ SettingsPage {
         }
     }
 
+    // Non-blocking result of the last assignment. Deliberately its own section
+    // on its own property: input.controllerWarning above is reserved for
+    // HidHide/cloaked-pad state, and a routine binding notice must never
+    // overwrite the one warning the user cannot diagnose on their own.
+    // HardConflict never lands here — it takes over the modal dialog instead.
+    SettingsSection {
+        visible: editor.relationNotice.length > 0
+                 && editor.relationKind !== "none"
+                 && editor.relationKind !== "hard_conflict"
+        // Three different failures, three different words. "Button not
+        // reported" is only ever the controller/backend case — a chord Windows
+        // owns and a failed write are separate kinds with their own copy.
+        eyebrow: editor.relationKind === "context_override" ? "Context"
+                 : editor.relationKind === "conversion_required" ? "Compatibility"
+                 : editor.relationKind === "unsupported_input" ? "Not available"
+                 : editor.relationKind === "hotkey_unavailable" ? "In use"
+                 : editor.relationKind === "persistence_error" ? "Not saved"
+                 : editor.relationKind === "redundant" ? "Duplicate"
+                                                       : "Shared button"
+        title: editor.relationKind === "context_override" ? "This button changes meaning"
+               : editor.relationKind === "conversion_required" ? "Assignment conversion required"
+               : editor.relationKind === "unsupported_input" ? "Button not reported"
+               : editor.relationKind === "hotkey_unavailable" ? "Shortcut already taken"
+               : editor.relationKind === "persistence_error" ? "Could not save this binding"
+               : editor.relationKind === "redundant" ? "Already assigned"
+                                                     : "One button, several gestures"
+        description: editor.relationNotice
+        // Context overrides and the three failure kinds are worth a second
+        // look; shared gestures and duplicates are informational, so they stay
+        // quiet.
+        variant: editor.relationKind === "context_override"
+                 || editor.relationKind === "conversion_required"
+                 || editor.relationKind === "unsupported_input"
+                 || editor.relationKind === "hotkey_unavailable"
+                 || editor.relationKind === "persistence_error" ? "warning" : "status"
+        headerAction: Component {
+            AccentButton {
+                label: "Dismiss"
+                quiet: true
+                onClicked: editor.dismissRelationNotice()
+            }
+        }
+    }
+
     SettingsSection {
         eyebrow: "Profile"
         title: "Test and restore"
@@ -84,20 +136,64 @@ SettingsPage {
                          : "Remove overrides for the selected device type and shared profile."
             AccentButton { label: "Restore defaults"; quiet: true; onClicked: resetProfileDialog.open() }
         }
+        SettingsRow {
+            visible: editor.legacyCopyAvailable
+            label: "Adopt per-slot bindings"
+            description: "Copy bindings saved for any controller in this slot to this specific controller. The originals are kept."
+            AccentButton {
+                label: "Copy to this controller"
+                quiet: true
+                onClicked: editor.copyLegacyOverridesToController()
+            }
+        }
+        SettingsRow {
+            label: "Identify a controller button"
+            description: input.probeRunning || input.probeStatus.length > 0
+                         ? input.probeStatus
+                         : "Records the next 3 seconds of raw button changes — including buttons GameHQ does not recognize — into the diagnostics you can copy from Advanced."
+            AccentButton {
+                label: "Start 3-second probe"
+                quiet: true
+                enabled: !input.probeRunning
+                onClicked: input.startButtonProbe()
+            }
+        }
     }
 
     SettingsSection {
         eyebrow: "Gestures"
         title: "Gesture timing"
-        description: "Tune how long a capture button must be held before it becomes a replay action."
+        description: "How long GameHQ waits before it decides what a button press meant."
         SettingsRow {
-            label: "Capture-button hold time"
-            description: "A completed hold saves replay and consumes the screenshot tap."
+            label: "Hold time"
+            description: "How long a button must be held for a hold action. A completed hold consumes the tap."
             SettingsCombo {
-                configKey: "input.share_hold_ms"; defaultValue: 2000
+                configKey: "input.default_hold_ms"; defaultValue: 2000
                 options: [
                     { label: "1.0 seconds", value: 1000 }, { label: "1.5 seconds", value: 1500 },
                     { label: "2.0 seconds", value: 2000 }, { label: "3.0 seconds", value: 3000 }
+                ]
+            }
+        }
+        SettingsRow {
+            label: "Multi-tap interval"
+            description: "How long a single tap waits when the same button also has a double or triple tap."
+            SettingsCombo {
+                configKey: "input.multi_tap_interval_ms"; defaultValue: 300
+                options: [
+                    { label: "200 ms (fast)", value: 200 }, { label: "300 ms", value: 300 },
+                    { label: "400 ms", value: 400 }, { label: "500 ms (relaxed)", value: 500 }
+                ]
+            }
+        }
+        SettingsRow {
+            label: "Combination window"
+            description: "How long the first button of a combination waits for the second one."
+            SettingsCombo {
+                configKey: "input.chord_window_ms"; defaultValue: 300
+                options: [
+                    { label: "200 ms (fast)", value: 200 }, { label: "300 ms", value: 300 },
+                    { label: "400 ms", value: 400 }, { label: "500 ms (relaxed)", value: 500 }
                 ]
             }
         }
@@ -109,140 +205,149 @@ SettingsPage {
         title: "Assignments"
         description: "Primary and secondary slots are independent. Contexts can reuse the same input safely."
 
-        GridLayout {
-            Layout.fillWidth: true
-            visible: assignmentsSection.width >= 820
-            columns: 4
-            columnSpacing: Theme.s12
-            Item { Layout.fillWidth: true }
-            Repeater {
-                model: [
-                    { label: "PRIMARY", width: 210 },
-                    { label: "SECONDARY", width: 210 },
-                    { label: "ACTION", width: 76 }
-                ]
-                delegate: Text {
-                    text: modelData.label
-                    color: Theme.textFaint
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontCaption
-                    font.letterSpacing: Theme.letterSpacingWide
-                    Layout.preferredWidth: modelData.width
-                }
-            }
-        }
-
         Repeater {
             model: editor.rows
-            delegate: ColumnLayout {
+            delegate: Rectangle {
+                id: actionCard
+                property bool modified: Boolean(modelData.modified)
+
                 Layout.fillWidth: true
-                spacing: Theme.s8
+                implicitHeight: actionLayout.implicitHeight + Theme.s32
+                radius: Theme.radiusM
+                color: modified
+                       ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.07)
+                       : Theme.bg1
+                border.width: Theme.borderWidth
+                border.color: Theme.stroke
 
-                GridLayout {
-                    id: bindingGrid
-                    Layout.fillWidth: true
-                    columns: width < 820 ? 1 : 4
-                    columnSpacing: Theme.s12
-                    rowSpacing: Theme.s8
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: Theme.s4
-                        Text {
-                            text: modelData.label
-                            color: Theme.text
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontBody
-                            wrapMode: Text.WordWrap
-                            Layout.fillWidth: true
-                        }
-                        Text {
-                            text: modelData.scope + " · " + modelData.description
-                            color: Theme.textMuted
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontCaption
-                            wrapMode: Text.WordWrap
-                            Layout.fillWidth: true
-                        }
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth: bindingGrid.columns === 1
-                        Layout.preferredWidth: bindingGrid.columns === 1 ? -1 : 210
-                        Layout.preferredHeight: 44
-                        radius: Theme.radiusS
-                        color: Theme.bg1
-                        border.width: 1
-                        border.color: Theme.stroke
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.margins: Theme.s4
-                            spacing: Theme.s4
-                            AccentButton {
-                                label: modelData.bindable ? modelData.primary : "Fixed · " + modelData.primary
-                                quiet: true
-                                enabled: modelData.bindable
-                                Layout.fillWidth: true
-                                Layout.preferredWidth: 0
-                                onClicked: editor.beginCapture(modelData.actionId, 1)
-                            }
-                            AccentButton {
-                                label: "×"
-                                quiet: true
-                                enabled: modelData.bindable && modelData.primary !== "Unassigned"
-                                Layout.preferredWidth: 34
-                                onClicked: editor.clearBinding(modelData.actionId, 1)
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth: bindingGrid.columns === 1
-                        Layout.preferredWidth: bindingGrid.columns === 1 ? -1 : 210
-                        Layout.preferredHeight: 44
-                        radius: Theme.radiusS
-                        color: Theme.bg1
-                        border.width: 1
-                        border.color: Theme.stroke
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.margins: Theme.s4
-                            spacing: Theme.s4
-                            AccentButton {
-                                label: modelData.bindable ? modelData.secondary : "Fixed"
-                                quiet: true
-                                enabled: modelData.bindable
-                                Layout.fillWidth: true
-                                Layout.preferredWidth: 0
-                                onClicked: editor.beginCapture(modelData.actionId, 2)
-                            }
-                            AccentButton {
-                                label: "×"
-                                quiet: true
-                                enabled: modelData.bindable && modelData.secondary !== "Unassigned"
-                                Layout.preferredWidth: 34
-                                onClicked: editor.clearBinding(modelData.actionId, 2)
-                            }
-                        }
-                    }
-
-                    AccentButton {
-                        label: "Reset"
-                        primary: true
-                        contentHorizontalOffset: bindingGrid.columns === 1
-                                                 ? -(34 + Theme.s4) / 2 : 0
-                        enabled: modelData.bindable
-                        Layout.fillWidth: bindingGrid.columns === 1
-                        Layout.preferredWidth: bindingGrid.columns === 1 ? -1 : 76
-                        onClicked: editor.resetAction(modelData.actionId)
-                    }
+                Behavior on color { ColorAnimation { duration: Theme.durFast } }
+                // Half-height and vertically centred so the accent bar never
+                // pokes past the card's rounded left corners.
+                Rectangle {
+                    visible: actionCard.modified
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 3
+                    height: parent.height / 2
+                    radius: width / 2
+                    color: Theme.accent
                 }
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: Theme.stroke
-                    opacity: index < editor.rows.length - 1 ? 1 : 0
+                ColumnLayout {
+                    id: actionLayout
+                    x: Theme.s16
+                    y: Theme.s16
+                    width: parent.width - Theme.s32
+                    spacing: Theme.s12
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.s12
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.s4
+                            Text {
+                                text: modelData.label
+                                color: Theme.text
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontH3
+                                font.weight: Font.DemiBold
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+                            Text {
+                                text: modelData.scope + " · " + modelData.description
+                                color: Theme.textMuted
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontCaption
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+                        }
+                        AccentButton {
+                            visible: modelData.bindable
+                            label: "Restore defaults"
+                            quiet: true
+                            enabled: modified
+                            labelColor: modified ? Theme.accent : Theme.textMuted
+                            quietIdleBorderColor: modified ? Theme.accent : Theme.borderLight
+                            onClicked: editor.resetAction(modelData.actionId)
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: assignmentLayout.implicitHeight + Theme.s24
+                        radius: Theme.radiusM
+                        color: Theme.surfaceAlt
+                        border.width: Theme.borderWidth
+                        border.color: Theme.stroke
+
+                        ColumnLayout {
+                            id: assignmentLayout
+                            x: Theme.s12
+                            y: Theme.s12
+                            width: parent.width - Theme.s24
+                            spacing: Theme.s8
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.s12
+                                Text {
+                                    text: "INPUT ASSIGNMENTS"
+                                    color: Theme.textFaint
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontCaption
+                                    font.letterSpacing: Theme.letterSpacingWide
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "Both slots can be active. Select one to edit."
+                                    color: Theme.textMuted
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontCaption
+                                    horizontalAlignment: Text.AlignRight
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+
+                            GridLayout {
+                                id: slotGrid
+                                Layout.fillWidth: true
+                                columns: width < 640 ? 1 : 2
+                                columnSpacing: Theme.s8
+                                rowSpacing: Theme.s8
+
+                                BindingCard {
+                                    Layout.fillWidth: true
+                                    slotLabel: "Primary"
+                                    assigned: modelData.primaryAssigned
+                                    triggerLabel: modelData.primaryTrigger
+                                    badgeLabel: modelData.bindable ? modelData.primaryGesture : "Fixed"
+                                    editable: modelData.bindable
+                                    changeState: modelData.primaryChangeState
+                                    statusLabel: modelData.primaryStatusLabel
+                                    onEditRequested: editor.openAssignmentEditor(modelData.actionId, 1)
+                                    onClearRequested: editor.clearBinding(modelData.actionId, 1)
+                                    onResetRequested: editor.resetBinding(modelData.actionId, 1)
+                                }
+                                BindingCard {
+                                    Layout.fillWidth: true
+                                    slotLabel: "Secondary"
+                                    assigned: modelData.secondaryAssigned
+                                    triggerLabel: modelData.secondaryTrigger
+                                    badgeLabel: modelData.bindable ? modelData.secondaryGesture : "Fixed"
+                                    editable: modelData.bindable
+                                    changeState: modelData.secondaryChangeState
+                                    statusLabel: modelData.secondaryStatusLabel
+                                    onEditRequested: editor.openAssignmentEditor(modelData.actionId, 2)
+                                    onClearRequested: editor.clearBinding(modelData.actionId, 2)
+                                    onResetRequested: editor.resetBinding(modelData.actionId, 2)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -294,15 +399,24 @@ SettingsPage {
         }
     }
 
-    ConfirmDialog {
+    BindingAssignmentDialog {
+        id: assignmentDialog
+        parent: root
+        anchors.fill: parent
+        z: 205
+        model: editor
+    }
+
+    BindingConflictDialog {
         id: conflictDialog
         parent: root
         anchors.fill: parent
         z: 210
-        title: "Replace conflicting assignment?"
         message: editor.conflictMessage
-        confirmLabel: "Replace"
-        onConfirmed: editor.confirmConflict()
+        onReplaced: editor.confirmConflict()
+        // Re-arms capture on the same action and slot, so the user can pick a
+        // different button without hunting for the row again.
+        onRetried: editor.retryConflictCapture()
         onCanceled: editor.dismissConflict()
     }
     Connections {
@@ -310,6 +424,87 @@ SettingsPage {
         function onConflictChanged() {
             if (editor.conflictPending) conflictDialog.open()
             else conflictDialog.close()
+        }
+    }
+
+    SettingsSection {
+        eyebrow: "Modern controllers"
+        title: "GameInput support"
+        description: input.modernLayoutWarning
+                     ? "A controller layout changed. Review its extra-button assignments before using them."
+                     : input.modernControllerSummary
+        variant: input.modernLayoutWarning ? "warning" : "status"
+        SettingsRow {
+            label: "Modern controller support"
+            description: "Auto uses app-local GameInput with safe legacy fallback; Off keeps only the legacy providers."
+            SettingsCombo {
+                configKey: "input.modern_controller_support"; defaultValue: "auto"
+                options: [
+                    { label: "Auto", value: "auto" },
+                    { label: "Off", value: "off" }
+                ]
+            }
+        }
+        Repeater {
+            model: input.modernLayoutWarnings
+            delegate: SettingsRow {
+                required property var modelData
+                label: modelData.displayName + " button layout changed"
+                description: modelData.description
+                AccentButton {
+                    label: "Review buttons"
+                    quiet: true
+                    onClicked: input.startButtonProbe()
+                }
+                AccentButton {
+                    label: "Use current layout"
+                    onClicked: input.confirmModernControllerLayout(modelData.logicalId)
+                }
+            }
+        }
+        SettingsRow {
+            label: "GameInput runtime"
+            description: input.modernControllerStatus
+            Text {
+                text: input.modernControllerStatus.indexOf("fallback") >= 0 ? "Legacy fallback" : "Ready"
+                color: input.modernControllerStatus.indexOf("fallback") >= 0 ? Theme.warning : Theme.accent
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontCaption
+            }
+        }
+        SettingsRow {
+            label: "Compatibility report"
+            description: "Copies anonymous identity, providers, Share/Guide availability, extra buttons, and layout state—never serials or full device paths."
+            AccentButton {
+                label: "Copy report"
+                quiet: true
+                onClicked: input.copyControllerCompatibilityReport()
+            }
+        }
+        SettingsLinkRow {
+            icon: "?"
+            label: "Controller compatibility guide"
+            description: "View versus true Share, probe results, reconnects, gestures, and combinations"
+            showDivider: false
+            onClicked: Qt.openUrlExternally(Brand.repositoryUrl + "/blob/dev/docs/controller-compatibility.md")
+        }
+    }
+
+    BindingCompatibilityDialog {
+        id: compatibilityDialog
+        parent: root
+        anchors.fill: parent
+        z: 211
+        message: editor.compatibilityMessage
+        onConverted: editor.confirmCompatibility()
+        onRetried: editor.retryCompatibilityCapture()
+        onCanceled: editor.dismissCompatibility()
+    }
+    Connections {
+        target: editor
+        function onCompatibilityChanged() {
+            if (editor.compatibilityPending) compatibilityDialog.open()
+            else compatibilityDialog.close()
         }
     }
 

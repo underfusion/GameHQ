@@ -117,12 +117,13 @@ Rectangle {
         }
     }
 
-    Rectangle { // focus ring
+    Rectangle { // focus ring — quiet buttons included, or a pad cursor on
+                // them (Change/Record, Revert) is invisible
         anchors.fill: parent
         anchors.margins: -3
         radius: parent.radius + 3
         color: "transparent"
-        border.width: root.activeFocus && !root.quiet ? 2 : 0
+        border.width: root.activeFocus ? 2 : 0
         border.color: Theme.accent
     }
 

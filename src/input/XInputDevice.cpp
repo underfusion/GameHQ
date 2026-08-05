@@ -1,5 +1,7 @@
 #include "input/XInputDevice.h"
 
+#include "input/ControllerIdentity.h"
+#include "input/InputDiagnostics.h"
 #include "input/StickNav.h"
 
 #include <QDebug>
@@ -47,6 +49,9 @@ quint32 mapButtons(const XINPUT_GAMEPAD& pad)
     // zone == deadzone), matching how this backend has always behaved.
     constexpr StickNav::AxisConfig kNav{ 0, 12000, 12000, true };
     s |= StickNav::bits(kNav, pad.sThumbLX, pad.sThumbLY);
+    // Right stick vertical → wheel-like scroll controls.
+    s |= StickNav::verticalBits(kNav, pad.sThumbRY,
+                                Gamepad::RStickUp, Gamepad::RStickDown);
 
     return s;
 }
@@ -129,10 +134,24 @@ void XInputDevice::poll()
         if (!m_connected[slot])
             continue;
         XINPUT_STATE state{};
-        if (m_getState(static_cast<DWORD>(slot), &state) != ERROR_SUCCESS)
+        if (m_getState(static_cast<DWORD>(slot), &state) != ERROR_SUCCESS) {
             setSlotState(slot, 0, false);
-        else
+        } else {
+            // Diagnostics probe: report the RAW wButtons diff — the mapped
+            // mask drops bits GameHQ has no binding for, which are exactly
+            // the ones an unsupported-button report needs to show.
+            const quint16 raw = state.Gamepad.wButtons;
+            if (raw != m_prevRawButtons[slot]
+                && InputDiagnostics::instance().probeActive()) {
+                InputDiagnostics::instance().noteProbeEvent(
+                    QStringLiteral("XInput slot %1").arg(slot),
+                    QStringLiteral("XInput"),
+                    QStringLiteral("wButtons %1 -> %2")
+                        .arg(m_prevRawButtons[slot], 0, 16).arg(raw, 0, 16));
+            }
+            m_prevRawButtons[slot] = raw;
             setSlotState(slot, mapButtons(state.Gamepad), true);
+        }
     }
 }
 
@@ -143,6 +162,8 @@ void XInputDevice::setSlotState(int slot, quint32 buttons, bool connected)
         m_connected[slot] = connected;
         qInfo() << "Gamepad: XInput slot" << slot
                 << (connected ? "connected" : "disconnected");
+        if (connected)
+            emit slotConnectionChanged(slot, true);
     }
 
     // Aggregate connect is announced BEFORE the first edges so InputEngine
@@ -159,12 +180,16 @@ void XInputDevice::setSlotState(int slot, quint32 buttons, bool connected)
         const quint32 mask = 1u << b;
         if (!(changed & mask))
             continue;
+        const QString control = b == Share ? ControlId::ViewBack : controlIdFor(b);
         if (buttons & mask)
-            publishButtonPressed(b);
+            publishControlPressed(control, profileForSlot(slot));
         else
-            publishButtonReleased(b);
+            publishControlReleased(control, profileForSlot(slot));
     }
     m_prevButtons[slot] = buttons;
+
+    if (!connected && slotChanged)
+        emit slotConnectionChanged(slot, false);
 
     if (!connected && slotChanged && m_anyConnected && connectedCount() == 0) {
         m_anyConnected = false;
@@ -181,19 +206,64 @@ void XInputDevice::setSlotState(int slot, quint32 buttons, bool connected)
     }
 }
 
-ControlId::DeviceProfile XInputDevice::profile() const
+void XInputDevice::setKnownDeviceIdentity(int slot, const QString& endpointId,
+                                          const QString& modelFingerprint)
+{
+    if (slot < 0 || slot >= 4)
+        return;
+    if (m_knownEndpoint[slot] == endpointId
+        && m_modelFingerprint[slot] == modelFingerprint)
+        return;
+    m_knownEndpoint[slot] = endpointId;
+    m_modelFingerprint[slot] = modelFingerprint.toLower();
+    if (!endpointId.isEmpty())
+        qInfo().noquote() << "Gamepad: XInput slot" << slot
+                          << "correlated to anonymized endpoint" << endpointId;
+}
+
+int XInputDevice::firstConnectedSlot() const
 {
     for (int slot = 0; slot < 4; ++slot) {
-        if (m_connected[slot]) {
-            return ControlId::DeviceProfile{
-                QStringLiteral("XInput"),
-                QStringLiteral("xinput.slot%1").arg(slot),
-                ControlId::ControllerFamily::Xbox,
-                QStringLiteral("Xbox Controller"),
-            };
-        }
+        if (m_connected[slot])
+            return slot;
     }
-    return {};
+    return -1;
+}
+
+ControlId::DeviceProfile XInputDevice::profile() const
+{
+    const int slot = firstConnectedSlot();
+    if (slot < 0)
+        return {};
+    // No stable identity is obtainable: say so instead of pretending. The
+    // fingerprint stays slot-keyed, so overrides saved now follow the slot,
+    // not the physical pad.
+    return ControlId::DeviceProfile{
+        QStringLiteral("XInput"),
+        profileForSlot(slot).fingerprint,
+        ControlId::ControllerFamily::Xbox,
+        QStringLiteral("Xbox controller (per-slot profile — model cannot be identified)"),
+        profileForSlot(slot).modelFingerprint,
+        profileForSlot(slot).endpointId,
+    };
+}
+
+ControlId::DeviceProfile XInputDevice::profileForSlot(int slot) const
+{
+    if (slot < 0 || slot >= 4)
+        return {};
+    const QString endpoint = m_knownEndpoint[slot];
+    return ControlId::DeviceProfile{
+        QStringLiteral("XInput"),
+        ControllerIdentity::legacySlotFingerprint(slot),
+        ControlId::ControllerFamily::Xbox,
+        endpoint.isEmpty()
+            ? QStringLiteral("Xbox controller (slot %1; hardware identity unavailable)")
+                  .arg(slot + 1)
+            : QStringLiteral("Xbox-compatible controller"),
+        m_modelFingerprint[slot],
+        endpoint,
+    };
 }
 
 int XInputDevice::connectedCount() const

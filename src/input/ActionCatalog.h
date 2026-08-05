@@ -25,6 +25,15 @@ public:
         QString label;          // short UI label, e.g. "Screenshot"
         QString description;    // one-line explanation for the binding editor
         bool bindable = true;   // false = fixed emergency route, never remappable
+        // Fires again while the control stays held (d-pad steps, L1/R1 paging,
+        // seeking). The conflict policy needs this: a button that repeats can
+        // never be the first control of a chord, because holding it to reach
+        // the second control would step the gallery on the way.
+        bool repeats = false;
+        // Reserved for actions whose button-down edge is part of their product
+        // contract. Such a Press binding must never be offered for automatic
+        // conversion to a release-based single tap.
+        bool requiresImmediatePress = false;
     };
 
     // Full catalog, in a stable declaration order (used for default UI grouping).

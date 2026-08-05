@@ -24,13 +24,41 @@ inline const QString DpadLeft       = QStringLiteral("gamepad.dpad_left");
 inline const QString DpadRight      = QStringLiteral("gamepad.dpad_right");
 inline const QString Menu           = QStringLiteral("gamepad.menu");    // Options / Menu / +
 inline const QString Guide          = QStringLiteral("gamepad.guide");   // PS / Xbox Guide / Home
-inline const QString Capture        = QStringLiteral("gamepad.capture"); // Share / View / Capture
+inline const QString Capture        = QStringLiteral("gamepad.capture"); // true Share / Create / Capture
+inline const QString ViewBack       = QStringLiteral("gamepad.view_back"); // XInput View / Back legacy control
+// Standard controls the pinned GameInput v3 header exposes beyond the legacy
+// 15-button set. Thumbstick clicks are L3/R3; C/Z appear on 6-face-button
+// pads; the four paddle flags are real header flags, not invented positions.
+inline const QString ThumbLeft      = QStringLiteral("gamepad.thumb_left");   // L3 / LS click
+inline const QString ThumbRight     = QStringLiteral("gamepad.thumb_right");  // R3 / RS click
+inline const QString FaceC          = QStringLiteral("gamepad.face_c");
+inline const QString FaceZ          = QStringLiteral("gamepad.face_z");
+inline const QString PaddleLeft1    = QStringLiteral("gamepad.paddle_left1");
+inline const QString PaddleLeft2    = QStringLiteral("gamepad.paddle_left2");
+inline const QString PaddleRight1   = QStringLiteral("gamepad.paddle_right1");
+inline const QString PaddleRight2   = QStringLiteral("gamepad.paddle_right2");
+// Right-stick directions, decoded by the legacy backends the same way the
+// left stick doubles as the D-pad. Vertical only: they drive wheel-like view
+// scrolling, which has no horizontal meaning anywhere in the app.
+inline const QString StickRightUp   = QStringLiteral("gamepad.stick_right_up");
+inline const QString StickRightDown = QStringLiteral("gamepad.stick_right_down");
 
 // Unknown WinMM buttons stay bindable without a known position: "gamepad.button.3".
 QString genericButton(int index);
+QString deviceButton(const QString& logicalId, const QString& layoutSignature, int index);
 
 // True for any gamepad.button.N code produced by genericButton().
 bool isGenericButton(const QString& code);
+bool isDeviceButton(const QString& code);
+QString rawHidUsage(const QString& deviceIdentity, quint16 usagePage, quint16 usage);
+bool isRawHidUsage(const QString& code);
+
+// True for a code this build can actually deliver from a controller backend:
+// one of the named positions above, or a well-formed generic button. Keyboard
+// chords ("Ctrl+Shift+S") and typos are not canonical. Chord triggers require
+// this — a combination is only portable across Sony HID, XInput and WinMM when
+// both of its controls are canonical.
+bool isCanonical(const QString& code);
 
 enum class ControllerFamily {
     PlayStation,
@@ -43,9 +71,13 @@ enum class ControllerFamily {
 // editor can show "DualSense" instead of just "controller".
 struct DeviceProfile {
     QString backend;          // "Sony Raw Input", "XInput", "WinMM joystick"
-    QString fingerprint;      // stable per-device id, e.g. "054C:0CE6" (VID:PID)
+    QString fingerprint;      // provider endpoint identity; never VID/PID alone
     ControllerFamily family = ControllerFamily::Generic;
     QString displayName;      // "DualSense", "Xbox Wireless Controller", ...
+    QString modelFingerprint; // compatibility/model hint, e.g. "054c:0ce6"
+    QString endpointId;       // stable anonymized PnP/interface endpoint when known
+    QString containerId;      // PnP container evidence when known
+    QString deviceRoot;       // physical device-root evidence when known
 };
 
 // Display label for a canonical code under a given family. Unknown/generic

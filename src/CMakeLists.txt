@@ -24,16 +24,40 @@ qt_add_executable(GameHQ
     core/UpdateMaintenance.cpp core/UpdateMaintenance.h
     core/UpdaterHandshake.cpp core/UpdaterHandshake.h
     diagnostics/Logger.cpp diagnostics/Logger.h
+    gameinput/GameInputEvent.h
+    gameinput/IGameInputApi.h
+    gameinput/GameInputEventQueue.cpp gameinput/GameInputEventQueue.h
+    gameinput/GameInputQtDispatcher.cpp gameinput/GameInputQtDispatcher.h
+    gameinput/GameInputWrapper.cpp gameinput/GameInputWrapper.h
+    gameinput/GameInputRouter.cpp gameinput/GameInputRouter.h
+    gameinput/ProductionGameInputApi.cpp gameinput/ProductionGameInputApi.h
+    gameinput/GameInputLabelMap.h
+    gameinput/StandardControlMap.h
     games/GameDetector.cpp games/GameDetector.h
     input/HotkeyManager.cpp input/HotkeyManager.h
     input/Gamepad.h
     input/StickNav.h
     input/SonyReportLayout.h
     input/ActionCatalog.cpp input/ActionCatalog.h
+    input/BindingPattern.cpp input/BindingPattern.h
+    input/BindingRelation.cpp input/BindingRelation.h
     input/BindingResolver.cpp input/BindingResolver.h
+    input/ContextOverrideCatalog.cpp input/ContextOverrideCatalog.h
     input/BindingRuntime.cpp input/BindingRuntime.h
+    input/InputPatternRecognizer.cpp input/InputPatternRecognizer.h
+    input/GestureTiming.cpp input/GestureTiming.h
     input/BindingEditorModel.cpp input/BindingEditorModel.h
     input/ControlId.cpp input/ControlId.h
+    input/ControllerIdentity.cpp input/ControllerIdentity.h
+    input/PhysicalControllerRegistry.cpp input/PhysicalControllerRegistry.h
+    input/ExtraButtonCatalog.cpp input/ExtraButtonCatalog.h
+    input/CapabilityEventRouter.cpp input/CapabilityEventRouter.h
+    input/ProviderIntegration.cpp input/ProviderIntegration.h
+      input/SelectiveRawHidFallback.cpp input/SelectiveRawHidFallback.h
+      input/RawHidBindingCatalog.cpp input/RawHidBindingCatalog.h
+    input/InputDiagnostics.cpp input/InputDiagnostics.h
+    input/InputRateMonitor.cpp input/InputRateMonitor.h
+    input/RawInputApi.cpp input/RawInputApi.h
     input/DualSenseDevice.cpp input/DualSenseDevice.h
     input/HidCloakMonitor.cpp input/HidCloakMonitor.h
     input/XInputDevice.cpp input/XInputDevice.h
@@ -47,6 +71,8 @@ qt_add_executable(GameHQ
     input/MouseHookDevice.cpp input/MouseHookDevice.h
     input/InputEngine.cpp input/InputEngine.h
     notify/NotificationCenter.cpp notify/NotificationCenter.h
+    overlay/ForegroundAcquirer.cpp overlay/ForegroundAcquirer.h
+    overlay/ForegroundApi.cpp overlay/ForegroundApi.h
     overlay/OverlayManager.cpp overlay/OverlayManager.h
     sound/SoundEngine.cpp  sound/SoundEngine.h
     storage/CaptureDatabase.cpp storage/CaptureDatabase.h
@@ -92,6 +118,7 @@ qt_add_qml_module(GameHQ
         ui/qml/Theme.qml
         ui/qml/Brand.qml
         ui/qml/helpers/SidebarCategories.js
+        ui/qml/helpers/PadNav.js
         ui/qml/themes/Skin.qml
         ui/qml/themes/DarkSkin.qml
         ui/qml/themes/LightSkin.qml
@@ -121,9 +148,15 @@ qt_add_qml_module(GameHQ
         ui/qml/components/OverlayActionMenu.qml
         ui/qml/components/CaptureTile.qml
         ui/qml/components/AccentButton.qml
+        ui/qml/components/AppScrollBar.qml
         ui/qml/components/TileIconButton.qml
         ui/qml/components/VideoBadge.qml
         ui/qml/components/SettingsPathField.qml
+        ui/qml/components/BindingCard.qml
+        ui/qml/components/BindingSegmentedControl.qml
+        ui/qml/components/BindingAssignmentDialog.qml
+        ui/qml/components/BindingConflictDialog.qml
+        ui/qml/components/BindingCompatibilityDialog.qml
         ui/qml/components/ConfirmDialog.qml
         ui/qml/components/Toast.qml
         ui/qml/components/UpdateBanner.qml
@@ -191,17 +224,21 @@ qt_add_resources(GameHQ "release_notes"
 target_include_directories(GameHQ PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_BINARY_DIR}/generated
+    ${CMAKE_SOURCE_DIR}/third_party/gameinput/include
 )
 
 target_compile_definitions(GameHQ PRIVATE
     GAMEHQ_VERSION="${GAMEHQ_VERSION_FULL}"
+    UNICODE _UNICODE
 )
 
 target_link_libraries(GameHQ PRIVATE
     gamehq_release_trust
     Qt6::Core Qt6::Gui Qt6::Quick Qt6::Sql Qt6::Widgets Qt6::Svg
     Qt6::Multimedia Qt6::Network
-    user32 gdi32 version winmm cfgmgr32
+    # `hid` backs the selective Raw HID fallback's report parsing
+    # (RIDI_PREPARSEDDATA + HidP_GetUsages in RawInputApi.cpp).
+    user32 gdi32 version winmm cfgmgr32 hid
     # 0.5 Windows Graphics Capture frame pump (WinRT raw-ABI path, no cppwinrt).
     windowsapp runtimeobject ole32 oleaut32 d3d11 dxgi dxguid uuid
     # t24 experimental HDR tone-map shader (runtime HLSL compile via D3DCompile).
@@ -246,3 +283,16 @@ target_link_libraries(GameHQUpdater PRIVATE gamehq_release_trust)
 target_link_options(GameHQUpdater PRIVATE -static -municode)
 target_compile_definitions(GameHQUpdater PRIVATE
     GAMEHQ_UPDATER_VERSION="${GAMEHQ_VERSION_FULL}")
+
+# Minimal GameInput runtime probe (Phase 5 t17, docs/design/gameinput-spike.md).
+# Links the vendored MIT loader from the Microsoft.GameInput package and proves
+# app-local side-by-side resolution plus clean fail-soft when the runtime is
+# absent. Never shipped as a startup dependency.
+add_executable(GameInputRuntimeProbe
+    gameinput/GameInputRuntimeProbe.cpp
+    ${CMAKE_SOURCE_DIR}/third_party/gameinput/src/GameInput.cpp
+)
+target_include_directories(GameInputRuntimeProbe PRIVATE
+    ${CMAKE_SOURCE_DIR}/third_party/gameinput/include)
+target_compile_definitions(GameInputRuntimeProbe PRIVATE UNICODE _UNICODE)
+target_link_options(GameInputRuntimeProbe PRIVATE -static)

@@ -222,6 +222,9 @@ QtObject {
     readonly property int s32: 32
     readonly property int s48: 48
 
+    // Modal dialogs
+    readonly property int dialogWidth: 440
+
     // Video player controls
     readonly property int playerButtonSize: 44
     readonly property int playerControlsMaxWidth: 9999

@@ -71,6 +71,21 @@ Microsoft software and is not part of GameHQ.
 
 - Redistribution guidance: https://learn.microsoft.com/windows/win32/directx-sdk--august-2009-
 
+## Microsoft GameInput 3.5.262
+
+GameHQ vendors the MIT-licensed public header and loader source from the
+`Microsoft.GameInput` NuGet package (`third_party/gameinput/`); the complete
+license is included at `licenses/GameInput-MIT.txt`. The GameInput runtime
+redistributable (`GameInputRedist.msi` / `GameInputRedist.dll`) remains
+Microsoft software under the Microsoft Software License Terms shipped inside
+the package and is not part of GameHQ; when the Windows package includes or
+installs it, it is distributed unmodified as a separately licensed component.
+The runtime is loaded dynamically, is optional, and GameHQ degrades to its
+legacy input backends when it is absent.
+
+- Package and licenses: https://www.nuget.org/packages/Microsoft.GameInput/3.5.262
+- GameInput documentation: https://aka.ms/gameinput
+
 ## Inno Setup 6.7.3
 
 The Windows Setup executable and uninstaller are produced with Inno Setup.

@@ -75,6 +75,31 @@ Window {
         }
     }
 
+    // Honest-isolation notice: shown only when Windows refused to hand the
+    // overlay the foreground, i.e. the game underneath still owns focus and
+    // may keep reacting to the controller. Non-blocking on purpose.
+    Rectangle {
+        visible: overlayWindow.visible && !overlay.foregroundAcquired
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.topMargin: Theme.s12
+        width: focusWarningText.implicitWidth + Theme.s24
+        height: focusWarningText.implicitHeight + Theme.s12
+        radius: Theme.radiusM
+        color: Theme.surface
+        border.width: 1
+        border.color: Theme.warning
+        z: 10
+        Text {
+            id: focusWarningText
+            anchors.centerIn: parent
+            text: "The game still has focus and may react to controller input"
+            color: Theme.warning
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.fontCaption
+        }
+    }
+
     Item {
         id: content
         anchors.fill: parent

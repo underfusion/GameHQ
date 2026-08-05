@@ -1,53 +1,77 @@
 #include "input/BindingRuntime.h"
 
-#include <QElapsedTimer>
+#include "input/InputDiagnostics.h"
+
 #include <QSet>
-#include <QTimer>
+#include <algorithm>
 #include <utility>
-
-struct BindingRuntime::GestureState
-{
-    QString key;
-    QString triggerCode;
-    QVector<BindingResolver::Binding> taps;
-    QVector<BindingResolver::Binding> holds;
-    QVector<BindingResolver::Binding> doubleTaps;
-    QSet<QString> firedHolds;
-    QElapsedTimer elapsed;
-    QTimer* holdTimer = nullptr;
-    QTimer* tapTimer = nullptr;
-    bool down = false;
-    bool awaitingSecondTap = false;
-    bool secondTap = false;
-
-    ~GestureState()
-    {
-        delete holdTimer;
-        delete tapTimer;
-    }
-};
 
 BindingRuntime::BindingRuntime(CaptureDatabase* database, QObject* parent)
     : QObject(parent)
     , m_resolver(database)
+    , m_recognizer(this)
 {
+    m_recognizer.setFactsProvider(
+        [this](const InputPatternRecognizer::Context& context, const QString& control) {
+            return factsFor(context, control);
+        });
+    connect(&m_recognizer, &InputPatternRecognizer::patternNote, this,
+            [](const QString& detail) { InputDiagnostics::instance().notePattern(detail); });
+    connect(&m_recognizer, &InputPatternRecognizer::recognized, this,
+            [this](const InputPatternRecognizer::Context& context, const TriggerSpec& trigger,
+                   const GestureSpec& gesture) { dispatch(context, trigger, gesture); });
 }
 
-BindingRuntime::~BindingRuntime()
-{
-    for (GestureState* state : std::as_const(m_states))
-        delete state;
-}
+BindingRuntime::~BindingRuntime() = default;
 
 void BindingRuntime::setDefaultHoldMs(int milliseconds)
 {
     m_resolver.setDefaultHoldMs(milliseconds);
+    InputPatternRecognizer::Timing timing = m_recognizer.timing();
+    timing.defaultHoldMs = m_resolver.defaultHoldMs();
+    m_recognizer.setTiming(timing);
+}
+
+void BindingRuntime::setTiming(const InputPatternRecognizer::Timing& timing)
+{
+    m_recognizer.setTiming(timing);
+}
+
+InputPatternRecognizer::Timing BindingRuntime::timing() const
+{
+    return m_recognizer.timing();
 }
 
 void BindingRuntime::reload()
 {
     cancelAll();
     m_resolver.reload();
+    m_relations.clear();
+    // The binding table the recognizer snapshotted no longer exists.
+    m_recognizer.invalidate();
+    publishBoundPatterns();
+}
+
+const QVector<BindingRuntime::Relation>& BindingRuntime::relations(
+    const QString& deviceGroup, const QString& deviceProfile) const
+{
+    const QString key = deviceGroup + QLatin1Char('\x1f') + deviceProfile;
+    const auto cached = m_relations.constFind(key);
+    if (cached != m_relations.cend())
+        return *cached;
+
+    const QVector<BindingResolver::Binding> bindings =
+        m_resolver.effectiveBindings(deviceGroup, deviceProfile);
+    QVector<Relation> classified;
+    for (int i = 0; i < bindings.size(); ++i) {
+        for (int j = i + 1; j < bindings.size(); ++j) {
+            const BindingRelation::Kind kind =
+                BindingRelation::classify(bindings.at(i), bindings.at(j));
+            if (kind != BindingRelation::Kind::None)
+                classified.append({bindings.at(i), bindings.at(j), kind});
+        }
+    }
+    return *m_relations.insert(key, classified);
 }
 
 QVector<BindingResolver::Binding> BindingRuntime::effectiveBindings(
@@ -56,21 +80,130 @@ QVector<BindingResolver::Binding> BindingRuntime::effectiveBindings(
     return m_resolver.effectiveBindings(deviceGroup, deviceProfile);
 }
 
-QString BindingRuntime::stateKey(const QString& group, const QString& profile,
-                                 const QString& trigger) const
+QVector<BindingResolver::Binding> BindingRuntime::baselineBindings(
+    const QString& deviceGroup, const QString& deviceProfile) const
 {
-    return group + QChar(0x1f) + profile + QChar(0x1f) + trigger;
+    return m_resolver.baselineBindings(deviceGroup, deviceProfile);
 }
 
-void BindingRuntime::emitBindings(const QVector<BindingResolver::Binding>& bindings,
-                                  const QString& triggerCode)
+BindingResolver::Gesture BindingRuntime::inheritedGesture(
+    const QString& deviceGroup, const QString& deviceProfile,
+    const QString& actionId, int slot) const
 {
+    return m_resolver.inheritedGesture(deviceGroup, deviceProfile, actionId, slot);
+}
+
+void BindingRuntime::setProfileAlias(const QString& profile, const QString& legacyProfile)
+{
+    m_resolver.setProfileAlias(profile, legacyProfile);
+    // The alias changes the effective view, so cached pair classifications
+    // for the affected profile are stale.
+    m_relations.clear();
+    m_recognizer.invalidate();
+}
+
+void BindingRuntime::setProfileAliases(const QString& profile,
+                                       const QStringList& legacyProfiles)
+{
+    m_resolver.setProfileAliases(profile, legacyProfiles);
+    m_relations.clear();
+    m_recognizer.invalidate();
+}
+
+// A Hold binding that stores 0 means "however long the user configured".
+// Built-in hold defaults do exactly that, so the setting has one home instead
+// of being copied into every default row at construction time.
+int BindingRuntime::holdThreshold(const BindingResolver::Binding& binding) const
+{
+    return binding.holdMs > 0 ? binding.holdMs : m_resolver.defaultHoldMs();
+}
+
+// Everything the recognizer needs to know about one control, read off the
+// effective binding table once per pattern. Scope filtering matches dispatch:
+// a Hold bound only in the Overlay scope must not make the button wait while
+// the gallery is focused.
+InputPatternRecognizer::TriggerFacts BindingRuntime::factsFor(
+    const InputPatternRecognizer::Context& context, const QString& control) const
+{
+    InputPatternRecognizer::TriggerFacts facts;
+    QSet<int> thresholds;
+    for (const auto& binding : m_resolver.effectiveBindings(context.deviceGroup,
+                                                            context.deviceProfile)) {
+        const ActionCatalog::Action* action = ActionCatalog::find(binding.actionId);
+        if (!action)
+            continue;
+        const bool inContext = action->scope == ActionCatalog::Scope::Global
+                            || action->scope == context.primaryScope
+                            || action->scope == context.fallbackScope;
+        if (!inContext)
+            continue;
+
+        const TriggerSpec trigger = binding.trigger();
+        if (trigger.isChord()) {
+            // Only the control that *starts* the chord opens a candidate.
+            if (trigger.firstControl() == control
+                && !facts.chordPartners.contains(trigger.secondControl()))
+                facts.chordPartners.append(trigger.secondControl());
+            continue;
+        }
+        if (trigger.firstControl() != control)
+            continue;
+
+        const GestureSpec gesture = binding.gesture();
+        switch (gesture.kind) {
+        case GestureSpec::Kind::Press:
+            facts.hasPress = true;
+            break;
+        case GestureSpec::Kind::Tap:
+            facts.tapCountMask |= 1 << gesture.tapCount;
+            break;
+        case GestureSpec::Kind::Hold:
+            thresholds.insert(holdThreshold(binding));
+            break;
+        }
+    }
+    facts.holdThresholdsMs = QVector<int>(thresholds.cbegin(), thresholds.cend());
+    std::sort(facts.holdThresholdsMs.begin(), facts.holdThresholdsMs.end());
+    return facts;
+}
+
+// The effective controller assignments in canonical form, so a diagnostics
+// paste shows what was bound rather than only what happened.
+void BindingRuntime::publishBoundPatterns()
+{
+    QStringList patterns;
+    for (const auto& binding : m_resolver.effectiveBindings(QStringLiteral("controller"))) {
+        patterns << QStringLiteral("%1 %2 -> %3 (slot %4)")
+                        .arg(binding.trigger().serialize(), binding.gesture().label(),
+                             binding.actionId)
+                        .arg(binding.slot);
+    }
+    patterns.sort();
+    InputDiagnostics::instance().setBoundPatterns(patterns);
+}
+
+void BindingRuntime::dispatch(const InputPatternRecognizer::Context& context,
+                              const TriggerSpec& trigger, const GestureSpec& gesture)
+{
+    const QString triggerCode = trigger.serialize();
+    const auto bindings = m_resolver.matching(context.deviceGroup, context.deviceProfile,
+                                              triggerCode, gesture, context.primaryScope,
+                                              context.fallbackScope);
     QSet<QString> emitted;
     for (const auto& binding : bindings) {
+        // Holds are matched by kind alone in the resolver, because a binding's
+        // stored 0 has to be resolved against the configured default before it
+        // can be compared. Two holds on one button (open at 1 s, bulk select at
+        // 2 s) therefore separate here, on the threshold that actually elapsed.
+        if (gesture.kind == GestureSpec::Kind::Hold
+            && holdThreshold(binding) != gesture.holdMs)
+            continue;
         if (emitted.contains(binding.actionId))
             continue;
         emitted.insert(binding.actionId);
         emit actionTriggered(binding.actionId, triggerCode);
+        InputDiagnostics::instance().notePattern(
+            QStringLiteral("%1 %2 -> %3").arg(triggerCode, gesture.label(), binding.actionId));
     }
 }
 
@@ -78,121 +211,25 @@ bool BindingRuntime::press(const QString& group, const QString& profile,
                            const QString& trigger, ActionCatalog::Scope primary,
                            ActionCatalog::Scope fallback)
 {
-    const auto presses = m_resolver.matching(group, profile, trigger, QStringLiteral("press"),
-                                             primary, fallback);
-    emitBindings(presses, trigger);
-
-    const auto taps = m_resolver.matching(group, profile, trigger, QStringLiteral("tap"),
-                                          primary, fallback);
-    const auto holds = m_resolver.matching(group, profile, trigger, QStringLiteral("hold"),
-                                           primary, fallback);
-    const auto doubles = m_resolver.matching(group, profile, trigger, QStringLiteral("double_tap"),
-                                             primary, fallback);
-    if (taps.isEmpty() && holds.isEmpty() && doubles.isEmpty())
-        return !presses.isEmpty();
-
-    const QString key = stateKey(group, profile, trigger);
-    GestureState*& state = m_states[key];
-    if (!state) {
-        state = new GestureState;
-        state->key = key;
-        state->holdTimer = new QTimer;
-        state->holdTimer->setSingleShot(true);
-        state->tapTimer = new QTimer;
-        state->tapTimer->setSingleShot(true);
-        connect(state->holdTimer, &QTimer::timeout, this, [this, state] {
-            const int elapsed = static_cast<int>(state->elapsed.elapsed());
-            QVector<BindingResolver::Binding> due;
-            for (const auto& binding : state->holds) {
-                const int threshold = binding.holdMs > 0 ? binding.holdMs : 500;
-                if (elapsed >= threshold && !state->firedHolds.contains(binding.actionId)) {
-                    state->firedHolds.insert(binding.actionId);
-                    due.append(binding);
-                }
-            }
-            emitBindings(due, state->triggerCode);
-            scheduleNextHold(state);
-        });
-        connect(state->tapTimer, &QTimer::timeout, this, [this, state] {
-            emitBindings(state->taps, state->triggerCode);
-            reset(state);
-        });
-    }
-
-    state->triggerCode = trigger;
-    state->taps = taps;
-    state->holds = holds;
-    state->doubleTaps = doubles;
-    state->firedHolds.clear();
-    state->secondTap = state->awaitingSecondTap;
-    if (state->secondTap) {
-        state->tapTimer->stop();
-        state->awaitingSecondTap = false;
-    }
-    state->down = true;
-    state->elapsed.restart();
-    scheduleNextHold(state);
-    return true;
-}
-
-void BindingRuntime::scheduleNextHold(GestureState* state)
-{
-    state->holdTimer->stop();
-    if (!state->down)
-        return;
-    int nextMs = -1;
-    const int elapsed = static_cast<int>(state->elapsed.elapsed());
-    for (const auto& binding : state->holds) {
-        if (state->firedHolds.contains(binding.actionId))
-            continue;
-        const int threshold = binding.holdMs > 0 ? binding.holdMs : 500;
-        const int remaining = qMax(1, threshold - elapsed);
-        nextMs = nextMs < 0 ? remaining : qMin(nextMs, remaining);
-    }
-    if (nextMs > 0)
-        state->holdTimer->start(nextMs);
+    const InputPatternRecognizer::Context context{group, profile, primary, fallback};
+    m_pressContexts.insert(group + QChar(0x1f) + profile + QChar(0x1f) + trigger, context);
+    return m_recognizer.press(context, trigger);
 }
 
 bool BindingRuntime::release(const QString& group, const QString& profile,
                              const QString& trigger)
 {
-    GestureState* state = m_states.value(stateKey(group, profile, trigger));
-    if (!state || !state->down)
+    // Release carries no scope of its own — the pattern belongs to the context
+    // its press started in, which is also what the recognizer keyed its state
+    // by. Looking it up here keeps every caller from having to remember it.
+    const auto it = m_pressContexts.constFind(group + QChar(0x1f) + profile
+                                              + QChar(0x1f) + trigger);
+    if (it == m_pressContexts.cend())
         return false;
-    state->down = false;
-    state->holdTimer->stop();
-
-    if (!state->firedHolds.isEmpty()) {
-        reset(state);
-        return true;
-    }
-    if (state->secondTap) {
-        emitBindings(state->doubleTaps, trigger);
-        reset(state);
-        return true;
-    }
-    if (!state->doubleTaps.isEmpty()) {
-        state->awaitingSecondTap = true;
-        state->tapTimer->start(300);
-        return true;
-    }
-    emitBindings(state->taps, trigger);
-    reset(state);
-    return true;
-}
-
-void BindingRuntime::reset(GestureState* state)
-{
-    state->holdTimer->stop();
-    state->tapTimer->stop();
-    state->down = false;
-    state->awaitingSecondTap = false;
-    state->secondTap = false;
-    state->firedHolds.clear();
+    return m_recognizer.release(*it, trigger);
 }
 
 void BindingRuntime::cancelAll()
 {
-    for (GestureState* state : std::as_const(m_states))
-        reset(state);
+    m_recognizer.invalidate();
 }

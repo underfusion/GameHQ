@@ -20,6 +20,10 @@ public:
         // on these indices, so renumbering the existing entries would silently
         // remap every pad's buttons.
         L2, R2,
+        // Right-stick vertical directions (wheel-like scrolling). Persisted
+        // generic codes stay stable across this append: genericButton() indexes
+        // relative to GenericButtonBase on both the emit and the persist side.
+        RStickUp, RStickDown,
         ButtonCount
     };
     Q_ENUM(Button)
@@ -61,6 +65,8 @@ public:
         case DpadDown:  return QStringLiteral("D-Down");
         case DpadLeft:  return QStringLiteral("D-Left");
         case DpadRight: return QStringLiteral("D-Right");
+        case RStickUp:   return QStringLiteral("RS-Up");
+        case RStickDown: return QStringLiteral("RS-Down");
         default:
             // Matches ControlId::label()'s numbering for the same generic code.
             return b >= GenericButtonBase
@@ -91,6 +97,8 @@ public:
         case Options:   return ControlId::Menu;
         case PS:        return ControlId::Guide;
         case Share:     return ControlId::Capture;
+        case RStickUp:   return ControlId::StickRightUp;
+        case RStickDown: return ControlId::StickRightDown;
         default:
             return b >= GenericButtonBase
                 ? ControlId::genericButton(b - GenericButtonBase)
@@ -109,17 +117,46 @@ signals:
     void connected(bool isConnected);
 
 protected:
+    // Direct publication is the canonical backend path. Modern providers use
+    // stable string IDs because their device-local controls are not limited by
+    // the legacy 32-bit button mask.
+    void publishControlPressed(const QString& controlId)
+    {
+        publishControlPressed(controlId, profile());
+    }
+
+    void publishControlPressed(const QString& controlId,
+                               const ControlId::DeviceProfile& device)
+    {
+        if (controlId.isEmpty())
+            return;
+        emit controlPressed(controlId, static_cast<int>(device.family),
+                            device.backend, device.fingerprint, device.displayName);
+    }
+
+    void publishControlReleased(const QString& controlId)
+    {
+        publishControlReleased(controlId, profile());
+    }
+
+    void publishControlReleased(const QString& controlId,
+                                const ControlId::DeviceProfile& device)
+    {
+        if (controlId.isEmpty())
+            return;
+        emit controlReleased(controlId, static_cast<int>(device.family),
+                             device.backend, device.fingerprint, device.displayName);
+    }
+
+    // Existing integer backends remain adapters; their enum values and bitmask
+    // layouts stay byte-for-byte compatible.
     void publishButtonPressed(int button)
     {
-        const auto device = profile();
-        emit controlPressed(controlIdFor(button), static_cast<int>(device.family),
-                            device.backend, device.fingerprint, device.displayName);
+        publishControlPressed(controlIdFor(button));
     }
 
     void publishButtonReleased(int button)
     {
-        const auto device = profile();
-        emit controlReleased(controlIdFor(button), static_cast<int>(device.family),
-                             device.backend, device.fingerprint, device.displayName);
+        publishControlReleased(controlIdFor(button));
     }
 };

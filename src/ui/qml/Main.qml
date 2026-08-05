@@ -135,12 +135,13 @@ ApplicationWindow {
         }
     }
 
-    // DualSense support (0.3/0.6 extended to the desktop window): L1 is the
-    // ONLY entry to the sidebar (left panel), R1 is the ONLY way back to the
-    // grid (right panel) — D-pad/arrow LEFT at the leftmost thumbnail no
-    // longer enters the sidebar, it wraps to the previous row instead. Inside
-    // either region D-pad/stick (or arrow keys) drives the cursor; in the grid
-    // it row-wraps (right edge → next row left; left edge → prev row right).
+    // DualSense support (0.3/0.6 extended to the desktop window): the grid
+    // never row-wraps — LEFT at the leftmost column enters the sidebar (left
+    // panel), RIGHT at the row edge clamps, and RIGHT from the sidebar
+    // returns to the grid. L1/R1 still jump between the two panels as a
+    // shortcut (kept for now; may be repurposed later). Inside either region
+    // D-pad/stick (or arrow keys) drives the cursor, Up/Down auto-repeats
+    // while held.
     // Cross opens the lightbox (grid) or selects the row (sidebar), Circle
     // backs out, Triangle favorites, Square opens the action menu.
     // Pad input only reaches here while this window has real OS focus (see
@@ -502,8 +503,14 @@ ApplicationWindow {
         if (deleteDialog.visible || bulkDeleteDialog.visible)
             return
         if (window.sidebarFocused) {
-            // L1/R1 are the only way in/out of the sidebar (see padTabStep);
-            // D-pad LEFT/RIGHT inside the sidebar is a no-op.
+            // RIGHT returns to the grid — the mirror of LEFT-at-the-edge
+            // entering the sidebar below. LEFT stays a no-op; L1/R1 still
+            // jump panels as a shortcut (see padTabStep).
+            if (direction > 0 && grid.count > 0) {
+                window.sidebarFocused = false
+                grid.forceActiveFocus()
+                sounds.play("nav_tick")
+            }
             return
         }
         if (grid.count === 0) {
@@ -515,24 +522,26 @@ ApplicationWindow {
         const cols = window.gridColumnCount()
         const col = grid.currentIndex % cols
         if (direction < 0) {
-            // LEFT at the leftmost column wraps to the previous row's
-            // rightmost column; at index 0 it clamps (no wrap).
-            if (grid.currentIndex === 0)
+            // LEFT at the leftmost column enters the sidebar; rows never
+            // wrap. Bulk mode stays inside the grid (the sidebar has no
+            // meaning for a selection in progress), so the edge just clamps.
+            if (col === 0) {
+                if (window.bulkMode)
+                    return
+                window.sidebarFocused = true
+                window.refreshSidebarHoverIndex()
+                sounds.play("nav_tick")
                 return
-            if (col === 0)
-                grid.currentIndex = grid.currentIndex - 1
-            else
-                grid.moveCurrentIndexLeft()
+            }
+            grid.moveCurrentIndexLeft()
         } else {
-            // RIGHT past the rightmost column wraps to the next row's
-            // leftmost column; at the last item it clamps (no wrap).
-            if (grid.currentIndex === grid.count - 1)
+            // RIGHT clamps at the row edge and at the last item; rows never
+            // wrap.
+            if (col === cols - 1 || grid.currentIndex === grid.count - 1)
                 return
-            if (col === cols - 1)
-                grid.currentIndex = grid.currentIndex + 1
-            else
-                grid.moveCurrentIndexRight()
+            grid.moveCurrentIndexRight()
         }
+        grid.revealCurrent()
     }
 
     function padNavigateVertical(direction) {
@@ -583,7 +592,34 @@ ApplicationWindow {
                     return
                 grid.moveCurrentIndexDown()
             }
+            grid.revealCurrent()
         }
+    }
+
+    // Right stick: wheel-like scroll of whatever surface is showing. The
+    // selection stays put — the next D-pad move snaps the view back to it.
+    function padScroll(direction) {
+        if (helpDialog.visible) {
+            helpDialog.padScroll(direction)
+            return
+        }
+        if (aboutDialog.visible) {
+            // Only the full release notes scroll; the compact About card
+            // keeps Up/Down as focus steps and has nothing to wheel.
+            if (aboutDialog.showFullNotes)
+                aboutDialog.padVertical(direction)
+            return
+        }
+        if (deleteDialog.visible || bulkDeleteDialog.visible)
+            return
+        if (window.settingsOpen) {
+            settingsView.padScroll(direction)
+            return
+        }
+        if (window.helpOpen || window.menuOpen)
+            return
+        if (grid.count > 0)
+            grid.scrollBy(direction)
     }
 
     function padConfirm() {
@@ -753,6 +789,12 @@ ApplicationWindow {
                 window.zoomIn()
             else
                 window.zoomOut()
+        }
+        function onDesktopScroll(direction) {
+            window.usingGamepad = true
+            if (lightbox.visible)
+                return
+            window.padScroll(direction)
         }
         function onDesktopBulkToggle() {
             window.usingGamepad = true

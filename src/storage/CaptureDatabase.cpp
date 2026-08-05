@@ -9,6 +9,8 @@
 #include <QDateTime>
 #include <QFileInfo>
 #include <QHash>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QStringList>
@@ -60,6 +62,14 @@ bool CaptureDatabase::migrate()
     if (version < 2 && !applyV2())
         return false;
     if (version < 3 && !applyV3())
+        return false;
+    if (version < 4 && !applyV4())
+        return false;
+    if (version < 5 && !applyV5())
+        return false;
+    if (version < 6 && !applyV6())
+        return false;
+    if (version < 7 && !applyV7())
         return false;
     if (!ensureGameMetadataColumns())
         return false;
@@ -429,7 +439,7 @@ QVector<BindingOverrideRow> CaptureDatabase::listBindingOverrides() const
     QVector<BindingOverrideRow> out;
     QSqlQuery q(QStringLiteral(
         "SELECT device_group, device_profile, action_id, slot, trigger_code, "
-        "activation, hold_ms, unbound FROM binding_overrides ORDER BY id"), m_db);
+        "activation, hold_ms, unbound, tap_count FROM binding_overrides ORDER BY id"), m_db);
     while (q.next()) {
         BindingOverrideRow r;
         r.deviceGroup   = q.value(0).toString();
@@ -440,6 +450,7 @@ QVector<BindingOverrideRow> CaptureDatabase::listBindingOverrides() const
         r.activation    = q.value(5).toString();
         r.holdMs        = q.value(6).isNull() ? 0 : q.value(6).toInt();
         r.unbound       = q.value(7).toInt() != 0;
+        r.tapCount      = q.value(8).isNull() ? 1 : q.value(8).toInt();
         out.append(r);
     }
     return out;
@@ -450,11 +461,11 @@ bool CaptureDatabase::upsertBindingOverride(const BindingOverrideRow& row)
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
         "INSERT INTO binding_overrides "
-        "(device_group, device_profile, action_id, slot, trigger_code, activation, hold_ms, unbound) "
-        "VALUES (:group, :profile, :action, :slot, :trigger, :activation, :hold, :unbound) "
+        "(device_group, device_profile, action_id, slot, trigger_code, activation, hold_ms, unbound, tap_count) "
+        "VALUES (:group, :profile, :action, :slot, :trigger, :activation, :hold, :unbound, :taps) "
         "ON CONFLICT(device_group, device_profile, action_id, slot) DO UPDATE SET "
         "trigger_code = excluded.trigger_code, activation = excluded.activation, "
-        "hold_ms = excluded.hold_ms, unbound = excluded.unbound"));
+        "hold_ms = excluded.hold_ms, unbound = excluded.unbound, tap_count = excluded.tap_count"));
     q.bindValue(QStringLiteral(":group"), row.deviceGroup);
     q.bindValue(QStringLiteral(":profile"), row.deviceProfile.isEmpty()
                                               ? QStringLiteral("")
@@ -465,8 +476,33 @@ bool CaptureDatabase::upsertBindingOverride(const BindingOverrideRow& row)
     q.bindValue(QStringLiteral(":activation"), row.activation);
     q.bindValue(QStringLiteral(":hold"), row.holdMs > 0 ? QVariant(row.holdMs) : QVariant());
     q.bindValue(QStringLiteral(":unbound"), row.unbound ? 1 : 0);
+    q.bindValue(QStringLiteral(":taps"), row.tapCount > 0 ? row.tapCount : 1);
     if (!q.exec()) {
         qWarning() << "DB: upsertBindingOverride failed:" << q.lastError().text();
+        return false;
+    }
+    return true;
+}
+
+bool CaptureDatabase::upsertBindingOverridesAtomically(const QVector<BindingOverrideRow>& rows)
+{
+    if (rows.isEmpty())
+        return true;
+    if (!m_db.transaction()) {
+        qWarning() << "DB: could not open binding override transaction:"
+                   << m_db.lastError().text();
+        return false;
+    }
+    for (const BindingOverrideRow& row : rows) {
+        if (upsertBindingOverride(row))
+            continue;
+        m_db.rollback();
+        return false;
+    }
+    if (!m_db.commit()) {
+        qWarning() << "DB: binding override transaction commit failed:"
+                   << m_db.lastError().text();
+        m_db.rollback();
         return false;
     }
     return true;
@@ -513,6 +549,55 @@ bool CaptureDatabase::clearAllBindingOverrides()
 {
     QSqlQuery q(m_db);
     return q.exec(QStringLiteral("DELETE FROM binding_overrides"));
+}
+
+ControllerLayoutRow CaptureDatabase::controllerLayout(const QString& logicalId) const
+{
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral(
+        "SELECT logical_id, layout_signature, button_labels_json, needs_reconfirmation "
+        "FROM controller_layouts WHERE logical_id = :id"));
+    query.bindValue(QStringLiteral(":id"), logicalId);
+    if (!query.exec() || !query.next())
+        return {};
+    ControllerLayoutRow row;
+    row.logicalId = query.value(0).toString();
+    row.layoutSignature = query.value(1).toString();
+    const auto array = QJsonDocument::fromJson(query.value(2).toByteArray()).array();
+    for (const auto& value : array)
+        row.buttonLabels.push_back(value.toString());
+    row.needsReconfirmation = query.value(3).toBool();
+    return row;
+}
+
+bool CaptureDatabase::upsertControllerLayout(const ControllerLayoutRow& row)
+{
+    QJsonArray labels;
+    for (const QString& label : row.buttonLabels)
+        labels.push_back(label);
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral(
+        "INSERT INTO controller_layouts "
+        "(logical_id, layout_signature, button_labels_json, needs_reconfirmation) "
+        "VALUES (:id, :signature, :labels, :reconfirm) "
+        "ON CONFLICT(logical_id) DO UPDATE SET layout_signature=excluded.layout_signature, "
+        "button_labels_json=excluded.button_labels_json, "
+        "needs_reconfirmation=excluded.needs_reconfirmation"));
+    query.bindValue(QStringLiteral(":id"), row.logicalId);
+    query.bindValue(QStringLiteral(":signature"), row.layoutSignature);
+    query.bindValue(QStringLiteral(":labels"),
+                    QString::fromUtf8(QJsonDocument(labels).toJson(QJsonDocument::Compact)));
+    query.bindValue(QStringLiteral(":reconfirm"), row.needsReconfirmation ? 1 : 0);
+    return query.exec();
+}
+
+bool CaptureDatabase::confirmControllerLayout(const QString& logicalId)
+{
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral(
+        "UPDATE controller_layouts SET needs_reconfirmation = 0 WHERE logical_id = :id"));
+    query.bindValue(QStringLiteral(":id"), logicalId);
+    return query.exec();
 }
 
 QStringList CaptureDatabase::watchedFolders() const
@@ -868,5 +953,139 @@ bool CaptureDatabase::applyV3()
         }
     }
     QSqlQuery(QStringLiteral("PRAGMA user_version = 3"), m_db);
+    return m_db.commit();
+}
+
+bool CaptureDatabase::applyV4()
+{
+    // Tap counts become a column of their own so a triple tap can be stored at
+    // all. A plain ADD COLUMN is enough here — unlike v3 this changes no CHECK
+    // constraint and no index, and the NOT NULL DEFAULT 1 fills every existing
+    // row with "one tap", which is what all of them meant.
+    //
+    // The second statement retires the `double_tap` spelling: the gesture is
+    // now "tap, twice", so the count lives in one place instead of being half
+    // in a string and half in a column. The activation CHECK still accepts the
+    // old token (rewriting it would mean another table rebuild for no gain), so
+    // a database written by an older build keeps opening here; nothing writes
+    // it any more.
+    const QStringList statements = {
+        QStringLiteral("ALTER TABLE binding_overrides "
+                       "ADD COLUMN tap_count INTEGER NOT NULL DEFAULT 1"),
+        QStringLiteral("UPDATE binding_overrides SET activation = 'tap', tap_count = 2 "
+                       "WHERE activation = 'double_tap'"),
+    };
+
+    if (!m_db.transaction())
+        return false;
+    for (const QString& sql : statements) {
+        QSqlQuery q(m_db);
+        if (!q.exec(sql)) {
+            qCritical() << "DB: migration v4 failed:" << q.lastError().text();
+            m_db.rollback();
+            return false;
+        }
+    }
+    QSqlQuery(QStringLiteral("PRAGMA user_version = 4"), m_db);
+    return m_db.commit();
+}
+
+bool CaptureDatabase::applyV5()
+{
+    // XInput's BACK bit was historically mislabeled as the true Capture
+    // control. Only legacy slot profiles prove that the row came from XInput,
+    // so migrate those and nothing else. Shared profiles and model identities
+    // are deliberately untouched: rewriting either from the currently
+    // connected controller would make their meaning device-dependent.
+    if (!m_db.transaction())
+        return false;
+    QSqlQuery migrate(m_db);
+    migrate.prepare(QStringLiteral(
+        "UPDATE binding_overrides "
+        "SET trigger_code = REPLACE(trigger_code, 'gamepad.capture', 'gamepad.view_back') "
+        "WHERE device_group = 'controller' AND device_profile LIKE 'xinput.slot%' "
+        "AND trigger_code LIKE '%gamepad.capture%'"));
+    if (!migrate.exec()) {
+        qCritical() << "DB: migration v5 failed:" << migrate.lastError().text();
+        m_db.rollback();
+        return false;
+    }
+    QSqlQuery(QStringLiteral("PRAGMA user_version = 5"), m_db);
+    return m_db.commit();
+}
+
+bool CaptureDatabase::applyV6()
+{
+    if (!m_db.transaction())
+        return false;
+    QSqlQuery create(m_db);
+    if (!create.exec(QStringLiteral(R"(CREATE TABLE IF NOT EXISTS controller_layouts (
+            logical_id             TEXT PRIMARY KEY,
+            layout_signature       TEXT NOT NULL,
+            button_labels_json     TEXT NOT NULL DEFAULT '[]',
+            needs_reconfirmation   INTEGER NOT NULL DEFAULT 0 CHECK(needs_reconfirmation IN (0,1))))"))) {
+        qCritical() << "DB: migration v6 failed:" << create.lastError().text();
+        m_db.rollback();
+        return false;
+    }
+    QSqlQuery(QStringLiteral("PRAGMA user_version = 6"), m_db);
+    return m_db.commit();
+}
+
+bool CaptureDatabase::applyV7()
+{
+    // Guide grew a default tap/hold pair (tap = Toggle Overlay, 2 s hold =
+    // Show / Hide GameHQ). A persisted Guide *press* override from before that
+    // fires on the down edge, which opens the overlay and cancels the pattern
+    // recognizer — the new hold can then never arm. Rewriting the overlay
+    // toggle to a single tap keeps its meaning (it still toggles the overlay,
+    // just on release) while letting the hold coexist.
+    if (!m_db.transaction())
+        return false;
+    QSqlQuery overlayPress(m_db);
+    overlayPress.prepare(QStringLiteral(
+        "UPDATE binding_overrides "
+        "SET activation = 'tap', tap_count = 1, hold_ms = 0 "
+        "WHERE device_group = 'controller' "
+        "AND action_id = 'global.toggle_overlay' "
+        "AND trigger_code = 'gamepad.guide' "
+        "AND activation = 'press' "
+        "AND unbound = 0"));
+    if (!overlayPress.exec()) {
+        qCritical() << "DB: migration v7 failed:" << overlayPress.lastError().text();
+        m_db.rollback();
+        return false;
+    }
+
+    // A Guide press the user bound to some *other* action is kept exactly as
+    // saved — but then the new default Guide hold would fire on top of it.
+    // Suppress the hold for those profiles with an explicit unbound row (the
+    // user can rebind it in the editor); never silently run both actions.
+    QSqlQuery suppressHold(m_db);
+    suppressHold.prepare(QStringLiteral(
+        "INSERT OR IGNORE INTO binding_overrides "
+        "(device_group, device_profile, action_id, slot, trigger_code, "
+        " activation, hold_ms, unbound, tap_count) "
+        "SELECT 'controller', device_profile, 'global.toggle_desktop', 1, NULL, "
+        "       'hold', 2000, 1, 1 "
+        "FROM binding_overrides "
+        "WHERE device_group = 'controller' "
+        "AND action_id <> 'global.toggle_overlay' "
+        "AND trigger_code = 'gamepad.guide' "
+        "AND activation = 'press' "
+        "AND unbound = 0 "
+        "GROUP BY device_profile"));
+    if (!suppressHold.exec()) {
+        qCritical() << "DB: migration v7 failed:" << suppressHold.lastError().text();
+        m_db.rollback();
+        return false;
+    }
+    if (suppressHold.numRowsAffected() > 0) {
+        qInfo() << "DB: migration v7 kept a custom Guide press binding and"
+                << "disabled the default Guide-hold Show/Hide GameHQ action for"
+                << suppressHold.numRowsAffected() << "profile(s); it can be"
+                << "re-assigned in Settings -> Input.";
+    }
+    QSqlQuery(QStringLiteral("PRAGMA user_version = 7"), m_db);
     return m_db.commit();
 }

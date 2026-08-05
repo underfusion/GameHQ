@@ -143,6 +143,7 @@ int main(int argc, char* argv[])
     QString postUpdateVersion;
     QString postUpdateToken;
     const QStringList arguments = qtApp.arguments();
+    const bool smokeTest = arguments.contains(QStringLiteral("--smoke-test"));
     const qsizetype importAt = arguments.indexOf(QStringLiteral("--import-portable"));
     if (importAt >= 0) {
         QString importError;
@@ -237,6 +238,12 @@ int main(int argc, char* argv[])
     app.setPostUpdateValidation(postUpdateValidation);
     if (!app.init())
         return 1;
+
+    // Local/CI packaged-layout acceptance: exercise normal initialization,
+    // enter the Qt event loop, then take the same orderly teardown path as the
+    // tray Exit action. The session marker and log prove destruction ran.
+    if (smokeTest)
+        QTimer::singleShot(2000, &qtApp, &QCoreApplication::quit);
 
     if (postUpdateValidation) {
         QTimer::singleShot(7000, &app, [&app, postUpdateVersion, postUpdateToken] {
