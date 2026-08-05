@@ -1,6 +1,8 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls.Basic as QC
 import GameHQ
+import "../helpers/PadNav.js" as PadNav
 
 // A draft editor for the complete assignment. Stored values are presented as
 // fields; only the small Change/Record controls start live input capture.
@@ -39,10 +41,11 @@ FocusScope {
     onVisibleChanged: {
         if (!visible)
             return
+        dialogViewport.contentY = 0
         Qt.callLater(function() {
-            const first = root.nextItemInFocusChain(true)
-            if (first && first !== root)
-                first.forceActiveFocus()
+            const controls = PadNav.focusables(root)
+            if (controls.length > 0)
+                controls[0].forceActiveFocus()
         })
     }
 
@@ -52,6 +55,72 @@ FocusScope {
         else
             root.model.closeAssignmentEditor()
         event.accepted = true
+    }
+
+    // ───────────────── Pad navigation ─────────────────
+    // While the dialog is up it owns the pad completely (routed here through
+    // SettingsPage.padOverlay): directions move only between the dialog's own
+    // controls, Cross activates the focused one, and Circle is the only way
+    // out — cancel a running capture first, then close the draft.
+    function revealFocused() {
+        const item = Window.window ? Window.window.activeFocusItem : null
+        if (!item || !PadNav.isInside(item, root))
+            return
+        const point = item.mapToItem(dialogContent, 0, 0)
+        const top = Math.max(0, point.y - Theme.s16)
+        const bottom = point.y + item.height + Theme.s16
+        if (top < dialogViewport.contentY)
+            dialogViewport.contentY = top
+        else if (bottom > dialogViewport.contentY + dialogViewport.height)
+            dialogViewport.contentY = Math.min(
+                Math.max(0, dialogViewport.contentHeight - dialogViewport.height),
+                bottom - dialogViewport.height)
+    }
+
+    function padStep(direction) {
+        const active = Window.window ? Window.window.activeFocusItem : null
+        const target = PadNav.verticalTarget(root, active, direction)
+        if (target) {
+            target.forceActiveFocus()
+            revealFocused()
+            sounds.play("nav_tick")
+        }
+    }
+
+    function padHorizontal(direction) {
+        const active = Window.window ? Window.window.activeFocusItem : null
+        if (!active || !PadNav.isInside(active, root)) {
+            padStep(1)
+            return
+        }
+        const target = PadNav.horizontalTarget(root, active, direction)
+        if (target) {
+            target.forceActiveFocus()
+            revealFocused()
+            sounds.play("nav_tick")
+        }
+    }
+
+    function padConfirm() {
+        const active = Window.window ? Window.window.activeFocusItem : null
+        if (active && PadNav.isInside(active, root) && active.clicked) {
+            active.clicked()
+            sounds.play("confirm")
+        }
+    }
+
+    function padBack() {
+        if (root.capturing)
+            root.model.cancelTriggerCapture()
+        else
+            root.model.closeAssignmentEditor()
+    }
+
+    // Wheel-like pad scroll (right stick) of the dialog's own viewport.
+    function scrollBy(direction) {
+        const maximum = Math.max(0, dialogViewport.contentHeight - dialogViewport.height)
+        dialogViewport.contentY = Math.max(0, Math.min(maximum,
+            dialogViewport.contentY + direction * Math.max(80, dialogViewport.height * 0.28)))
     }
 
     Rectangle {
@@ -87,6 +156,7 @@ FocusScope {
             clip: true
             boundsBehavior: Flickable.StopAtBounds
             flickableDirection: Flickable.VerticalFlick
+            QC.ScrollBar.vertical: AppScrollBar {}
 
             ColumnLayout {
                 id: dialogContent

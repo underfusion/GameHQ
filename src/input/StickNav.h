@@ -65,4 +65,21 @@ inline quint32 bits(const AxisConfig& cfg, int x, int y, quint32 prev = 0)
     return out;
 }
 
+// Map one stick's raw y onto two arbitrary button bits — same mutual
+// exclusion and opt-in hysteresis as bits(), for sticks whose directions are
+// not the D-pad (right stick → scroll). `prev` follows the same contract.
+inline quint32 verticalBits(const AxisConfig& cfg, int y,
+                            int upButton, int downButton, quint32 prev = 0)
+{
+    quint32 out = 0;
+    auto held = [prev](int btn) { return (prev & (1u << btn)) != 0; };
+    const int growing = cfg.yPositiveIsUp ? upButton : downButton;
+    const int shrinking = cfg.yPositiveIsUp ? downButton : upButton;
+    if (axisActive(y, cfg, held(growing), true))
+        out |= (1u << growing);
+    else if (axisActive(y, cfg, held(shrinking), false))
+        out |= (1u << shrinking);
+    return out;
+}
+
 } // namespace StickNav

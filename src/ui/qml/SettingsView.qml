@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import GameHQ
 import "components"
+import "helpers/PadNav.js" as PadNav
 
 Item {
     id: root
@@ -50,30 +51,44 @@ Item {
         return pageStack.children[root.currentCategory] || null
     }
     function isInside(item, ancestor) {
-        for (let p = item; p; p = p.parent)
-            if (p === ancestor)
-                return true
-        return false
+        return PadNav.isInside(item, ancestor)
+    }
+    // The modal that owns the pad while it is up: a page-declared dialog
+    // (SettingsPage.padOverlay) or one of the confirm dialogs owned here.
+    // While one is visible every pad event is routed to it, so focus can
+    // never wander into the page underneath.
+    function activeOverlay() {
+        const page = currentPage()
+        if (page && page.padOverlay && page.padOverlay.visible)
+            return page.padOverlay
+        const locals = [portableImportDialog, resetAllDialog,
+                        resetInputDialog, restoreCategoryDialog]
+        for (let i = 0; i < locals.length; ++i)
+            if (locals[i].visible)
+                return locals[i]
+        return null
     }
     // First focusable control on the page — where Right lands when entering.
     function firstControlIn(page) {
-        if (!page)
-            return null
-        let probe = page.nextItemInFocusChain(true)
-        for (let guard = 0; probe && guard < 300; ++guard) {
-            if (isInside(probe, page) && probe.activeFocusOnTab)
-                return probe
-            probe = probe.nextItemInFocusChain(true)
-        }
-        return null
+        const controls = PadNav.focusables(page)
+        return controls.length > 0 ? controls[0] : null
     }
     function focusOptions() {
-        const first = firstControlIn(currentPage())
+        const page = currentPage()
+        const first = firstControlIn(page)
         if (first) {
             first.forceActiveFocus()
+            revealOnPage(page)
             return true
         }
         return false   // a page with nothing to focus keeps the caller on categories
+    }
+
+    // Direct reveal after every pad-driven focus move, so the options panel
+    // scrolls even if the focus-change signal path ever misses one.
+    function revealOnPage(page) {
+        if (page && page.revealFocusedItem)
+            Qt.callLater(page.revealFocusedItem)
     }
 
     function enterPanel(panel) {
@@ -90,33 +105,58 @@ Item {
     }
 
     function padCategoryStep(direction) {
+        if (activeOverlay())
+            return   // L1/R1 must not switch pages under a modal
         selectCategory((currentCategory + direction + categories.length) % categories.length, true)
         sounds.play("nav_tick")
     }
 
-    // Up/Down inside the options panel: walk the focus chain but refuse to
-    // leave the current page, so focus cannot escape into the category list
-    // or the sidebar.
+    // Up/Down inside the options panel: spatial step to the nearest control in
+    // the row below/above, never leaving the current page. Spatial, not the
+    // raw focus chain, so Down jumps to the next row instead of visiting every
+    // segment of a segmented control on the way.
     function optionsStep(direction) {
         const page = currentPage()
         const active = Window.window ? Window.window.activeFocusItem : null
-        if (!page || !active || !isInside(active, page)) {
+        if (!page)
+            return
+        if (!active || !isInside(active, page)) {
             focusOptions()
             return
         }
-        let next = active.nextItemInFocusChain(direction > 0)
-        for (let guard = 0; next && next !== active && guard < 300; ++guard) {
-            if (isInside(next, page) && next.activeFocusOnTab)
-                break
-            next = next.nextItemInFocusChain(direction > 0)
-        }
-        if (next && next !== active && isInside(next, page)) {
+        const next = PadNav.verticalTarget(page, active, direction)
+        if (next) {
             next.forceActiveFocus()
+            revealOnPage(page)
             sounds.play("nav_tick")
         }
     }
 
+    // Right/Left within the focused row — segmented-control segments, the
+    // Primary/Secondary assignment slots of a binding card, paired buttons.
+    // Returns false at the row edge.
+    function optionsStepHorizontal(direction) {
+        const page = currentPage()
+        const active = Window.window ? Window.window.activeFocusItem : null
+        if (!page || !active || !isInside(active, page))
+            return false
+        const next = PadNav.horizontalTarget(page, active, direction)
+        if (next) {
+            next.forceActiveFocus()
+            revealOnPage(page)
+            sounds.play("nav_tick")
+            return true
+        }
+        return false
+    }
+
     function padFocusStep(direction) {
+        const overlay = activeOverlay()
+        if (overlay) {
+            if (overlay.padStep)
+                overlay.padStep(direction)
+            return
+        }
         if (padComboOpen) {
             padCombo.padStep(direction)
             sounds.play("nav_tick")
@@ -128,21 +168,41 @@ Item {
             padCategoryStep(direction)
     }
 
-    // Left/Right between panels. Returns false when there is nothing further
-    // left, so Main.qml can hand focus back to the app sidebar.
+    // Left/Right. A visible modal owns both directions; otherwise Right
+    // enters the options panel from the categories and then moves within the
+    // focused row, Left walks the row and finally backs out one panel.
+    // Returns false when there is nothing further left, so Main.qml can hand
+    // focus back to the app sidebar.
     function padPanelStep(direction) {
+        const overlay = activeOverlay()
+        if (overlay) {
+            if (overlay.padHorizontal)
+                overlay.padHorizontal(direction)
+            return true
+        }
         if (padComboOpen)
             return true   // the dropdown owns Left/Right too; swallow it
-        if (direction > 0)
-            return activePanel === panelCategories ? enterPanel(panelOptions) : true
+        if (direction > 0) {
+            if (activePanel === panelCategories)
+                return enterPanel(panelOptions)
+            optionsStepHorizontal(1)
+            return true
+        }
         if (activePanel === panelOptions) {
-            enterPanel(panelCategories)
+            if (!optionsStepHorizontal(-1))
+                enterPanel(panelCategories)
             return true
         }
         return false   // already leftmost — caller moves to the sidebar
     }
 
     function padConfirm() {
+        const overlay = activeOverlay()
+        if (overlay) {
+            if (overlay.padConfirm)
+                overlay.padConfirm()
+            return
+        }
         if (padComboOpen) {
             padCombo.padCommitHighlighted()
             padCombo.popup.close()
@@ -166,14 +226,77 @@ Item {
             active.popup.open()
             sounds.play("nav_tick")
         } else if (active.clicked) {
+            // The click may destroy or disable the very control that fired it
+            // (Restore defaults reloads every binding card and greys itself
+            // out). Remember where it sat and put the pad cursor back on it —
+            // or on whatever now sits closest — so navigation never strands.
+            const page = currentPage()
+            const point = page ? active.mapToItem(page, active.width / 2,
+                                                  active.height / 2) : null
             active.clicked()
+            Qt.callLater(function() { root.restoreOptionsFocus(active, point) })
         }
     }
 
-    // Circle: close the dropdown without committing, else step back a panel.
-    // Returns false when there is nothing left to back out of, so Main.qml
-    // closes Settings.
+    // After a pad-activated control fired: if focus fell out of the page,
+    // return it to the control (when it survived usable) or to the nearest
+    // focusable at its old position. A modal or dropdown opened by the click
+    // owns the pad instead, so those cases are left alone.
+    function restoreOptionsFocus(previous, point) {
+        if (activeOverlay() || padComboOpen || activePanel !== panelOptions)
+            return
+        const page = currentPage()
+        if (!page)
+            return
+        const current = Window.window ? Window.window.activeFocusItem : null
+        if (current && isInside(current, page))
+            return
+        let target = null
+        try {
+            if (previous && previous.visible && previous.enabled
+                    && isInside(previous, page))
+                target = previous
+        } catch (err) {
+            // previous was destroyed by its own action — fall through.
+        }
+        if (!target && point)
+            target = PadNav.nearestTarget(page, point.x, point.y)
+        if (target) {
+            target.forceActiveFocus()
+            revealOnPage(page)
+        } else {
+            focusOptions()
+        }
+    }
+
+    // Right stick: wheel-like scroll of whichever surface owns the pad — the
+    // open modal's viewport when one is up, otherwise the current options
+    // page. An open dropdown swallows it so the page can't shift underneath.
+    function padScroll(direction) {
+        const overlay = activeOverlay()
+        if (overlay) {
+            if (overlay.scrollBy)
+                overlay.scrollBy(direction)
+            return
+        }
+        if (padComboOpen)
+            return
+        const page = currentPage()
+        if (page && page.scrollBy)
+            page.scrollBy(direction)
+    }
+
+    // Circle: a modal closes first (the only pad way out of one), then the
+    // dropdown closes without committing, then a panel step back. Returns
+    // false when there is nothing left to back out of, so Main.qml closes
+    // Settings.
     function padBack() {
+        const overlay = activeOverlay()
+        if (overlay) {
+            if (overlay.padBack)
+                overlay.padBack()
+            return true
+        }
         if (padComboOpen) {
             padCombo.popup.close()
             padCombo = null
@@ -196,9 +319,11 @@ Item {
 
     // A section-wide focus wash is a controller affordance. Moving the mouse
     // switches back to the existing per-control hover/focus treatment.
+    // (Qualified through root: a bare Window.window would attach to the
+    // HoverHandler, which is not an Item, and always be null.)
     HoverHandler {
         acceptedDevices: PointerDevice.Mouse
-        onPointChanged: if (Window.window) Window.window.usingGamepad = false
+        onPointChanged: if (root.Window.window) root.Window.window.usingGamepad = false
     }
 
     Keys.onPressed: function(event) {
@@ -245,7 +370,7 @@ Item {
                         }
                         Keys.onRightPressed: {
                             if (Window.window) Window.window.usingGamepad = false
-                            root.padFocusStep(1)
+                            root.enterPanel(root.panelOptions)
                         }
                         Keys.onEscapePressed: root.closeRequested()
                     }

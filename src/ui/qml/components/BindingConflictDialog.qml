@@ -1,5 +1,6 @@
 import QtQuick
 import GameHQ
+import "../helpers/PadNav.js" as PadNav
 
 // Modal shown only for a HardConflict: the trigger the user just pressed is
 // already bound to a different action in a context that is live at the same
@@ -26,8 +27,38 @@ Item {
     visible: false
     opacity: 0
 
-    function open()  { visible = true }
+    function open() {
+        visible = true
+        // Land on Cancel: keeping the existing binding is the safe default.
+        Qt.callLater(function() { if (root.visible) cancelButton.forceActiveFocus() })
+    }
     function close() { visible = false }
+
+    // Pad routing while modal (see SettingsPage.padOverlay): directions move
+    // between the three buttons, Cross fires the focused one, Circle cancels.
+    function padStep(direction) { padHorizontal(direction) }
+    function padHorizontal(direction) {
+        const active = Window.window ? Window.window.activeFocusItem : null
+        if (!active || !PadNav.isInside(active, root)) {
+            cancelButton.forceActiveFocus()
+            sounds.play("nav_tick")
+            return
+        }
+        const target = PadNav.horizontalTarget(root, active, direction)
+        if (target) {
+            target.forceActiveFocus()
+            sounds.play("nav_tick")
+        }
+    }
+    function padConfirm() {
+        const active = Window.window ? Window.window.activeFocusItem : null
+        if (active && PadNav.isInside(active, root) && active.clicked)
+            active.clicked()
+    }
+    function padBack() {
+        root.canceled()
+        root.close()
+    }
 
     Behavior on opacity { NumberAnimation { duration: Theme.durFast } }
     states: State {
@@ -85,6 +116,7 @@ Item {
                 anchors.right: parent.right
                 spacing: Theme.s12
                 AccentButton {
+                    id: cancelButton
                     label: root.cancelLabel
                     onClicked: { root.canceled(); root.close() }
                 }

@@ -990,6 +990,7 @@ void InputEngine::dispatchAction(const QString& actionId, const QString& trigger
         { "global.screenshot",     &Self::handleScreenshot },
         { "global.save_replay",    &Self::handleSaveReplay },
         { "global.toggle_overlay", &Self::handleToggleOverlay },
+        { "global.toggle_desktop", &Self::handleToggleDesktop },
         // Overlay
         { "overlay.navigate_left",  &Self::handleOverlayNavigateLeft },
         { "overlay.navigate_right", &Self::handleOverlayNavigateRight },
@@ -1016,6 +1017,8 @@ void InputEngine::dispatchAction(const QString& actionId, const QString& trigger
         { "desktop.settings",       &Self::handleDesktopSettings },
         { "desktop.zoom_out",       &Self::handleDesktopZoomOut },
         { "desktop.zoom_in",        &Self::handleDesktopZoomIn },
+        { "desktop.scroll_up",      &Self::handleDesktopScrollUp },
+        { "desktop.scroll_down",    &Self::handleDesktopScrollDown },
         { "desktop.bulk_toggle",    &Self::handleDesktopBulkToggle },
         // Playback
         { "playback.play_pause",    &Self::handlePlaybackPlayPause },

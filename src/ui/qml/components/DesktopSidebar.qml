@@ -21,6 +21,14 @@ Rectangle {
     signal aboutRequested()
     signal pageClosed()
 
+    // The games list is the sidebar's only clipped region: keep the pad
+    // cursor visible while it walks rows that sit outside the viewport.
+    onSidebarHoverIndexChanged: {
+        const gameIndex = sidebarHoverIndex - categories.length
+        if (sidebarFocused && gameIndex >= 0 && gameIndex < app.games.length)
+            gamesList.positionViewAtIndex(gameIndex, ListView.Contain)
+    }
+
     Layout.preferredWidth: 220
     Layout.fillHeight: true
     radius: Theme.radiusL
@@ -86,6 +94,7 @@ Rectangle {
         }
 
         ListView {
+            id: gamesList
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls.Basic as QC
 import GameHQ
+import "../helpers/PadNav.js" as PadNav
 
 Item {
     id: root
@@ -12,7 +13,34 @@ Item {
     // Zero means fill the available page area. Individual pages may still set
     // a positive cap when a deliberately narrow reading column is useful.
     property int maxContentWidth: 0
+    // The page's currently open modal, if any. SettingsView routes every pad
+    // event to it while it is visible, so directions and Cross/Circle stay
+    // trapped inside the dialog instead of driving the page underneath.
+    property Item padOverlay: null
     default property alias contentData: contentColumn.data
+
+    // When a modal takes over, remember which page control had focus so
+    // closing it puts the pad cursor back where the user left off.
+    property Item _padReturnItem: null
+    onPadOverlayChanged: {
+        if (padOverlay) {
+            const active = Window.window ? Window.window.activeFocusItem : null
+            if (!_padReturnItem && active && containsItem(active)
+                    && !PadNav.isInside(active, padOverlay))
+                _padReturnItem = active
+        } else if (_padReturnItem) {
+            const item = _padReturnItem
+            _padReturnItem = null
+            try {
+                if (item.visible && item.enabled)
+                    item.forceActiveFocus()
+            } catch (err) {
+                // The control was destroyed while the modal was up (its dialog
+                // rewrote the bindings); the next pad move re-enters the page
+                // from its first control.
+            }
+        }
+    }
 
     function containsItem(item) {
         for (let probe = item; probe; probe = probe.parent)
@@ -25,6 +53,9 @@ Item {
         const item = Window.window ? Window.window.activeFocusItem : null
         if (!item || !containsItem(item))
             return
+        // A modal scrolls its own viewport; the page must not chase it.
+        if (padOverlay && PadNav.isInside(item, padOverlay))
+            return
         const point = item.mapToItem(pageContainer, 0, 0)
         const top = Math.max(0, point.y - Theme.s16)
         const bottom = point.y + item.height + Theme.s16
@@ -36,8 +67,18 @@ Item {
     }
 
     Connections {
-        target: Window.window
+        // Attached-property trap: a bare `Window.window` here would attach to
+        // the Connections object — which is not an Item — and stay null
+        // forever, silently never connecting. Qualify through the page item.
+        target: root.Window.window
         function onActiveFocusItemChanged() { Qt.callLater(root.revealFocusedItem) }
+    }
+
+    // Wheel-like pad scroll (right stick): moves the viewport, not the focus.
+    function scrollBy(direction) {
+        const maximum = Math.max(0, flick.contentHeight - flick.height)
+        flick.contentY = Math.max(0, Math.min(maximum,
+            flick.contentY + direction * Math.max(80, flick.height * 0.28)))
     }
 
     Flickable {
@@ -49,10 +90,7 @@ Item {
         contentHeight: pageContainer.implicitHeight + Theme.s24
         flickableDirection: Flickable.VerticalFlick
 
-        QC.ScrollBar.vertical: QC.ScrollBar {
-            policy: flick.contentHeight > flick.height ? QC.ScrollBar.AsNeeded
-                                                       : QC.ScrollBar.AlwaysOff
-        }
+        QC.ScrollBar.vertical: AppScrollBar {}
 
         MouseArea {
             width: flick.contentWidth

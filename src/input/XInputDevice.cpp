@@ -49,6 +49,9 @@ quint32 mapButtons(const XINPUT_GAMEPAD& pad)
     // zone == deadzone), matching how this backend has always behaved.
     constexpr StickNav::AxisConfig kNav{ 0, 12000, 12000, true };
     s |= StickNav::bits(kNav, pad.sThumbLX, pad.sThumbLY);
+    // Right stick vertical → wheel-like scroll controls.
+    s |= StickNav::verticalBits(kNav, pad.sThumbRY,
+                                Gamepad::RStickUp, Gamepad::RStickDown);
 
     return s;
 }

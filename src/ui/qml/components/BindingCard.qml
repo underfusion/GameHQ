@@ -26,13 +26,15 @@ Rectangle {
     border.width: Theme.borderWidth
     border.color: root.changed ? Theme.accent : root.assigned ? Theme.borderLight : Theme.stroke
 
+    // Half-height and vertically centred so the accent bar never pokes past
+    // the card's rounded left corners.
     Rectangle {
         visible: root.changed
         anchors.left: parent.left
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
+        anchors.verticalCenter: parent.verticalCenter
         width: 3
-        radius: root.radius
+        height: parent.height / 2
+        radius: width / 2
         color: Theme.accent
     }
 

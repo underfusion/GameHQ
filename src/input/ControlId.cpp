@@ -75,6 +75,7 @@ bool isCanonical(const QString& code)
         || code == DpadUp || code == DpadDown || code == DpadLeft || code == DpadRight
         || code == PaddleLeft1 || code == PaddleLeft2
         || code == PaddleRight1 || code == PaddleRight2
+        || code == StickRightUp || code == StickRightDown
         || code == Menu || code == Guide || code == Capture || code == ViewBack;
 }
 
@@ -170,6 +171,8 @@ QString label(const QString& code, ControllerFamily family)
     if (code == PaddleLeft2)   return QStringLiteral("Left Paddle 2");
     if (code == PaddleRight1)  return QStringLiteral("Right Paddle 1");
     if (code == PaddleRight2)  return QStringLiteral("Right Paddle 2");
+    if (code == StickRightUp)   return QStringLiteral("Right Stick Up");
+    if (code == StickRightDown) return QStringLiteral("Right Stick Down");
     return QStringLiteral("?");
 }
 

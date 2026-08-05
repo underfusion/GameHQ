@@ -20,6 +20,8 @@ class FramePumpService;
 class NotificationCenter;
 class UpdateService;
 class IntegrationService;
+class ForegroundApi;
+class ForegroundAcquirer;
 class QTimer;
 
 // Owns application lifecycle: paths → logging → config → database →
@@ -40,6 +42,7 @@ public:
 private:
     void showWindow();
     void openGallery();
+    void toggleDesktopWindow();
 
     std::unique_ptr<ConfigManager> m_config;
     std::unique_ptr<CaptureLocations> m_locations;
@@ -75,5 +78,11 @@ private:
     bool m_inputStarted = false;
     bool m_pendingActivation = false;
     bool m_pendingOpenGallery = false;
+    // Hold-PS desktop summon: the foreground reader, the retrying focus
+    // acquirer, and the window the foreground was taken from ("return
+    // address" for the second hold).
+    std::unique_ptr<ForegroundApi> m_foregroundApi;
+    ForegroundAcquirer* m_desktopFocus = nullptr;
+    void* m_desktopReturnTarget = nullptr;
     QQmlApplicationEngine m_engine;
 };

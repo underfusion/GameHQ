@@ -13,6 +13,8 @@ const QVector<ActionCatalog::Action>& buildCatalog()
           QStringLiteral("Save the rolling replay buffer as a clip."), true },
         { QStringLiteral("global.toggle_overlay"), Scope::Global,   QStringLiteral("Toggle Overlay"),
           QStringLiteral("Show or hide the in-game overlay."), true },
+        { QStringLiteral("global.toggle_desktop"), Scope::Global,   QStringLiteral("Show / Hide GameHQ Window"),
+          QStringLiteral("Bring the GameHQ window to the front with focus, or hide it and return to the game."), true },
 
         // Overlay — in-game overlay is visible.
         { QStringLiteral("overlay.navigate_up"),    Scope::Overlay, QStringLiteral("Navigate Up"),
@@ -65,6 +67,10 @@ const QVector<ActionCatalog::Action>& buildCatalog()
           QStringLiteral("Make the gallery thumbnails smaller."), true, true },
         { QStringLiteral("desktop.zoom_in"),        Scope::Desktop, QStringLiteral("Zoom In"),
           QStringLiteral("Make the gallery thumbnails larger."), true, true },
+        { QStringLiteral("desktop.scroll_up"),      Scope::Desktop, QStringLiteral("Scroll Up"),
+          QStringLiteral("Scroll the current view up without moving the selection."), true, true },
+        { QStringLiteral("desktop.scroll_down"),    Scope::Desktop, QStringLiteral("Scroll Down"),
+          QStringLiteral("Scroll the current view down without moving the selection."), true, true },
         { QStringLiteral("desktop.bulk_toggle"),    Scope::Desktop, QStringLiteral("Bulk Select"),
           QStringLiteral("Enter or leave bulk selection mode."), true },
 

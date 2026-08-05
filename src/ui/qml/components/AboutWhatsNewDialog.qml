@@ -407,7 +407,7 @@ FocusScope {
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
                     flickableDirection: Flickable.VerticalFlick
-                    QC.ScrollBar.vertical: QC.ScrollBar { policy: QC.ScrollBar.AsNeeded }
+                    QC.ScrollBar.vertical: AppScrollBar {}
 
                     ColumnLayout {
                         id: aboutColumn
@@ -616,7 +616,7 @@ FocusScope {
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
                     flickableDirection: Flickable.VerticalFlick
-                    QC.ScrollBar.vertical: QC.ScrollBar { policy: QC.ScrollBar.AlwaysOn }
+                    QC.ScrollBar.vertical: AppScrollBar {}
 
                     ColumnLayout {
                         id: fullNotesColumn

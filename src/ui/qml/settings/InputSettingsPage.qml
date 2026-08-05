@@ -9,6 +9,14 @@ SettingsPage {
     pageDescription: "Configure controller, keyboard, and mouse shortcuts without changing navigation behavior."
     readonly property var editor: input.bindingEditor
 
+    // Whichever modal is up owns the pad (ordered by stacking: the conflict
+    // and compatibility prompts sit above the assignment editor).
+    padOverlay: compatibilityDialog.visible ? compatibilityDialog
+              : conflictDialog.visible ? conflictDialog
+              : resetProfileDialog.visible ? resetProfileDialog
+              : assignmentDialog.visible ? assignmentDialog
+              : null
+
     SettingsSection {
         eyebrow: "Devices"
         title: "Input devices"
@@ -213,13 +221,15 @@ SettingsPage {
                 border.color: Theme.stroke
 
                 Behavior on color { ColorAnimation { duration: Theme.durFast } }
+                // Half-height and vertically centred so the accent bar never
+                // pokes past the card's rounded left corners.
                 Rectangle {
                     visible: actionCard.modified
                     anchors.left: parent.left
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
+                    anchors.verticalCenter: parent.verticalCenter
                     width: 3
-                    radius: actionCard.radius
+                    height: parent.height / 2
+                    radius: width / 2
                     color: Theme.accent
                 }
 

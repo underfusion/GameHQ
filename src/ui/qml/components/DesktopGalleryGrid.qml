@@ -45,6 +45,22 @@ Item {
     function moveCurrentIndexUp() { galleryGrid.moveCurrentIndexUp() }
     function moveCurrentIndexDown() { galleryGrid.moveCurrentIndexDown() }
 
+    // Called after every pad/keyboard selection move: guarantees the selected
+    // tile is fully on screen even when the view was wheel-scrolled away from
+    // the selection beforehand.
+    function revealCurrent() {
+        if (galleryGrid.currentIndex >= 0)
+            galleryGrid.positionViewAtIndex(galleryGrid.currentIndex, GridView.Contain)
+    }
+
+    // Wheel-like pad scroll (right stick): moves the viewport, not the
+    // selection. Same step feel as HelpView.scrollBy.
+    function scrollBy(direction) {
+        const maximum = Math.max(0, galleryGrid.contentHeight - galleryGrid.height)
+        galleryGrid.contentY = Math.max(0, Math.min(maximum,
+            galleryGrid.contentY + direction * Math.max(80, galleryGrid.height * 0.28)))
+    }
+
     GridView {
         id: galleryGrid
         anchors.fill: parent

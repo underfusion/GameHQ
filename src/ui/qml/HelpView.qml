@@ -27,9 +27,7 @@ Item {
         contentHeight: helpColumn.implicitHeight + Theme.s16
         flickableDirection: Flickable.VerticalFlick
 
-        QC.ScrollBar.vertical: QC.ScrollBar {
-            policy: QC.ScrollBar.AlwaysOn
-        }
+        QC.ScrollBar.vertical: AppScrollBar {}
 
         ColumnLayout {
             id: helpColumn

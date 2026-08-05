@@ -65,6 +65,8 @@ QByteArray dualSenseReport(bool crossHeld)
     report[0] = 0x01;
     report[1] = char(128);   // LX centre
     report[2] = char(128);   // LY centre
+    report[3] = char(128);   // RX centre
+    report[4] = char(128);   // RY centre — a zero here would read as stick-up
     report[8] = char(crossHeld ? 0x28 : 0x08);
     return report;
 }

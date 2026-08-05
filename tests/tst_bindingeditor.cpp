@@ -57,6 +57,18 @@ private:
     BindingRuntime *m_runtime = nullptr;
     BindingEditorModel *m_editor = nullptr;
 
+    // The press→tap conversion tests predate Guide's tap/hold default pair;
+    // each seeds an explicit press override on Guide so the conversion
+    // machinery they exercise still has a press row to convert. Not a slot —
+    // QTest must not run it as a test of its own.
+    void seedGuidePressOverride()
+    {
+        QVERIFY(m_database->upsertBindingOverride(
+            {QStringLiteral("controller"), {}, QStringLiteral("global.toggle_overlay"), 1,
+             ControlId::Guide, QStringLiteral("press"), 0, false, 1}));
+        m_runtime->reload();
+    }
+
 private slots:
     void initTestCase()
     {
@@ -411,12 +423,11 @@ private slots:
         QVERIFY(m_runtime->press(QStringLiteral("controller"), {}, ControlId::Guide,
                                  ActionCatalog::Scope::Playback,
                                  ActionCatalog::Scope::Overlay));
+        // Guide is a tap binding since the 2 s hold summons the desktop
+        // window: the overlay toggle fires on release, not on press.
+        QVERIFY(m_runtime->release(QStringLiteral("controller"), {}, ControlId::Guide));
         QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 300);
         QCOMPARE(spy.takeFirst().at(0).toString(), QStringLiteral("global.toggle_overlay"));
-        // Guide is a plain press binding: the runtime consumes it on press, so
-        // the matching release has nothing pending and returns false. Released
-        // anyway to leave the runtime clean for the next test.
-        m_runtime->release(QStringLiteral("controller"), {}, ControlId::Guide);
     }
 
     void hardConflictOpensDialogAndCanRetryCapture()
@@ -1118,6 +1129,7 @@ private slots:
 
     void pressToTripleTapConversionPreservesBothExactActions()
     {
+        seedGuidePressOverride();
         m_editor->noteObservedControl(ControlId::Guide);
         m_editor->openAssignmentEditor(QStringLiteral("overlay.favorite"), 2);
         m_editor->beginTriggerCapture(1);
@@ -1161,6 +1173,7 @@ private slots:
 
     void compatibilityCancelAndChooseAnotherLeaveBindingsUntouched()
     {
+        seedGuidePressOverride();
         m_editor->noteObservedControl(ControlId::Guide);
         const auto prepare = [this] {
             m_editor->openAssignmentEditor(QStringLiteral("overlay.favorite"), 2);
@@ -1192,6 +1205,7 @@ private slots:
 
     void conversionPreflightRejectsASecondSingleTap()
     {
+        seedGuidePressOverride();
         QVERIFY(m_database->upsertBindingOverride(
             {QStringLiteral("controller"), {}, QStringLiteral("global.screenshot"), 2,
              ControlId::Guide, QStringLiteral("tap"), 0, false, 1}));
@@ -1212,6 +1226,7 @@ private slots:
 
     void conversionFailureRestoresBothPreviousRows()
     {
+        seedGuidePressOverride();
         m_editor->noteObservedControl(ControlId::Guide);
         m_editor->openAssignmentEditor(QStringLiteral("overlay.favorite"), 2);
         m_editor->beginTriggerCapture(1);
@@ -1235,7 +1250,12 @@ private slots:
                  GestureSpec::press());
         QVERIFY(!hasBinding(*m_runtime, QStringLiteral("controller"), {},
                             QStringLiteral("overlay.favorite"), 2, ControlId::Guide));
-        QVERIFY(m_database->listBindingOverrides().isEmpty());
+        // Rollback leaves exactly the press row this test seeded — the
+        // conversion's tap(1) rewrite and the tap(3) row are both gone.
+        const auto rows = m_database->listBindingOverrides();
+        QCOMPARE(rows.size(), 1);
+        QCOMPARE(rows.first().actionId, QStringLiteral("global.toggle_overlay"));
+        QCOMPARE(rows.first().activation, QStringLiteral("press"));
         m_editor->closeAssignmentEditor();
     }
 

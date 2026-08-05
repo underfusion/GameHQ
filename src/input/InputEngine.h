@@ -108,6 +108,9 @@ signals:
     void screenshotRequested();
     void replayRequested();
     void overlayToggleRequested();
+    // Hold PS (2 s): summon the desktop window over the game with focus, or
+    // dismiss it again. Consumed by App, which owns the window + foreground.
+    void desktopWindowToggleRequested();
     // Circle: consumed entirely in QML now (OverlayWindow.qml) — pops the
     // action menu / sidebar focus first, only closes the overlay at the
     // root level. Kept named "HideRequested" since Esc still means "close".
@@ -132,6 +135,7 @@ signals:
     void desktopTabStep(int direction);   // L1/R1: switch panel focus (sidebar ↔ grid), -1/+1
     void desktopSettings();               // Options: open Settings
     void desktopZoom(int direction);      // L2/R2: thumbnail size, -1/+1
+    void desktopScroll(int direction);    // right stick: wheel-like scroll, -1/+1
     void desktopBulkToggle();             // Cross held: enter/leave bulk selection
     void playbackPlayPause();
     void playbackSeek(int direction);
@@ -209,6 +213,7 @@ private:
     void handleScreenshot(const QString&)             { emit screenshotRequested(); }
     void handleSaveReplay(const QString&)             { emit replayRequested(); }
     void handleToggleOverlay(const QString&)          { emit overlayToggleRequested(); }
+    void handleToggleDesktop(const QString&)          { emit desktopWindowToggleRequested(); }
     void handleOverlayNavigateLeft(const QString& tc)  { startNavRepeat(tc, -1, [this](int d) { emit overlayNavigate(d); }); }
     void handleOverlayNavigateRight(const QString& tc) { startNavRepeat(tc,  1, [this](int d) { emit overlayNavigate(d); }); }
     void handleOverlayNavigateUp(const QString& tc)    { startNavRepeat(tc, -1, [this](int d) { emit overlayNavigateVertical(d); }); }
@@ -235,6 +240,8 @@ private:
     // R2 should sweep the thumbnails up, not step once per pull.
     void handleDesktopZoomOut(const QString& tc)       { startNavRepeat(tc, -1, [this](int d) { emit desktopZoom(d); }); }
     void handleDesktopZoomIn(const QString& tc)        { startNavRepeat(tc,  1, [this](int d) { emit desktopZoom(d); }); }
+    void handleDesktopScrollUp(const QString& tc)      { startNavRepeat(tc, -1, [this](int d) { emit desktopScroll(d); }); }
+    void handleDesktopScrollDown(const QString& tc)    { startNavRepeat(tc,  1, [this](int d) { emit desktopScroll(d); }); }
     void handleDesktopBulkToggle(const QString&)       { emit desktopBulkToggle(); }
     void handlePlaybackPlayPause(const QString&)       { emit playbackPlayPause(); }
     void handlePlaybackSeekBack(const QString& tc)     { startNavRepeat(tc, -1, [this](int d) { emit playbackSeek(d); }); }

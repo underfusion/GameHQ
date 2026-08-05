@@ -37,6 +37,11 @@ inline const QString PaddleLeft1    = QStringLiteral("gamepad.paddle_left1");
 inline const QString PaddleLeft2    = QStringLiteral("gamepad.paddle_left2");
 inline const QString PaddleRight1   = QStringLiteral("gamepad.paddle_right1");
 inline const QString PaddleRight2   = QStringLiteral("gamepad.paddle_right2");
+// Right-stick directions, decoded by the legacy backends the same way the
+// left stick doubles as the D-pad. Vertical only: they drive wheel-like view
+// scrolling, which has no horizontal meaning anywhere in the app.
+inline const QString StickRightUp   = QStringLiteral("gamepad.stick_right_up");
+inline const QString StickRightDown = QStringLiteral("gamepad.stick_right_down");
 
 // Unknown WinMM buttons stay bindable without a known position: "gamepad.button.3".
 QString genericButton(int index);

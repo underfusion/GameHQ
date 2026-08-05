@@ -118,6 +118,7 @@ qt_add_qml_module(GameHQ
         ui/qml/Theme.qml
         ui/qml/Brand.qml
         ui/qml/helpers/SidebarCategories.js
+        ui/qml/helpers/PadNav.js
         ui/qml/themes/Skin.qml
         ui/qml/themes/DarkSkin.qml
         ui/qml/themes/LightSkin.qml
@@ -147,6 +148,7 @@ qt_add_qml_module(GameHQ
         ui/qml/components/OverlayActionMenu.qml
         ui/qml/components/CaptureTile.qml
         ui/qml/components/AccentButton.qml
+        ui/qml/components/AppScrollBar.qml
         ui/qml/components/TileIconButton.qml
         ui/qml/components/VideoBadge.qml
         ui/qml/components/SettingsPathField.qml

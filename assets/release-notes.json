@@ -4,27 +4,59 @@
     {
       "title": "Highlights",
       "items": [
-        "Automatic updater: GameHQ can check for updates, download them, install them, restart automatically, and safely roll back if an update fails. Production-signed manifests protect update authenticity.",
-        "HDR capture: GameHQ detects HDR displays and uses GPU tone mapping so screenshots and SDR replay videos no longer appear washed out or overexposed.",
-        "Windows installer: GameHQ now includes a standard per-user Setup package while keeping Portable available as an alternative.",
-        "Playnite integration: the new plugin can discover GameHQ, launch it with games, forward game start and stop events, and restore state after reconnects.",
-        "Improved Settings and About: redesigned settings pages, clearer diagnostics, update controls, offline release notes, and a new What's New view.",
-        "Capture and data safety: screenshots are saved atomically, rapid captures cannot overwrite each other, portable imports protect existing data, and failed database or configuration recovery now rolls back safely.",
-        "General reliability: improved long-path support, IPC reconnect handling, update discovery, storage diagnostics, log rotation, and Setup/update conflict prevention."
+        "Controller bindings redesigned: assign button combinations, triple taps, configurable gestures, and complete assignments from one editor.",
+        "Modern controller foundation: a GameInput pipeline adds dedicated Share/Capture identities, extra-button discovery, wireless and hot-plug handling, plus safe legacy fallback. Individual controller models remain unverified until hardware-tested.",
+        "Controller-first interface: Settings and other scrollable screens now support reliable pad navigation, automatic follow-scroll, right-stick scrolling, and visible scrollbars.",
+        "Hold the PS button for two seconds to bring GameHQ forward; hold it again to hide GameHQ and return focus to the previous game or application.",
+        "Major input hardening prevents duplicate actions, lost presses, high-polling controller slowdown, and crashes caused by actions changing input state during dispatch."
       ]
     },
     {
-      "title": "Verification",
+      "title": "Added",
       "items": [
-        "33 native tests passed.",
-        "20 Playnite integration tests passed.",
-        "Production update signing, tamper rejection, packaging, privacy, dependency, and licensing checks passed."
+        "Button combinations: hold one controller button and press another to run an action.",
+        "Triple-tap assignments alongside press, tap, double tap, and hold.",
+        "A complete Edit Assignment dialog for selecting buttons, combinations, gestures, and hold duration.",
+        "Configurable multi-tap interval and combination window.",
+        "Separate Primary and Secondary assignment slots.",
+        "Bindable desktop scrolling actions for the right stick.",
+        "A bindable Show / Hide GameHQ Window action, assigned to a two-second PS-button hold by default.",
+        "Identify a controller button for detecting unsupported or unusual controls.",
+        "Expanded controller diagnostics covering active backends, input rates, recognized controls, provider switches, overlay focus, and HidHide state.",
+        "Layout review and confirmation tools for controllers whose firmware, mode, or extra-button layout changed."
       ]
     },
     {
-      "title": "Beta notice",
+      "title": "Improved",
       "items": [
-        "Open-source Beta. GameHQ is not yet code-signed, so Windows may show an Unknown publisher or SmartScreen warning."
+        "Settings can now be operated entirely with a controller, including assignment, conflict, compatibility, and restore-default dialogs.",
+        "The selected gallery item, sidebar entry, or Settings control automatically stays visible while navigating.",
+        "The right stick scrolls the gallery, Settings pages, Help, assignment editor, and release notes like a mouse wheel.",
+        "Scrollable sections display a themed scrollbar whenever their content overflows.",
+        "Gallery navigation no longer wraps unexpectedly between rows: Left enters the sidebar and Right stops at the row edge.",
+        "Controller bindings follow the physical device where it can be identified instead of relying only on its Windows slot.",
+        "Legitimate shared bindings, such as tap and hold on one button, are distinguished from real conflicts.",
+        "GameHQ now verifies that the overlay received Windows focus and displays a notice when focus could not be acquired.",
+        "The PS-button overlay action now runs on tap, allowing the new two-second hold shortcut without briefly opening the overlay."
+      ]
+    },
+    {
+      "title": "Fixed",
+      "items": [
+        "Controllers polling at up to 8000 Hz no longer slow down the interface when GameHQ does not use their reports.",
+        "One physical press can no longer execute twice when controller software exposes the same pad through multiple input APIs.",
+        "Switching DSX or another controller tool between Sony and Xbox modes no longer leaves the controller temporarily unresponsive or consumes its first press.",
+        "Pressing Share during video playback now captures only the current frame instead of also taking a desktop screenshot.",
+        "Quick taps are no longer lost when controller readings are combined under load.",
+        "Disconnecting or changing a controller layout correctly releases held controls and clears stale state.",
+        "Restore Defaults and other controls that rebuild their page no longer strand controller focus.",
+        "Invalid or newer-format bindings are ignored safely and fall back to defaults instead of triggering an incorrect action.",
+        "Empty assignment slots preserve their intended tap, hold, or multi-tap gesture.",
+        "Failed conflict replacement restores the previous assignment completely.",
+        "Keyboard shortcuts already reserved by Windows or another application are rejected instead of being saved as working.",
+        "Hold or press actions that open or close the overlay can no longer repeatedly redispatch, exhaust Windows resources, and crash GameHQ.",
+        "Raw HID and keyboard-hotkey dispatch remain safe when an action disconnects, reloads, or rebinds input during delivery.",
+        "Minor controller-focus styling and customized-binding indicators were corrected."
       ]
     }
   ]

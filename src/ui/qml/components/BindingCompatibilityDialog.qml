@@ -1,5 +1,6 @@
 import QtQuick
 import GameHQ
+import "../helpers/PadNav.js" as PadNav
 
 // Non-destructive alternative to BindingConflictDialog. Both assignments stay:
 // an existing editable Press becomes Single tap, then the requested timed
@@ -25,6 +26,32 @@ FocusScope {
         Qt.callLater(function() { cancelButton.forceActiveFocus() })
     }
     function close() { visible = false }
+
+    // Pad routing while modal (see SettingsPage.padOverlay): directions move
+    // between the three buttons, Cross fires the focused one, Circle cancels.
+    function padStep(direction) { padHorizontal(direction) }
+    function padHorizontal(direction) {
+        const active = Window.window ? Window.window.activeFocusItem : null
+        if (!active || !PadNav.isInside(active, root)) {
+            cancelButton.forceActiveFocus()
+            sounds.play("nav_tick")
+            return
+        }
+        const target = PadNav.horizontalTarget(root, active, direction)
+        if (target) {
+            target.forceActiveFocus()
+            sounds.play("nav_tick")
+        }
+    }
+    function padConfirm() {
+        const active = Window.window ? Window.window.activeFocusItem : null
+        if (active && PadNav.isInside(active, root) && active.clicked)
+            active.clicked()
+    }
+    function padBack() {
+        root.canceled()
+        root.close()
+    }
 
     Keys.onEscapePressed: function(event) {
         root.canceled()

@@ -935,7 +935,14 @@ quint32 DualSenseDevice::decodeStickNav(const DeviceState& st, const unsigned ch
     if (axisBase < 1 || len <= axisBase + 1)
         return 0;
 
-    return StickNav::bits(kNav, d[axisBase], d[axisBase + 1], st.stick);
+    quint32 out = StickNav::bits(kNav, d[axisBase], d[axisBase + 1], st.stick);
+    // Right stick sits two bytes after the left on both families (LX LY RX RY);
+    // its vertical directions become the wheel-like scroll controls.
+    if (len > axisBase + 3)
+        out |= StickNav::verticalBits(kNav, d[axisBase + 3],
+                                      Gamepad::RStickUp, Gamepad::RStickDown,
+                                      st.stick);
+    return out;
 }
 
 void DualSenseDevice::parseReport(void* handle, DeviceState& st,

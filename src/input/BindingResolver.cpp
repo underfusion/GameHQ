@@ -235,8 +235,14 @@ QVector<BindingResolver::Binding> BindingResolver::defaultBindings()
 
         c("global.screenshot", 1, Capture, tap(1)),
         c("global.save_replay", 1, Capture, hold()),
-        c("global.toggle_overlay", 1, Guide),
+        // Guide carries a tap/hold pair like Share's screenshot/save-replay:
+        // a tap toggles the overlay, a 2 s hold summons the desktop window
+        // with focus (hold again to return to the game). Tap, not press, so
+        // the hold cannot also fire the overlay on the way down — the runtime
+        // only suppresses a tap when a hold on the same control has fired.
+        c("global.toggle_overlay", 1, Guide, tap(1)),
         c("global.toggle_overlay", 2, Capture, tap(2)),
+        c("global.toggle_desktop", 1, Guide, hold(2000)),
 
         c("overlay.navigate_up", 1, DpadUp),
         c("overlay.navigate_down", 1, DpadDown),
@@ -270,6 +276,11 @@ QVector<BindingResolver::Binding> BindingResolver::defaultBindings()
         c("desktop.settings", 1, Menu),
         c("desktop.zoom_out", 1, TriggerLeft),
         c("desktop.zoom_in", 1, TriggerRight),
+        // The right stick scrolls whichever view is showing, like a mouse
+        // wheel — the selection stays put. Decoded by the Sony and XInput
+        // backends (WinMM has no reliable right-stick axis mapping).
+        c("desktop.scroll_up", 1, StickRightUp),
+        c("desktop.scroll_down", 1, StickRightDown),
         // Hold Cross for a second to enter bulk selection. Cross keeps its
         // press binding (desktop.confirm) — the runtime only fires the hold
         // once the button has been down that long, so a normal tap still opens

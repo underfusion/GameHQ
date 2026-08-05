@@ -29,6 +29,12 @@ public:
     Q_INVOKABLE void show();
     Q_INVOKABLE void hide();
 
+    // Desktop-window summon (hold PS): the overlay gets out of the way but
+    // must NOT hand focus back to the game — the desktop window is about to
+    // take it. Returns the window the overlay had remembered (null when it
+    // was not visible) so the caller can restore focus there later.
+    void* hideForDesktopHandoff();
+
     // Called from the WinEvent hook callback (see .cpp) whenever the OS
     // foreground window changes to something other than the overlay itself
     // while the overlay is visible — Win key (Start menu), Alt-Tab, the task

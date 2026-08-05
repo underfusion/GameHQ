@@ -70,7 +70,9 @@ quint32 mapWinMMState(const JOYINFOEX& info, bool ds4Layout)
 
     // Unsigned 0..65535 axes centered mid-range, Y growing downward. No
     // hysteresis here (return zone == deadzone), matching how this backend has
-    // always behaved.
+    // always behaved. The right stick is deliberately NOT decoded here: which
+    // of the Z/R/U/V axes it lands on is not standardized across generic pads,
+    // and a wrong guess would turn a trigger into phantom scrolling.
     constexpr StickNav::AxisConfig kNav{ 32767, 16000, 16000, false };
     s |= StickNav::bits(kNav, static_cast<int>(info.dwXpos), static_cast<int>(info.dwYpos));
 

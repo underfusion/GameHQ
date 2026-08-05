@@ -6,8 +6,41 @@ All notable public releases of GameHQ are documented here. The format follows
 
 ## [Unreleased]
 
+### Highlights
+
+- **Controller bindings redesigned.** Assign button combinations, triple taps,
+  configurable gestures, and complete assignments from one editor.
+- **Modern controller foundation.** A GameInput pipeline adds dedicated
+  Share/Capture identities, extra-button discovery, wireless and hot-plug
+  handling, plus safe legacy fallback. Individual controller models remain
+  unverified until hardware-tested.
+- **Controller-first interface.** Settings and other scrollable screens now
+  support reliable pad navigation, automatic follow-scroll, right-stick
+  scrolling, and visible scrollbars.
+- **PS-button desktop shortcut.** Hold PS for two seconds to bring GameHQ
+  forward; hold it again to hide GameHQ and return focus to the previous game
+  or application.
+- **Major input hardening.** Duplicate actions, lost presses, high-polling
+  controller slowdown, and crashes caused by reentrant dispatch are prevented.
+
 ### Fixed
 
+- Settings can now be driven entirely with a controller (0.7.3). Right from
+  the category list enters the options panel on its topmost control; Up/Down
+  jump to the nearest control in the row below/above instead of visiting
+  every segment of a segmented control; Left/Right move within the focused
+  row — including between the Primary and Secondary assignment slots of a
+  binding card — before backing out to the category list. Cross on an
+  assignment slot opens the assignment editor, and while any Input dialog is
+  open (assignment editor, conflict, compatibility, restore-defaults) all
+  pad directions stay trapped inside it, Cross activates the focused control,
+  and Circle is the only way out (cancelling a running capture first).
+  Dialogs land the pad cursor on their safe button when they open, closing
+  one returns focus to the control that opened it, and quiet buttons such as
+  the editor's Change/Record now show a visible focus ring.
+- The blue "modified" indicator on customized binding rows and assignment
+  slots is now half-height and vertically centred, so it no longer pokes
+  past the cards' rounded left corners (0.7.3).
 - Binding a Hold gesture to Toggle Overlay no longer locks the app in an
   endless overlay show/hide loop (0.7.3). Opening the overlay cancels all
   pending input patterns; that cancellation could land in the middle of the
@@ -27,8 +60,48 @@ All notable public releases of GameHQ are documented here. The format follows
   rebinds the same hotkey during dispatch cannot invalidate the action being
   delivered. Both guards are covered by new regression tests.
 
+### Changed
+
+- Scrollable sections now show a scrollbar (0.7.3). Settings pages, the
+  assignment editor dialog, Help, and the release notes share one themed
+  scrollbar that is visible whenever the content overflows — not only while
+  scrolling — so it is obvious a section scrolls before the first move.
+- The pad cursor survives its own actions (0.7.3). Activating a control that
+  rebuilds or disables itself — most visibly "Restore defaults", which
+  reloads every binding card — used to strand the controller focus so no
+  further navigation worked; focus now returns to that control, or to
+  whatever sits closest to its old position.
+- Simpler gallery navigation with the pad (0.7.3). The thumbnail grid no
+  longer row-wraps: pressing Left on the leftmost column enters the sidebar,
+  pressing Right on a row's last thumbnail simply stops, and pressing Right
+  in the sidebar returns to the grid. Up/Down (held for auto-repeat) remain
+  the way to move between rows. L1/R1 keep jumping between the panels as a
+  shortcut for now.
+
 ### Added
 
+- Hold the PS button for 2 seconds to summon the GameHQ window over the game
+  with real focus — hold again while it is focused to hide it and return
+  focus to the game (0.7.3). Exposed as a new bindable action ("Show / Hide
+  GameHQ Window") in Settings → Input. The PS overlay toggle consequently
+  moved from press to tap, so a hold no longer opens the overlay on the way;
+  if the overlay is open when the window is summoned, it steps aside and the
+  game still gets focus back afterwards.
+- Right-stick scrolling on the desktop window (0.7.3). The right stick now
+  works like a mouse wheel wherever a view can scroll: the gallery grid, the
+  Settings options pages, the assignment editor dialog, Help, and the full
+  release notes. Scrolling moves only the viewport — the selection stays put,
+  and the next D-pad move snaps the view back to the selected item. Exposed
+  as bindable "Scroll Up"/"Scroll Down" desktop actions (Sony and XInput
+  backends; WinMM pads have no reliable right-stick axis mapping).
+- Pad selection now always stays on screen (0.7.3). The gallery grid
+  guarantees the selected tile is fully visible after every D-pad step, and
+  the sidebar's games list follows the pad cursor when it walks rows outside
+  the clipped viewport — previously the cursor could disappear above or
+  below the view with no auto-scroll. The Settings options panel now really
+  follows the pad focus too: its reveal-on-focus hookup targeted the window
+  through a non-Item attached property, so it silently never connected and
+  the focused control could walk out of view.
 - Cross-provider controller integration (0.7.3). All input providers — Sony
   Raw Input, GameInput, XInput, WinMM and the selective Raw HID fallback —
   now report into one shared physical-controller registry and route
@@ -202,9 +275,7 @@ All notable public releases of GameHQ are documented here. The format follows
   document records why, and what a future implementation would have to
   guarantee.
 
-## [0.7.2] - 2026-08-01
-
-### Fixed
+### Additional reliability improvements
 
 - Controllers that GameHQ does not drive can no longer slow the app down.
   A pad polling at up to 8000 times a second — several current models
@@ -214,8 +285,6 @@ All notable public releases of GameHQ are documented here. The format follows
 - The Windows raw-input messages GameHQ receives while a game is in the
   foreground are now completed the way Windows documents, instead of being
   dropped once handled.
-
-### Added
 
 - The log now records how many controller reports each device sends per
   second, summarised on an interval and only when the number changes

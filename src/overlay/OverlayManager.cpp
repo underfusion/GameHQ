@@ -153,6 +153,13 @@ void OverlayManager::hide()
     hideInternal(/*restoreFocus=*/true);
 }
 
+void* OverlayManager::hideForDesktopHandoff()
+{
+    void* previous = isVisible() ? m_previousForeground : nullptr;
+    hideInternal(/*restoreFocus=*/false);
+    return previous;
+}
+
 void OverlayManager::hideInternal(bool restoreFocus)
 {
     if (!isVisible())

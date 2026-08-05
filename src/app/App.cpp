@@ -14,6 +14,8 @@
 #include "games/GameDetector.h"
 #include "core/UpdateMaintenance.h"
 #include "notify/NotificationCenter.h"
+#include "overlay/ForegroundAcquirer.h"
+#include "overlay/ForegroundApi.h"
 #include "overlay/OverlayManager.h"
 #include "sound/SoundEngine.h"
 #include "storage/CaptureDatabase.h"
@@ -396,6 +398,11 @@ bool App::init()
     m_input = std::make_unique<InputEngine>(m_config.get(), m_db.get(), m_hotkeys.get());
     connect(m_input.get(), &InputEngine::overlayToggleRequested,
             m_overlay.get(), &OverlayManager::toggle);
+    // Hold PS (2 s): summon/dismiss the desktop window with real OS focus.
+    m_foregroundApi.reset(ForegroundApi::createSystem());
+    m_desktopFocus = new ForegroundAcquirer(this);
+    connect(m_input.get(), &InputEngine::desktopWindowToggleRequested,
+            this, &App::toggleDesktopWindow);
     // overlayHideRequested (Circle) is now consumed in OverlayWindow.qml: it
     // pops the action menu / sidebar focus first and only closes the overlay
     // at the root level, calling `overlay.hide()` itself in that case.
@@ -474,6 +481,50 @@ void App::showWindow()
         window->raise();
         window->requestActivate();
     }
+}
+
+// Hold PS (2 s): bring the desktop window over the game with real OS focus;
+// hold again while it is focused to hide it and hand the foreground back to
+// the window it was taken from. requestActivate() alone is routinely denied
+// by the foreground lock while a game owns input, so the acquirer's
+// AttachThreadInput bypass (the overlay's own mechanism) does the focus move.
+void App::toggleDesktopWindow()
+{
+    if (m_engine.rootObjects().isEmpty()) {
+        m_pendingActivation = true;
+        return;
+    }
+    auto* window = qobject_cast<QQuickWindow*>(m_engine.rootObjects().first());
+    if (!window)
+        return;
+
+    if (window->isVisible() && window->isActive()) {
+        qInfo() << "Desktop summon: hiding the window, returning focus";
+        window->hide();
+        if (m_desktopReturnTarget) {
+            m_desktopFocus->acquire(m_desktopReturnTarget, QStringLiteral("desktop hide"));
+            m_desktopReturnTarget = nullptr;
+        }
+        return;
+    }
+
+    // The overlay gets out of the way without restoring focus to the game —
+    // this window is about to take it. Its remembered foreground becomes the
+    // return address; otherwise remember whatever is foreground right now,
+    // as long as that isn't already us.
+    void* origin = m_overlay && m_overlay->isVisible()
+        ? m_overlay->hideForDesktopHandoff() : nullptr;
+    if (!origin) {
+        void* current = m_foregroundApi->foregroundWindow();
+        if (current && current != reinterpret_cast<void*>(window->winId()))
+            origin = current;
+    }
+    if (origin)
+        m_desktopReturnTarget = origin;
+    qInfo() << "Desktop summon: showing the window, focus taken from" << m_desktopReturnTarget;
+    showWindow();
+    m_desktopFocus->acquire(reinterpret_cast<void*>(window->winId()),
+                            QStringLiteral("desktop show"));
 }
 
 void App::openGallery()
