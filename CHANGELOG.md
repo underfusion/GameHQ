@@ -59,6 +59,22 @@ All notable public releases of GameHQ are documented here. The format follows
   now copies its action id before emitting, so a handler that clears or
   rebinds the same hotkey during dispatch cannot invalidate the action being
   delivered. Both guards are covered by new regression tests.
+- Losing the window focus now cancels every in-flight desktop gesture (0.7.3,
+  release hardening). A button pressed in the gallery — Cross for confirm, or
+  its one-second bulk-select hold — could previously complete after focus had
+  already moved to a game, firing a desktop action into the background. Focus
+  changes now cancel pending patterns the same way opening the overlay does,
+  so the PS-hold Show/Hide GameHQ handoff performs each action exactly once.
+- Upgrading from 0.7.1 with a saved PS-button (Guide) "Press" assignment no
+  longer disables the new two-second PS hold (0.7.3). The stored overlay
+  toggle is migrated from Press to a single Tap — it still toggles the
+  overlay, now on release — so it can coexist with the hold. A Guide Press
+  the user bound to a different action is preserved untouched; the default
+  PS-hold action is instead switched off for that controller profile (never
+  both actions from one press) and can be re-assigned in Settings → Input.
+- L1/R1 can no longer switch the Settings category while a dropdown opened
+  with the pad is still showing (0.7.3); the dropdown keeps the pad to itself
+  until it commits or cancels.
 
 ### Changed
 
@@ -206,12 +222,12 @@ All notable public releases of GameHQ are documented here. The format follows
   it opens, retrying briefly when the system refuses. If focus could not be
   taken, the overlay says so with a small notice instead of silently leaving
   the game reacting to your controller behind it.
-- Switching controller software between modes (for example DSX from Sony to
-  Xbox) no longer leaves the pad dead for up to a second, and the first button
-  press after the switch is no longer swallowed: it is held briefly and then
-  performed once the old input path proves it has really gone quiet. A quick
-  tap that waited stays a tap — it never turns into a hold — and a press that
-  was only an echo of the old path is still discarded.
+- Backend switching (for example DSX changing between Sony and Xbox modes) was
+  hardened to preserve the first press and prevent duplicate actions: the
+  first button press after a switch is held briefly and then performed once
+  the old input path proves it has really gone quiet. A quick tap that waited
+  stays a tap — it never turns into a hold — and a press that was only an
+  echo of the old path is still discarded.
 - The controller button probe now listens for the full three seconds it
   advertises and reads every report from pads up to 8000 Hz, so a quick tap at
   any moment of the window is caught. Only an extreme flood makes it sample,

@@ -69,6 +69,8 @@ bool CaptureDatabase::migrate()
         return false;
     if (version < 6 && !applyV6())
         return false;
+    if (version < 7 && !applyV7())
+        return false;
     if (!ensureGameMetadataColumns())
         return false;
 
@@ -1027,5 +1029,63 @@ bool CaptureDatabase::applyV6()
         return false;
     }
     QSqlQuery(QStringLiteral("PRAGMA user_version = 6"), m_db);
+    return m_db.commit();
+}
+
+bool CaptureDatabase::applyV7()
+{
+    // Guide grew a default tap/hold pair (tap = Toggle Overlay, 2 s hold =
+    // Show / Hide GameHQ). A persisted Guide *press* override from before that
+    // fires on the down edge, which opens the overlay and cancels the pattern
+    // recognizer — the new hold can then never arm. Rewriting the overlay
+    // toggle to a single tap keeps its meaning (it still toggles the overlay,
+    // just on release) while letting the hold coexist.
+    if (!m_db.transaction())
+        return false;
+    QSqlQuery overlayPress(m_db);
+    overlayPress.prepare(QStringLiteral(
+        "UPDATE binding_overrides "
+        "SET activation = 'tap', tap_count = 1, hold_ms = 0 "
+        "WHERE device_group = 'controller' "
+        "AND action_id = 'global.toggle_overlay' "
+        "AND trigger_code = 'gamepad.guide' "
+        "AND activation = 'press' "
+        "AND unbound = 0"));
+    if (!overlayPress.exec()) {
+        qCritical() << "DB: migration v7 failed:" << overlayPress.lastError().text();
+        m_db.rollback();
+        return false;
+    }
+
+    // A Guide press the user bound to some *other* action is kept exactly as
+    // saved — but then the new default Guide hold would fire on top of it.
+    // Suppress the hold for those profiles with an explicit unbound row (the
+    // user can rebind it in the editor); never silently run both actions.
+    QSqlQuery suppressHold(m_db);
+    suppressHold.prepare(QStringLiteral(
+        "INSERT OR IGNORE INTO binding_overrides "
+        "(device_group, device_profile, action_id, slot, trigger_code, "
+        " activation, hold_ms, unbound, tap_count) "
+        "SELECT 'controller', device_profile, 'global.toggle_desktop', 1, NULL, "
+        "       'hold', 2000, 1, 1 "
+        "FROM binding_overrides "
+        "WHERE device_group = 'controller' "
+        "AND action_id <> 'global.toggle_overlay' "
+        "AND trigger_code = 'gamepad.guide' "
+        "AND activation = 'press' "
+        "AND unbound = 0 "
+        "GROUP BY device_profile"));
+    if (!suppressHold.exec()) {
+        qCritical() << "DB: migration v7 failed:" << suppressHold.lastError().text();
+        m_db.rollback();
+        return false;
+    }
+    if (suppressHold.numRowsAffected() > 0) {
+        qInfo() << "DB: migration v7 kept a custom Guide press binding and"
+                << "disabled the default Guide-hold Show/Hide GameHQ action for"
+                << suppressHold.numRowsAffected() << "profile(s); it can be"
+                << "re-assigned in Settings -> Input.";
+    }
+    QSqlQuery(QStringLiteral("PRAGMA user_version = 7"), m_db);
     return m_db.commit();
 }

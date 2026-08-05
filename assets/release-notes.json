@@ -45,7 +45,7 @@
       "items": [
         "Controllers polling at up to 8000 Hz no longer slow down the interface when GameHQ does not use their reports.",
         "One physical press can no longer execute twice when controller software exposes the same pad through multiple input APIs.",
-        "Switching DSX or another controller tool between Sony and Xbox modes no longer leaves the controller temporarily unresponsive or consumes its first press.",
+        "Controller backend switching, including DSX-style Sony/Xbox mode changes, was hardened to preserve the first press and prevent duplicate actions.",
         "Pressing Share during video playback now captures only the current frame instead of also taking a desktop screenshot.",
         "Quick taps are no longer lost when controller readings are combined under load.",
         "Disconnecting or changing a controller layout correctly releases held controls and clears stale state.",
@@ -56,6 +56,9 @@
         "Keyboard shortcuts already reserved by Windows or another application are rejected instead of being saved as working.",
         "Hold or press actions that open or close the overlay can no longer repeatedly redispatch, exhaust Windows resources, and crash GameHQ.",
         "Raw HID and keyboard-hotkey dispatch remain safe when an action disconnects, reloads, or rebinds input during delivery.",
+        "A controller button still held when GameHQ loses window focus no longer completes its action after a game takes over.",
+        "A PS-button assignment saved in an earlier version no longer prevents the new two-second PS hold from working after upgrading.",
+        "L1/R1 no longer switch the Settings category while a dropdown opened with the pad is still showing.",
         "Minor controller-focus styling and customized-binding indicators were corrected."
       ]
     }

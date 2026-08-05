@@ -105,8 +105,8 @@ Item {
     }
 
     function padCategoryStep(direction) {
-        if (activeOverlay())
-            return   // L1/R1 must not switch pages under a modal
+        if (activeOverlay() || padComboOpen)
+            return   // L1/R1 must not switch pages under a modal or open dropdown
         selectCategory((currentCategory + direction + categories.length) % categories.length, true)
         sounds.play("nav_tick")
     }

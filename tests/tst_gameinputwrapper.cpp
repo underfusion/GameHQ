@@ -235,7 +235,13 @@ void TestGameInputWrapper::initializationFailureFailsSoft()
 // duplication, no crash.
 void TestGameInputWrapper::concurrentProducersDrainAndShutdownStayConsistent()
 {
-    GameInputEventQueue queue(256, 64);
+    // Capacity exceeds the whole workload (1600 edges + capability changes +
+    // removals) on purpose: this test measures ordering and exactly-once
+    // delivery, so no push may hit the overflow path — push() still returns
+    // true there after scheduling a resync, and a slow consumer on a loaded CI
+    // runner would turn that into a spurious count mismatch. Overflow behavior
+    // has its own test (overflowRequestsRecovery).
+    GameInputEventQueue queue(4096, 128);
     constexpr int kThreads = 4;
     constexpr int kEdgesPerThread = 400;
     std::array<std::atomic<int>, kThreads> accepted{};
@@ -273,6 +279,7 @@ void TestGameInputWrapper::concurrentProducersDrainAndShutdownStayConsistent()
     QHash<QString, quint64> lastSequence;
     const auto drain = [&] {
         const GameInputEventBatch batch = queue.take();
+        QVERIFY(!batch.forceResync);
         for (const auto& event : batch.events) {
             if (event.kind != GameInputEventKind::SystemButtonPressed
                 && event.kind != GameInputEventKind::SystemButtonReleased)

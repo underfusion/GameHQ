@@ -782,9 +782,16 @@ void InputEngine::setOverlayVisible(bool visible)
 
 void InputEngine::setDesktopFocused(bool focused)
 {
+    if (m_desktopFocused == focused)
+        return;
     m_desktopFocused = focused;
-    if (!focused)
-        stopNavRepeat();
+    // A gesture started while GameHQ owned the pad must not finish after the
+    // window changed hands: a Cross held in the gallery could otherwise fire
+    // desktop.confirm — or worse, desktop.bulk_toggle — into whatever has
+    // focus now. Same contract as setOverlayVisible/setPlaybackActive.
+    stopNavRepeat();
+    m_runtime->cancelAll();
+    m_legacyViewFallbackHeld.clear();
 }
 
 void InputEngine::setPlaybackActive(bool active)

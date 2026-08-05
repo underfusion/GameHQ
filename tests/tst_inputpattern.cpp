@@ -326,6 +326,23 @@ private slots:
         QCOMPARE(m_spy->count(), 0);
     }
 
+    void invalidateWhileHeldDropsTheReleaseTap()
+    {
+        // Cross goes down in the gallery, GameHQ loses the foreground before
+        // the finger comes up (setDesktopFocused(false) → cancelAll). The
+        // release that follows must not fire desktop.confirm into whatever
+        // owns the screen now.
+        Facts facts;
+        facts.tapCountMask = tapMask({1});
+        setFacts(facts);
+
+        m_recognizer->press(ctx(), kControl);
+        m_recognizer->invalidate();
+        m_recognizer->release(ctx(), kControl);
+        QTest::qWait(kSettleMs);
+        QCOMPARE(m_spy->count(), 0);
+    }
+
     void invalidateCancelsAPendingHold()
     {
         Facts facts;

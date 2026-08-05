@@ -169,13 +169,16 @@ private slots:
 
         CaptureDatabase database(m_path);
         QVERIFY(database.open());
-        QCOMPARE(database.schemaVersion(), 6);
+        QCOMPARE(database.schemaVersion(), 7);
 
         const auto rows = database.listBindingOverrides();
         QCOMPARE(rows.size(), 7);
 
+        // v7 rewrites the legacy Guide-press overlay toggle to a single tap so
+        // the new default Guide hold (Show / Hide GameHQ) can arm — a press
+        // fires on the down edge and cancels the recognizer before the hold.
         const auto press = find(rows, QStringLiteral("global.toggle_overlay"), 1);
-        QCOMPARE(gestureOf(press), GestureSpec::press());
+        QCOMPARE(gestureOf(press), GestureSpec::tap(1));
 
         const auto tap = find(rows, QStringLiteral("global.screenshot"), 1);
         QCOMPARE(gestureOf(tap), GestureSpec::tap(1));
@@ -264,7 +267,7 @@ private slots:
 
         CaptureDatabase migrated(m_path);
         QVERIFY(migrated.open());
-        QCOMPARE(migrated.schemaVersion(), 6);
+        QCOMPARE(migrated.schemaVersion(), 7);
         const auto rows = migrated.listBindingOverrides();
         QCOMPARE(find(rows, QStringLiteral("legacy.simple"), 1).triggerCode,
                  QStringLiteral("gamepad.view_back"));
@@ -274,6 +277,107 @@ private slots:
                  QStringLiteral("gamepad.capture"));
         QCOMPARE(find(rows, QStringLiteral("model.keep"), 1).triggerCode,
                  QStringLiteral("gamepad.capture"));
+    }
+
+    // Schema v6 -> v7: the pre-hold Guide-press overlay override becomes a tap
+    // (same meaning, hold-compatible); a Guide press the user bound to another
+    // action is preserved and instead disables the new default Guide hold for
+    // that profile, so both actions never fire from one press.
+    void guidePressOverridesMigrateWithoutBreakingTheGuideHold()
+    {
+        {
+            CaptureDatabase current(m_path);
+            QVERIFY(current.open());
+        }
+        QSqlDatabase::removeDatabase(QStringLiteral("gamehq"));
+        {
+            QSqlDatabase raw = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"),
+                                                         QStringLiteral("fixture"));
+            raw.setDatabaseName(m_path);
+            QVERIFY(raw.open());
+            QSqlQuery insert(raw);
+            QVERIFY(insert.exec(QStringLiteral(
+                "INSERT INTO binding_overrides "
+                "(device_group,device_profile,action_id,slot,trigger_code,activation,hold_ms,unbound,tap_count) VALUES "
+                // The old persisted default: overlay toggle on Guide press.
+                "('controller','','global.toggle_overlay',1,'gamepad.guide','press',0,0,1),"
+                // Same override saved per-device: profile must survive.
+                "('controller','054C:0CE6','global.toggle_overlay',1,'gamepad.guide','press',0,0,1),"
+                // A custom Guide press on another action: kept as saved.
+                "('controller','AAAA:BBBB','global.screenshot',1,'gamepad.guide','press',0,0,1),"
+                // A profile that already reassigned the desktop toggle: the
+                // suppression insert must not overwrite the user's row.
+                "('controller','CCCC:DDDD','global.save_replay',2,'gamepad.guide','press',0,0,1),"
+                "('controller','CCCC:DDDD','global.toggle_desktop',1,'gamepad.menu','hold',1500,0,1)")));
+            QVERIFY(QSqlQuery(QStringLiteral("PRAGMA user_version = 6"), raw).isActive());
+            raw.close();
+        }
+        QSqlDatabase::removeDatabase(QStringLiteral("fixture"));
+
+        CaptureDatabase migrated(m_path);
+        QVERIFY(migrated.open());
+        QCOMPARE(migrated.schemaVersion(), 7);
+        const auto rows = migrated.listBindingOverrides();
+
+        // Overlay toggles became taps, shared and device-specific alike.
+        const auto shared = find(rows, QStringLiteral("global.toggle_overlay"), 1);
+        QCOMPARE(shared.deviceProfile, QString());
+        QCOMPARE(gestureOf(shared), GestureSpec::tap(1));
+        QCOMPARE(shared.triggerCode, QStringLiteral("gamepad.guide"));
+        bool sawDeviceRow = false;
+        for (const BindingOverrideRow& row : rows) {
+            if (row.actionId == QLatin1String("global.toggle_overlay")
+                && row.deviceProfile == QLatin1String("054C:0CE6")) {
+                sawDeviceRow = true;
+                QCOMPARE(gestureOf(row), GestureSpec::tap(1));
+            }
+        }
+        QVERIFY(sawDeviceRow);
+
+        // The custom press is untouched, and the default Guide hold is cleared
+        // for exactly that profile.
+        const auto custom = find(rows, QStringLiteral("global.screenshot"), 1);
+        QCOMPARE(gestureOf(custom), GestureSpec::press());
+        QCOMPARE(custom.triggerCode, QStringLiteral("gamepad.guide"));
+        bool sawSuppression = false;
+        for (const BindingOverrideRow& row : rows) {
+            if (row.actionId == QLatin1String("global.toggle_desktop")
+                && row.deviceProfile == QLatin1String("AAAA:BBBB")) {
+                sawSuppression = true;
+                QVERIFY(row.unbound);
+                QVERIFY(row.triggerCode.isEmpty());
+            }
+        }
+        QVERIFY(sawSuppression);
+
+        // The user's own desktop-toggle reassignment beat the suppression row.
+        for (const BindingOverrideRow& row : rows) {
+            if (row.actionId == QLatin1String("global.toggle_desktop")
+                && row.deviceProfile == QLatin1String("CCCC:DDDD")) {
+                QVERIFY(!row.unbound);
+                QCOMPARE(row.triggerCode, QStringLiteral("gamepad.menu"));
+            }
+        }
+
+        // Resolved views: the shared profile keeps the default Guide hold next
+        // to the migrated tap; the custom-press profile does not offer it.
+        BindingResolver resolver(&migrated);
+        resolver.reload();
+        bool sharedHold = false;
+        for (const auto& binding : resolver.effectiveBindings(QStringLiteral("controller"))) {
+            if (binding.actionId == QLatin1String("global.toggle_overlay") && binding.slot == 1)
+                QCOMPARE(binding.gesture(), GestureSpec::tap(1));
+            if (binding.actionId == QLatin1String("global.toggle_desktop")
+                && binding.triggerCode == QLatin1String("gamepad.guide"))
+                sharedHold = true;
+        }
+        QVERIFY(sharedHold);
+        for (const auto& binding : resolver.effectiveBindings(QStringLiteral("controller"),
+                                                              QStringLiteral("AAAA:BBBB"))) {
+            QVERIFY2(binding.actionId != QLatin1String("global.toggle_desktop"),
+                     "the default Guide hold must stay suppressed for a profile "
+                     "with a custom Guide press");
+        }
     }
 
     void extraButtonLayoutChangesRequireReconfirmation()
@@ -319,7 +423,7 @@ private slots:
                                                          QStringLiteral("fixture"));
             raw.setDatabaseName(m_path);
             QVERIFY(raw.open());
-            QSqlQuery(QStringLiteral("PRAGMA user_version = 7"), raw);
+            QSqlQuery(QStringLiteral("PRAGMA user_version = 8"), raw);
             raw.close();
         }
         QSqlDatabase::removeDatabase(QStringLiteral("fixture"));
