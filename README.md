@@ -7,7 +7,8 @@
 <p>GameHQ brings console-style capture controls to Windows. Tap Share for an
 instant screenshot, hold it after something memorable happens to save the
 previous configurable minutes as a video clip, and press PS or Guide to browse
-everything in a controller-friendly overlay.</p>
+everything in a controller-friendly overlay. The entire app — gallery,
+overlay, and Settings — can be driven from the controller alone.</p>
 
 <p><img src="docs/assets/readme-separator.svg" width="1000" height="1" alt=""></p>
 
@@ -35,16 +36,22 @@ everything in a controller-friendly overlay.</p>
   the exact displayed frame from a recorded clip.
 - **In-game gallery** — browse, play, favorite, reveal, and delete captures
   without leaving your game.
-- **Controller-first controls** — DualSense, XInput, keyboard, and mouse support
-- **Modern controller support** — app-local GameInput, true Share/Guide, extra buttons, and safe legacy fallback ([getting started](docs/getting-started.md), [compatibility guide](docs/controller-compatibility.md))
-  with fully configurable bindings.
+- **Controller-first everywhere** — the whole interface is pad-navigable:
+  gallery, overlay, dialogs, and Settings, with follow-scroll, right-stick
+  scrolling, and visible scrollbars. Keyboard and mouse work everywhere too.
+- **Modern controller support** — app-local GameInput, true Share/Guide, extra
+  buttons, and safe legacy fallback ([getting started](docs/getting-started.md),
+  [compatibility guide](docs/controller-compatibility.md)).
+- **Redesigned binding editor** — two slots per action with taps, holds, double
+  and triple taps, button combinations, per-controller profiles, and
+  conflict-aware validation.
+- **Summon GameHQ with the pad** — hold PS for two seconds to bring the window
+  over your game; hold again to send it back and return focus to the game.
 - **One organized library** — GameHQ captures alongside watched Steam, Game Bar,
   NVIDIA, and OBS folders.
 - **Private and portable** — no account, telemetry, background service, or
   game-process injection.
 - Configurable replay duration, quality, frame rate, and resolution.
-- Primary and secondary bindings with tap, hold, double-tap, conflict handling,
-  per-controller profiles, and restore controls.
 - Detection of Sony controllers hidden by HidHide, with safe GameHQ allow-list
   setup.
 - Thirteen themes, live theme switching, textured backdrops, and adjustable
@@ -59,6 +66,7 @@ everything in a controller-friendly overlay.</p>
 | Share / Capture — tap | Take a screenshot |
 | Share / Capture — hold | Save recent gameplay |
 | PS / Guide | Open or close the in-game overlay |
+| PS / Guide — hold | Show or hide the GameHQ window |
 
 <details>
 <summary><strong>Full controls</strong></summary>
@@ -68,6 +76,7 @@ everything in a controller-friendly overlay.</p>
 | Share / Capture — tap | Take a screenshot |
 | Share / Capture — hold | Save recent gameplay |
 | PS / Guide | Open or close the in-game overlay |
+| PS / Guide — hold | Show or hide the GameHQ window |
 | D-pad / left stick | Navigate |
 | Cross / south button | Confirm or open |
 | Circle / east button | Back |
