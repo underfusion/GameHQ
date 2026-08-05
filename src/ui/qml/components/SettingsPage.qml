@@ -74,6 +74,27 @@ Item {
         function onActiveFocusItemChanged() { Qt.callLater(root.revealFocusedItem) }
     }
 
+    // True while the focused control still overlaps the visible band. The right
+    // stick scrolls without moving focus, so after a long scroll the pad cursor
+    // can sit far outside the viewport.
+    function focusInViewport() {
+        const item = Window.window ? Window.window.activeFocusItem : null
+        if (!item || !containsItem(item))
+            return false
+        if (padOverlay && PadNav.isInside(item, padOverlay))
+            return true   // the modal owns its own viewport; never re-enter the page
+        const point = item.mapToItem(pageContainer, 0, 0)
+        return point.y + item.height > flick.contentY
+                && point.y < flick.contentY + flick.height
+    }
+
+    // Control a direction should land on when focus is off screen: whatever the
+    // user is actually looking at, rather than the row they left behind.
+    function viewportEntryTarget(direction) {
+        return PadNav.viewportTarget(root, pageContainer, flick.contentY,
+                                     flick.contentY + flick.height, direction)
+    }
+
     // Wheel-like pad scroll (right stick): moves the viewport, not the focus.
     function scrollBy(direction) {
         const maximum = Math.max(0, flick.contentHeight - flick.height)

@@ -38,6 +38,12 @@ All notable public releases of GameHQ are documented here. The format follows
   Dialogs land the pad cursor on their safe button when they open, closing
   one returns focus to the control that opened it, and quiet buttons such as
   the editor's Change/Record now show a visible focus ring.
+- After scrolling a Settings page with the right stick, the next D-pad press
+  now continues from what is on screen instead of jumping back to the row the
+  pad cursor was left on (0.7.3). Down enters at the top of the visible area
+  and Up at the bottom, so the view no longer snaps away from the section the
+  user just scrolled to. Entering the options panel from the category list
+  behaves the same way, and Left still backs out to the categories.
 - The blue "modified" indicator on customized binding rows and assignment
   slots is now half-height and vertically centred, so it no longer pokes
   past the cards' rounded left corners (0.7.3).

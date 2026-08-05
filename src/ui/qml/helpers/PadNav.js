@@ -89,6 +89,39 @@ function nearestTarget(scope, x, y) {
     return best
 }
 
+// Where the pad cursor should land when a direction re-enters a page whose
+// viewport was scrolled away from the focused control (right-stick scrolling
+// moves the view, not the focus). Geometry is mapped into `frame`, in whose
+// coordinates the visible band is [top, bottom]. Down (+1) enters at the top
+// of that band and Up (-1) at the bottom, so the next step continues in the
+// pressed direction. With nothing focusable on screen — a tall block of text
+// between two controls — the nearest control outside the band is used.
+function viewportTarget(scope, frame, top, bottom, direction) {
+    const items = focusables(scope)
+    let best = null
+    let bestY = 0
+    let fallback = null
+    let fallbackDistance = Infinity
+    for (let i = 0; i < items.length; ++i) {
+        const it = items[i]
+        const p = it.mapToItem(frame, 0, 0)
+        const centre = p.y + it.height / 2
+        if (centre >= top && centre <= bottom) {
+            if (!best || (direction > 0 ? centre < bestY : centre > bestY)) {
+                best = it
+                bestY = centre
+            }
+        } else if (!best) {
+            const distance = centre < top ? top - centre : centre - bottom
+            if (distance < fallbackDistance) {
+                fallback = it
+                fallbackDistance = distance
+            }
+        }
+    }
+    return best || fallback
+}
+
 // Next focus target to the right (+1) or left (-1) within the active item's
 // row — vertical extents must overlap, so this never jumps across rows.
 // Returns null at the row edge; the caller decides what an edge means.

@@ -75,9 +75,13 @@ Item {
     }
     function focusOptions() {
         const page = currentPage()
-        const first = firstControlIn(page)
-        if (first) {
-            first.forceActiveFocus()
+        // Enter at the top of what is on screen. On an unscrolled page that is
+        // the first control anyway; after a right-stick scroll it is the row the
+        // user is looking at, so entering never yanks the view back to the top.
+        const entry = (page && page.viewportEntryTarget) ? page.viewportEntryTarget(1) : null
+        const target = entry || firstControlIn(page)
+        if (target) {
+            target.forceActiveFocus()
             revealOnPage(page)
             return true
         }
@@ -111,6 +115,22 @@ Item {
         sounds.play("nav_tick")
     }
 
+    // Right-stick scrolling deliberately leaves focus behind, so the pad cursor
+    // can end up far above or below what is on screen. The next direction then
+    // re-enters at the visible edge instead of snapping the view back to the
+    // abandoned row. Returns true when it handled the step.
+    function enterFromViewport(page, direction) {
+        if (!page || !page.focusInViewport || page.focusInViewport())
+            return false
+        const entry = page.viewportEntryTarget ? page.viewportEntryTarget(direction) : null
+        if (!entry)
+            return false
+        entry.forceActiveFocus()
+        revealOnPage(page)
+        sounds.play("nav_tick")
+        return true
+    }
+
     // Up/Down inside the options panel: spatial step to the nearest control in
     // the row below/above, never leaving the current page. Spatial, not the
     // raw focus chain, so Down jumps to the next row instead of visiting every
@@ -124,6 +144,8 @@ Item {
             focusOptions()
             return
         }
+        if (enterFromViewport(page, direction))
+            return
         const next = PadNav.verticalTarget(page, active, direction)
         if (next) {
             next.forceActiveFocus()
@@ -140,6 +162,10 @@ Item {
         const active = Window.window ? Window.window.activeFocusItem : null
         if (!page || !active || !isInside(active, page))
             return false
+        // Right re-enters the visible area when focus scrolled off screen; Left
+        // keeps its edge meaning so it still backs out to the category list.
+        if (direction > 0 && enterFromViewport(page, 1))
+            return true
         const next = PadNav.horizontalTarget(page, active, direction)
         if (next) {
             next.forceActiveFocus()

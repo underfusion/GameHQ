@@ -32,6 +32,7 @@
         "Settings can now be operated entirely with a controller, including assignment, conflict, compatibility, and restore-default dialogs.",
         "The selected gallery item, sidebar entry, or Settings control automatically stays visible while navigating.",
         "The right stick scrolls the gallery, Settings pages, Help, assignment editor, and release notes like a mouse wheel.",
+        "After scrolling a Settings page with the right stick, the D-pad continues from what is on screen instead of jumping back to the previously selected row.",
         "Scrollable sections display a themed scrollbar whenever their content overflows.",
         "Gallery navigation no longer wraps unexpectedly between rows: Left enters the sidebar and Right stops at the row edge.",
         "Controller bindings follow the physical device where it can be identified instead of relying only on its Windows slot.",
