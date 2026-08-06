@@ -24,6 +24,7 @@ private slots:
     void staleReadingIsDroppedWhenDeviceRemoved();
     void overflowRequestsRecovery();
     void callbacksArriveOnQtThread();
+    void backgroundFocusPolicyIsAppliedBeforeCallbackRegistration();
     void shutdownIsOrderedAndLateCallbacksAreHarmless();
     void restartAfterShutdownDeliversEventsAgain();
     void initializationFailureFailsSoft();
@@ -157,6 +158,33 @@ void TestGameInputWrapper::callbacksArriveOnQtThread()
     QTRY_VERIFY_WITH_TIMEOUT(!delivered.events.isEmpty(), 2000);
     QVERIFY(deliveredOnQtThread);
     QCOMPARE(delivered.events.front().controlId, QStringLiteral("gamepad.capture"));
+}
+
+// GameHQ runs behind the focused game; without the background focus policy
+// the runtime withholds standard readings AND the system Share/Guide buttons
+// from an unfocused process. The policy is only honored for callbacks
+// registered after it is set, so the order is part of the contract.
+void TestGameInputWrapper::backgroundFocusPolicyIsAppliedBeforeCallbackRegistration()
+{
+    auto fake = std::make_unique<FakeGameInputApi>();
+    FakeGameInputApi* raw = fake.get();
+    GameInputWrapper wrapper(std::move(fake));
+    QString error;
+    QVERIFY2(wrapper.start(error), qPrintable(error));
+
+    const QStringList log = raw->callLog();
+    const int initialize = log.indexOf(QStringLiteral("initialize"));
+    const int policy = log.indexOf(QStringLiteral("focus-policy:background"));
+    const int firstRegistration = log.indexOf(QStringLiteral("register:1"));
+    QVERIFY(policy > initialize);
+    QVERIFY(firstRegistration > policy);
+
+    // A restart re-applies the policy on the fresh runtime session.
+    wrapper.shutdown();
+    QVERIFY(wrapper.start(error));
+    QVERIFY(raw->callLog().lastIndexOf(QStringLiteral("focus-policy:background"))
+            > raw->callLog().lastIndexOf(QStringLiteral("unload")));
+    wrapper.shutdown();
 }
 
 void TestGameInputWrapper::shutdownIsOrderedAndLateCallbacksAreHarmless()

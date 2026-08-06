@@ -2,6 +2,8 @@
 
 #include "input/ControllerArbitration.h"
 
+#include <limits>
+
 // The takeover contract: the active backend keeps the role while it is alive;
 // close-in-time events from another backend are suspect mirrors regardless of
 // control id; only real silence — or a higher-priority path to the same
@@ -121,6 +123,35 @@ private slots:
         QVERIFY(!ControllerArbitration::heldPressSurvives(pressed, 1150, 1351));
         // Same instant counts as the active backend still being alive.
         QVERIFY(!ControllerArbitration::heldPressSurvives(pressed, pressed, 1351));
+    }
+
+    void trailingMirrorOfASingleTapNeverSurvives()
+    {
+        // The 0.7.4 regression pin (field-reported: "press once, the list
+        // jumps two rows"). A mirror trails the original: XInput delivered
+        // the tap at 1000, the WinMM view of the same pad re-reported it at
+        // 1004, and the user pressed nothing else. The active backend spoke
+        // BEFORE the candidate press — the answers-after check cannot catch
+        // it — so the born-inside-the-mirror-window check must.
+        QVERIFY(!ControllerArbitration::heldPressSurvives(1004, 1000, 1254));
+        // Inclusive up to the window edge, matching backendMayTakeOver.
+        QVERIFY(!ControllerArbitration::heldPressSurvives(
+            1000 + ControllerArbitration::BackendDuplicateWindowMs, 1000, 1400));
+        // One ms past the window is the genuine-failover territory the
+        // oneShortPressOnASilentBackendIsNotLost case protects.
+        QVERIFY(ControllerArbitration::heldPressSurvives(
+            1001 + ControllerArbitration::BackendDuplicateWindowMs, 1000,
+            1001 + ControllerArbitration::BackendDuplicateWindowMs
+                + ControllerArbitration::BackendCandidateConfirmMs));
+    }
+
+    void heldPressSurvivesWhenTheActiveBackendNeverSpoke()
+    {
+        // The "active never reported a control" sentinel is qint64 min; the
+        // mirror-window guard must not overflow when subtracting across it.
+        QVERIFY(ControllerArbitration::heldPressSurvives(
+            1101, std::numeric_limits<qint64>::min(),
+            1101 + ControllerArbitration::BackendCandidateConfirmMs));
     }
 
     void heldPressIsNotDeliveredBeforeTheWindowCloses()

@@ -126,6 +126,20 @@ public:
         return true;
     }
 
+    void applyBackgroundFocusPolicy()
+    {
+        if (!input)
+            return;
+        // All three flags are required: EnableBackgroundInput covers standard
+        // readings only, while the system Guide/Share buttons each have their
+        // own background flag. No ExclusiveForeground* flags — GameHQ is an
+        // overlay and must observe, never steal, the game's controller.
+        input->SetFocusPolicy(GI::GameInputFocusPolicy(
+            GI::GameInputEnableBackgroundInput
+            | GI::GameInputEnableBackgroundGuideButton
+            | GI::GameInputEnableBackgroundShareButton));
+    }
+
     CallbackToken registerCallback(CallbackKind kind, EventSink sink)
     {
         if (!input || !sink)
@@ -365,6 +379,7 @@ ProductionGameInputApi::ProductionGameInputApi(QString runtimeOverride)
 ProductionGameInputApi::~ProductionGameInputApi() = default;
 
 bool ProductionGameInputApi::initialize(QString& error) { return m_impl->initialize(error); }
+void ProductionGameInputApi::applyBackgroundFocusPolicy() { m_impl->applyBackgroundFocusPolicy(); }
 IGameInputApi::CallbackToken ProductionGameInputApi::registerDeviceCallback(EventSink sink)
 { return m_impl->registerCallback(Impl::CallbackKind::Device, std::move(sink)); }
 IGameInputApi::CallbackToken ProductionGameInputApi::registerReadingCallback(EventSink sink)

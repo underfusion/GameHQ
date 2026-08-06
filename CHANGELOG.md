@@ -4,6 +4,33 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- One controller tap no longer moves UI selection twice (0.7.4). Windows
+  mirrors every XInput pad through the legacy WinMM joystick API; the mirrored
+  press trailed the real one by a few milliseconds, survived the arbitration
+  hold, and was replayed ~250 ms later as a second action. Mirrored presses
+  born inside the duplicate window are now dropped outright, `heldPressSurvives`
+  rejects them defensively, and the WinMM backend skips joysticks whose
+  VID:PID matches an XInput-class device it can strongly identify
+  (legacy-only pads are unaffected).
+- Share/Capture and Guide buttons can now reach GameHQ while a game holds
+  focus (0.7.4). The GameInput session never requested a background focus
+  policy, so the runtime withheld input from the unfocused overlay; GameHQ now
+  applies `EnableBackgroundInput` + background Guide/Share flags before
+  registering callbacks (never exclusive — the game keeps its input).
+
+### Changed
+
+- The button-identification probe now explains keyboard-macro buttons (0.7.4).
+  If a controller button only produces a keyboard event (GameSir-style Share
+  buttons emit the Windows screenshot shortcut), the probe says so and points
+  at the Keyboard bindings section or a vendor remap to an unused key such as
+  F13; the no-event message notes that the current firmware mode may disable
+  the button entirely.
+
 ## [0.7.3] - 2026-08-05
 
 ### Highlights

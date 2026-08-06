@@ -185,6 +185,22 @@ Device-specific binding profiles need to follow the *pad*, but XInput only expos
 
 Migration is explicit, never silent: existing `xinput.slotN` rows stay live for the correlated pad through a resolver **profile alias** (precedence: group-wide < aliased slot rows < device-specific rows), so upgrades change nothing; Settings → Input offers "Adopt per-slot bindings", which *copies* slot rows to the stable identity without touching the originals and never clobbers a row already saved for that pad. Slot rows are never broadened to all controllers. The GameInput `APP_LOCAL_DEVICE_ID` (see `docs/design/gameinput-spike.md`) is the designed future replacement for the correlation heuristic.
 
+## Backend arbitration & mirror suppression (0.7.4)
+
+One physical pad often reaches GameHQ through two APIs at once: Windows exposes every XInput pad through the legacy WinMM joystick surface, and remappers (DSX, reWASD) feed Raw Input, XInput and WinMM simultaneously. `ControllerArbitration` (`src/input/ControllerArbitration.h`) keeps one **active backend** and treats any cross-backend event within `BackendDuplicateWindowMs` (100 ms) of the active backend's last control as a suspect mirror. Three defenses (all in 0.7.4, pinned by `tst_controllerarbitration`):
+
+- An event born **inside** the mirror window is dropped outright in `InputEngine::onControlPressed` — it is never buffered as a pending candidate. Buffering it was the 0.7.3 "one tap moves two rows" bug: the mirror trails the real press by a few ms, the active backend then goes silent (the user only tapped once), and the held press was replayed ~250 ms later as a second action.
+- `heldPressSurvives` rejects a held press whose birth was inside the mirror window even if a future caller buffers one (defense in depth; overflow-safe against the "active never spoke" sentinel).
+- `WinMMDevice` skips joysticks whose VID:PID matches an XInput-class (`IG_`) identity the Sony Raw Input backend currently sees (`setXInputClassIdentities`, fed on every topology change). Strong identity matches only — legacy-only pads keep working.
+
+Genuine failover is preserved: a candidate press outside the window opens a pending run and is delivered after `BackendCandidateConfirmMs` (250 ms) if the active backend stays silent, so a real backend switch never loses its first tap.
+
+## Background focus policy (GameInput, 0.7.4)
+
+GameHQ normally runs *behind* the focused game, and GameInput's default focus policy delivers input — including the system Guide/Share buttons — only to the focused process. `GameInputWrapper::start()` therefore calls `IGameInputApi::applyBackgroundFocusPolicy()` after `initialize()` and **before** any callback registration (`SetFocusPolicy(EnableBackgroundInput | EnableBackgroundGuideButton | EnableBackgroundShareButton)` — all three flags, because `EnableBackgroundInput` does not cover the system buttons). Never `ExclusiveForeground*`: an overlay observes, it must not steal the game's controller. Order is contract-tested in `tst_gameinputwrapper`.
+
+**Controller-to-keyboard mappers (JoyXoff etc.).** A mapper that turns pad input into mouse/keyboard events is a second *logical* source GameHQ cannot dedup against: the pad arrives natively and the synthesized arrow keys arrive through Qt. Users of such tools should add GameHQ to the mapper's ignored-applications list; GameHQ deliberately does not blanket-ignore injected input, which would break Steam Input, accessibility tools and intentional macros.
+
 ## Cross-provider integration (t25, 0.7.3)
 
 `ProviderIntegration` (`src/input/ProviderIntegration.h`) is the single seam every real input provider reports into: one `PhysicalControllerRegistry` (physical identity, lifecycle, capabilities) and one `CapabilityEventRouter` (per-capability provider election + edge dedup) shared by Sony Raw Input, GameInput, XInput, WinMM and the selective Raw HID fallback. `InputEngine` owns it; `GameInputRouter` receives it via `setProviderIntegration()` before `start()`.

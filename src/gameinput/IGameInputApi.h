@@ -17,6 +17,14 @@ public:
     virtual ~IGameInputApi() = default;
 
     virtual bool initialize(QString& error) = 0;
+    // GameHQ runs behind the game that has focus, and GameInput's default
+    // focus policy delivers input — including system Guide/Share — only to
+    // the focused process. Called after initialize() and before any callback
+    // registration; must request background delivery for standard input AND
+    // the system Guide/Share buttons (EnableBackgroundInput alone does not
+    // cover them). Never exclusive: an overlay must not steal buttons from
+    // the game.
+    virtual void applyBackgroundFocusPolicy() = 0;
     virtual CallbackToken registerDeviceCallback(EventSink sink) = 0;
     virtual CallbackToken registerReadingCallback(EventSink sink) = 0;
     virtual CallbackToken registerSystemButtonCallback(EventSink sink) = 0;

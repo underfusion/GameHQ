@@ -1,66 +1,25 @@
 {
-  "version": "0.7.3",
+  "version": "0.7.4",
   "sections": [
     {
-      "title": "Highlights",
+      "title": "Fixed",
       "items": [
-        "Controller bindings redesigned: assign button combinations, triple taps, configurable gestures, and complete assignments from one editor.",
-        "Modern controller foundation: a GameInput pipeline adds dedicated Share/Capture identities, extra-button discovery, wireless and hot-plug handling, plus safe legacy fallback. Individual controller models remain unverified until hardware-tested.",
-        "Controller-first interface: Settings and other scrollable screens now support reliable pad navigation, automatic follow-scroll, right-stick scrolling, and visible scrollbars.",
-        "Hold the PS button for two seconds to bring GameHQ forward; hold it again to hide GameHQ and return focus to the previous game or application.",
-        "Major input hardening prevents duplicate actions, lost presses, high-polling controller slowdown, and crashes caused by actions changing input state during dispatch."
-      ]
-    },
-    {
-      "title": "Added",
-      "items": [
-        "Button combinations: hold one controller button and press another to run an action.",
-        "Triple-tap assignments alongside press, tap, double tap, and hold.",
-        "A complete Edit Assignment dialog for selecting buttons, combinations, gestures, and hold duration.",
-        "Configurable multi-tap interval and combination window.",
-        "Separate Primary and Secondary assignment slots.",
-        "Bindable desktop scrolling actions for the right stick.",
-        "A bindable Show / Hide GameHQ Window action, assigned to a two-second PS-button hold by default.",
-        "Identify a controller button for detecting unsupported or unusual controls.",
-        "Expanded controller diagnostics covering active backends, input rates, recognized controls, provider switches, overlay focus, and HidHide state.",
-        "Layout review and confirmation tools for controllers whose firmware, mode, or extra-button layout changed."
+        "One controller tap no longer moves the selection two rows: the duplicate press mirrored through the legacy Windows joystick API is now recognized and dropped instead of being replayed a quarter second later.",
+        "The joystick fallback backend no longer enumerates a controller the XInput backend already owns, removing the second event stream behind the double-input reports.",
+        "Share/Capture and Guide buttons can now reach GameHQ while a game holds focus: the modern controller session requests background delivery for standard input and the system buttons (never exclusively - the game keeps its input)."
       ]
     },
     {
       "title": "Improved",
       "items": [
-        "Settings can now be operated entirely with a controller, including assignment, conflict, compatibility, and restore-default dialogs.",
-        "The selected gallery item, sidebar entry, or Settings control automatically stays visible while navigating.",
-        "The right stick scrolls the gallery, Settings pages, Help, assignment editor, and release notes like a mouse wheel.",
-        "After scrolling a Settings page with the right stick, the D-pad continues from what is on screen instead of jumping back to the previously selected row.",
-        "Scrollable sections display a themed scrollbar whenever their content overflows.",
-        "Gallery navigation no longer wraps unexpectedly between rows: Left enters the sidebar and Right stops at the row edge.",
-        "Controller bindings follow the physical device where it can be identified instead of relying only on its Windows slot.",
-        "Legitimate shared bindings, such as tap and hold on one button, are distinguished from real conflicts.",
-        "GameHQ now verifies that the overlay received Windows focus and displays a notice when focus could not be acquired.",
-        "The PS-button overlay action now runs on tap, allowing the new two-second hold shortcut without briefly opening the overlay."
+        "Identify a controller button now explains keyboard-macro buttons: if a button only sends a Windows keyboard shortcut (as some GameSir Share buttons do), the probe says so and suggests binding it in the Keyboard section or remapping it to an unused key such as F13.",
+        "When the probe sees no event at all, it notes that the current controller firmware mode may disable the button entirely."
       ]
     },
     {
-      "title": "Fixed",
+      "title": "Notes",
       "items": [
-        "Controllers polling at up to 8000 Hz no longer slow down the interface when GameHQ does not use their reports.",
-        "One physical press can no longer execute twice when controller software exposes the same pad through multiple input APIs.",
-        "Controller backend switching, including DSX-style Sony/Xbox mode changes, was hardened to preserve the first press and prevent duplicate actions.",
-        "Pressing Share during video playback now captures only the current frame instead of also taking a desktop screenshot.",
-        "Quick taps are no longer lost when controller readings are combined under load.",
-        "Disconnecting or changing a controller layout correctly releases held controls and clears stale state.",
-        "Restore Defaults and other controls that rebuild their page no longer strand controller focus.",
-        "Invalid or newer-format bindings are ignored safely and fall back to defaults instead of triggering an incorrect action.",
-        "Empty assignment slots preserve their intended tap, hold, or multi-tap gesture.",
-        "Failed conflict replacement restores the previous assignment completely.",
-        "Keyboard shortcuts already reserved by Windows or another application are rejected instead of being saved as working.",
-        "Hold or press actions that open or close the overlay can no longer repeatedly redispatch, exhaust Windows resources, and crash GameHQ.",
-        "Raw HID and keyboard-hotkey dispatch remain safe when an action disconnects, reloads, or rebinds input during delivery.",
-        "A controller button still held when GameHQ loses window focus no longer completes its action after a game takes over.",
-        "A PS-button assignment saved in an earlier version no longer prevents the new two-second PS hold from working after upgrading.",
-        "L1/R1 no longer switch the Settings category while a dropdown opened with the pad is still showing.",
-        "Minor controller-focus styling and customized-binding indicators were corrected."
+        "When using JoyXoff or another controller-to-mouse/keyboard mapper, add GameHQ to its ignored applications; otherwise GameHQ receives both native controller input and the generated keyboard or mouse input."
       ]
     }
   ]

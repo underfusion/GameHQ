@@ -18,6 +18,12 @@ bool FakeGameInputApi::initialize(QString& error)
     return true;
 }
 
+void FakeGameInputApi::applyBackgroundFocusPolicy()
+{
+    QMutexLocker lock(&m_mutex);
+    m_callLog.push_back(QStringLiteral("focus-policy:background"));
+}
+
 IGameInputApi::CallbackToken FakeGameInputApi::registerDeviceCallback(EventSink sink)
 { return add(Kind::Device, std::move(sink)); }
 IGameInputApi::CallbackToken FakeGameInputApi::registerReadingCallback(EventSink sink)

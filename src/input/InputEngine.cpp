@@ -223,6 +223,11 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
     connect(m_sonyPad, &DualSenseDevice::deviceTopologyChanged, this, [this] {
         qInfo() << "Input: device topology changed — rescanning fallback backends";
         m_xinputPad->rescan();
+        // Windows mirrors every XInput pad through the WinMM compatibility
+        // surface. Tell WinMM which VID:PIDs are XInput-class (IG_) devices
+        // so it never enumerates the pad the XInput backend already owns —
+        // that second event stream is what fed the mirror-replay bug.
+        m_winmmPad->setXInputClassIdentities(m_sonyPad->xinputClassIdentities());
         m_winmmPad->rescan();
         updateXInputIdentity();
     });
@@ -832,6 +837,14 @@ void InputEngine::onControlPressed(const QString& controlId, int family,
         if (activeIt != m_backendLastControlMs.cend()
             && !ControllerArbitration::backendMayTakeOver(
                 true, *activeIt, now, higherPrioritySameDevice)) {
+            // Inside the mirror window this event is a trailing duplicate of
+            // a press the active backend already delivered. Holding it as a
+            // candidate would replay it as a second action ~250 ms later
+            // (the 0.7.3 double-navigation bug) — drop it outright. Only an
+            // event past the window but before the takeover timeout can open
+            // a candidate run.
+            if (now - *activeIt <= ControllerArbitration::BackendDuplicateWindowMs)
+                return;
             if (!confirmCandidate(source, now, *activeIt)) {
                 // Not proven yet — hold the press rather than drop it. If the
                 // candidate turns out to be real it is delivered on promotion;

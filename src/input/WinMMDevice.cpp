@@ -124,6 +124,28 @@ ControlId::DeviceProfile WinMMDevice::profile() const
     };
 }
 
+void WinMMDevice::setXInputClassIdentities(const QStringList& identities)
+{
+    m_xinputClassIdentities = QSet<QString>(identities.cbegin(), identities.cend());
+    // The joystick this backend already latched may itself be the XInput
+    // pad's compatibility view — release it so the XInput backend is the
+    // pad's only event stream.
+    if (m_connected && isXInputBacked(m_vendorId, m_productId)) {
+        qInfo() << "Gamepad: WinMM joystick is XInput-backed — releasing it to the XInput backend";
+        disconnectActive();
+    }
+}
+
+bool WinMMDevice::isXInputBacked(quint32 vendorId, quint32 productId) const
+{
+    if (m_xinputClassIdentities.isEmpty() || (vendorId == 0 && productId == 0))
+        return false;
+    return m_xinputClassIdentities.contains(
+        QStringLiteral("%1:%2")
+            .arg(vendorId, 4, 16, QLatin1Char('0'))
+            .arg(productId, 4, 16, QLatin1Char('0')));
+}
+
 void WinMMDevice::rescan()
 {
     if (m_connected)
@@ -138,10 +160,6 @@ void WinMMDevice::rescan()
         if (joyGetPosEx(id, &info) != JOYERR_NOERROR)
             continue;
 
-        m_activeId = id;
-        m_connected = true;
-        m_prevButtons = 0;
-
         // The button ORDER depends on the pad family: Sony pads (and DSX's
         // virtual Sony pads) put Share at button 8 and PS at button 12,
         // Xbox-style pads put Back/Start at 6/7. joyGetDevCaps exposes the
@@ -152,6 +170,19 @@ void WinMMDevice::rescan()
             mid = caps.wMid;
             pid = caps.wPid;
         }
+
+        // Skip the WinMM view of a pad the XInput backend already owns
+        // (strong VID:PID identity match only — see setXInputClassIdentities).
+        if (isXInputBacked(mid, pid)) {
+            qInfo() << "Gamepad: skipping XInput-backed WinMM joystick (JOYSTICKID"
+                    << (id + 1) << ") VID" << Qt::hex << mid << "PID" << pid << Qt::dec;
+            continue;
+        }
+
+        m_activeId = id;
+        m_connected = true;
+        m_prevButtons = 0;
+
         m_ds4Layout = (mid == 0x054C)
             || (mid == 0x11FF && pid == 0x0847)
             || (mid == 0x3670 && pid == 0x0902);
