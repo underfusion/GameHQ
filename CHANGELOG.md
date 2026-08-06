@@ -6,6 +6,8 @@ All notable public releases of GameHQ are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-08-07
+
 ### Fixed
 
 - HDR screenshots now use the FP16 capture and GPU tone-mapping path by
@@ -24,11 +26,10 @@ All notable public releases of GameHQ are documented here. The format follows
   re-logged the skip on every two-second rescan. Arbitration's duplicate-window
   drop is the sole — and sufficient — mirror defense; a production-sequence
   regression test pins both the mirror and the genuine-failover path.
-- Share/Capture and Guide buttons can now reach GameHQ while a game holds
-  focus (0.7.4). The GameInput session never requested a background focus
-  policy, so the runtime withheld input from the unfocused overlay; GameHQ now
-  applies `EnableBackgroundInput` + background Guide/Share flags before
-  registering callbacks (never exclusive — the game keeps its input).
+- GameInput now requests non-exclusive background delivery while a game holds
+  focus (0.7.4), including Guide/Share delivery where the controller and
+  firmware expose those buttons. Share/Capture remains hardware-dependent and
+  the GameSir G7 Pro is still unverified.
 
 ### Changed
 
