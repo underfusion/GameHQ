@@ -15,7 +15,7 @@ All notable public releases of GameHQ are documented here. The format follows
   born inside the duplicate window are now dropped outright and
   `heldPressSurvives` rejects them defensively.
 - The WinMM VID:PID skip introduced alongside the mirror fix is removed again
-  (0.7.5): VID:PID names a controller *model*, not a physical endpoint, so the
+  (0.7.4): VID:PID names a controller *model*, not a physical endpoint, so the
   filter could hide a legacy-only pad sharing its model with an XInput one and
   re-logged the skip on every two-second rescan. Arbitration's duplicate-window
   drop is the sole — and sufficient — mirror defense; a production-sequence
@@ -35,7 +35,7 @@ All notable public releases of GameHQ are documented here. The format follows
   F13; the no-event message notes that the current firmware mode may disable
   the button entirely.
 - The keyboard-macro probe message is phrased as a possibility, not a verdict
-  (0.7.5): the probe can only observe that keyboard input arrived while no
+  (0.7.4): the probe can only observe that keyboard input arrived while no
   controller input did — it cannot prove the key came from the pad.
 
 ## [0.7.3] - 2026-08-05
