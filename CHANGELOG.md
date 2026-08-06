@@ -8,6 +8,10 @@ All notable public releases of GameHQ are documented here. The format follows
 
 ### Fixed
 
+- HDR screenshots now use the FP16 capture and GPU tone-mapping path by
+  default (0.7.4). The implementation was present in earlier public builds,
+  but its hidden rollout flag still defaulted to off, forcing HDR games
+  through the overexposed 8-bit SDR capture path.
 - One controller tap no longer moves UI selection twice (0.7.4). Windows
   mirrors every XInput pad through the legacy WinMM joystick API; the mirrored
   press trailed the real one by a few milliseconds, survived the arbitration

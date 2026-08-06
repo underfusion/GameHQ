@@ -85,12 +85,14 @@ inline constexpr QLatin1StringView InternalUpdatesPendingPostUpdateVersion{ "int
 // Version whose bundled What's New notes the user last closed. Unlike the
 // updater greeting keys above, this also covers opening About manually.
 inline constexpr QLatin1StringView InternalUiWhatsNewSeenVersion{ "internal.ui.whats_new_seen_version" };
-// Hidden, default-off HDR capture gate (t24/t22): not exposed in Settings.
-// Even when true, the SDR path is still used unless HdrCapabilities reports
+// Hidden HDR capture gate (t24/t22), enabled by default and not exposed in
+// Settings. Keeping the key allows an emergency per-installation fallback.
+// Even when enabled, the SDR path is still used unless HdrCapabilities reports
 // the capture target's display as HDR-active AND the FP16 tone-map stage
 // initializes successfully — any failure falls back to the existing SDR
-// pool format, so flipping this key on an SDR-only machine changes nothing.
+// pool format, so the default changes nothing on an SDR-only machine.
 inline constexpr QLatin1StringView InternalCaptureExperimentalHdr{ "internal.capture.experimental_hdr" };
+inline constexpr bool InternalCaptureExperimentalHdrDefault{ true };
 
 // Group prefixes used by resetGroup() and the settings reset taxonomy.
 namespace Group

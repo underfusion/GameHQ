@@ -51,12 +51,12 @@ struct HdrReport
 // factory, so they are safe to call from any thread and from any apartment.
 namespace HdrCapabilities {
 
-HdrReport query(bool experimentalHdrEnabled = false);
+HdrReport query(bool experimentalHdrEnabled);
 
 // Re-enumerates only display state while preserving the encoder capability
 // from a previous full query. Intended for the runtime HDR toggle watcher.
 HdrReport refreshDisplayState(const HdrReport& previous,
-                              bool experimentalHdrEnabled = false);
+                              bool experimentalHdrEnabled);
 
 // Compares only fields that can change with display topology or Windows HDR.
 // Encoder and configured capture-policy descriptions are intentionally ignored.

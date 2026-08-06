@@ -4,6 +4,7 @@
     {
       "title": "Fixed",
       "items": [
+        "HDR screenshots now use GameHQ's FP16 capture and GPU tone mapping by default instead of falling back to an overexposed 8-bit SDR capture.",
         "One controller tap no longer moves the selection two rows: the duplicate press mirrored through the legacy Windows joystick API is now recognized and dropped instead of being replayed a quarter second later.",
         "Share/Capture and Guide buttons can now reach GameHQ while a game holds focus: the modern controller session requests background delivery for standard input and the system buttons (never exclusively - the game keeps its input)."
       ]
