@@ -1,18 +1,17 @@
 {
-  "version": "0.7.4",
+  "version": "0.7.5",
   "sections": [
     {
       "title": "Fixed",
       "items": [
         "One controller tap no longer moves the selection two rows: the duplicate press mirrored through the legacy Windows joystick API is now recognized and dropped instead of being replayed a quarter second later.",
-        "The joystick fallback backend no longer enumerates a controller the XInput backend already owns, removing the second event stream behind the double-input reports.",
         "Share/Capture and Guide buttons can now reach GameHQ while a game holds focus: the modern controller session requests background delivery for standard input and the system buttons (never exclusively - the game keeps its input)."
       ]
     },
     {
       "title": "Improved",
       "items": [
-        "Identify a controller button now explains keyboard-macro buttons: if a button only sends a Windows keyboard shortcut (as some GameSir Share buttons do), the probe says so and suggests binding it in the Keyboard section or remapping it to an unused key such as F13.",
+        "Identify a controller button now flags likely keyboard-macro buttons: if a button only produces a keyboard event (as some GameSir Share buttons do), the probe says the button may be configured as a keyboard macro and suggests binding it in the Keyboard section or remapping it to an unused key such as F13.",
         "When the probe sees no event at all, it notes that the current controller firmware mode may disable the button entirely."
       ]
     },

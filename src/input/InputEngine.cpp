@@ -223,11 +223,6 @@ InputEngine::InputEngine(ConfigManager* config, CaptureDatabase* db,
     connect(m_sonyPad, &DualSenseDevice::deviceTopologyChanged, this, [this] {
         qInfo() << "Input: device topology changed — rescanning fallback backends";
         m_xinputPad->rescan();
-        // Windows mirrors every XInput pad through the WinMM compatibility
-        // surface. Tell WinMM which VID:PIDs are XInput-class (IG_) devices
-        // so it never enumerates the pad the XInput backend already owns —
-        // that second event stream is what fed the mirror-replay bug.
-        m_winmmPad->setXInputClassIdentities(m_sonyPad->xinputClassIdentities());
         m_winmmPad->rescan();
         updateXInputIdentity();
     });

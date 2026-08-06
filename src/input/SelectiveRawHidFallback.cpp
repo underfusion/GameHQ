@@ -81,9 +81,10 @@ QString SelectiveRawHidFallback::probeSummary() const
                               "entirely — try another controller mode or close software that "
                               "intercepts buttons.");
     }
-    // A button whose only trace is a keyboard event is a firmware macro key
-    // (GameSir-style Share buttons emit the Windows screenshot shortcut, not
-    // a gamepad control) — steer the user toward a keyboard binding.
+    // A button whose only trace is a keyboard event is most likely a firmware
+    // macro key (GameSir-style Share buttons emit the Windows screenshot
+    // shortcut, not a gamepad control) — but the probe cannot prove the key
+    // came from the pad, so the copy says "may", not "is".
     bool keyboardOnly = true;
     for (const QString& observation : m_observations) {
         if (!observation.startsWith(QLatin1String("Keyboard macro:"))) {
@@ -93,9 +94,10 @@ QString SelectiveRawHidFallback::probeSummary() const
     }
     if (keyboardOnly) {
         return m_observations.join(QStringLiteral("; "))
-            + QStringLiteral(". This button sends a Windows keyboard shortcut rather than "
-                             "controller input — assign it in the Keyboard section, or remap "
-                             "it in the vendor's software to an unused key such as F13 first.");
+            + QStringLiteral(". Only keyboard input was observed during this probe — the "
+                             "button may be configured as a keyboard macro. Assign it in the "
+                             "Keyboard section, or remap it in the vendor's software to an "
+                             "unused key such as F13 first.");
     }
     return m_observations.join(QStringLiteral("; "));
 }

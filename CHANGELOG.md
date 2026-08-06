@@ -12,10 +12,14 @@ All notable public releases of GameHQ are documented here. The format follows
   mirrors every XInput pad through the legacy WinMM joystick API; the mirrored
   press trailed the real one by a few milliseconds, survived the arbitration
   hold, and was replayed ~250 ms later as a second action. Mirrored presses
-  born inside the duplicate window are now dropped outright, `heldPressSurvives`
-  rejects them defensively, and the WinMM backend skips joysticks whose
-  VID:PID matches an XInput-class device it can strongly identify
-  (legacy-only pads are unaffected).
+  born inside the duplicate window are now dropped outright and
+  `heldPressSurvives` rejects them defensively.
+- The WinMM VID:PID skip introduced alongside the mirror fix is removed again
+  (0.7.5): VID:PID names a controller *model*, not a physical endpoint, so the
+  filter could hide a legacy-only pad sharing its model with an XInput one and
+  re-logged the skip on every two-second rescan. Arbitration's duplicate-window
+  drop is the sole — and sufficient — mirror defense; a production-sequence
+  regression test pins both the mirror and the genuine-failover path.
 - Share/Capture and Guide buttons can now reach GameHQ while a game holds
   focus (0.7.4). The GameInput session never requested a background focus
   policy, so the runtime withheld input from the unfocused overlay; GameHQ now
@@ -30,6 +34,9 @@ All notable public releases of GameHQ are documented here. The format follows
   at the Keyboard bindings section or a vendor remap to an unused key such as
   F13; the no-event message notes that the current firmware mode may disable
   the button entirely.
+- The keyboard-macro probe message is phrased as a possibility, not a verdict
+  (0.7.5): the probe can only observe that keyboard input arrived while no
+  controller input did — it cannot prove the key came from the pad.
 
 ## [0.7.3] - 2026-08-05
 

@@ -124,28 +124,6 @@ ControlId::DeviceProfile WinMMDevice::profile() const
     };
 }
 
-void WinMMDevice::setXInputClassIdentities(const QStringList& identities)
-{
-    m_xinputClassIdentities = QSet<QString>(identities.cbegin(), identities.cend());
-    // The joystick this backend already latched may itself be the XInput
-    // pad's compatibility view — release it so the XInput backend is the
-    // pad's only event stream.
-    if (m_connected && isXInputBacked(m_vendorId, m_productId)) {
-        qInfo() << "Gamepad: WinMM joystick is XInput-backed — releasing it to the XInput backend";
-        disconnectActive();
-    }
-}
-
-bool WinMMDevice::isXInputBacked(quint32 vendorId, quint32 productId) const
-{
-    if (m_xinputClassIdentities.isEmpty() || (vendorId == 0 && productId == 0))
-        return false;
-    return m_xinputClassIdentities.contains(
-        QStringLiteral("%1:%2")
-            .arg(vendorId, 4, 16, QLatin1Char('0'))
-            .arg(productId, 4, 16, QLatin1Char('0')));
-}
-
 void WinMMDevice::rescan()
 {
     if (m_connected)
@@ -171,13 +149,12 @@ void WinMMDevice::rescan()
             pid = caps.wPid;
         }
 
-        // Skip the WinMM view of a pad the XInput backend already owns
-        // (strong VID:PID identity match only — see setXInputClassIdentities).
-        if (isXInputBacked(mid, pid)) {
-            qInfo() << "Gamepad: skipping XInput-backed WinMM joystick (JOYSTICKID"
-                    << (id + 1) << ") VID" << Qt::hex << mid << "PID" << pid << Qt::dec;
-            continue;
-        }
+        // The WinMM view of an XInput pad is NOT filtered out here: VID:PID
+        // names a model, not a physical endpoint, so suppressing on it could
+        // hide a legacy-only pad that shares its model with an XInput one.
+        // The mirrored event stream is harmless — backend arbitration drops
+        // cross-backend presses inside the duplicate window at birth
+        // (InputEngine::onControlPressed + heldPressSurvives).
 
         m_activeId = id;
         m_connected = true;

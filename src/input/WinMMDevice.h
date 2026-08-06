@@ -1,9 +1,6 @@
 #pragma once
 #include "input/Gamepad.h"
 
-#include <QSet>
-#include <QStringList>
-
 #include <climits>
 #include <windows.h>
 
@@ -32,18 +29,7 @@ public:
 public slots:
     void rescan();   // scan slots for a newly arrived joystick
 
-public:
-    // "vvvv:pppp" identities of the XInput-class (IG_) devices Raw Input
-    // currently sees. Windows also exposes every XInput pad through this
-    // legacy joystick API, so a WinMM endpoint matching one of these is the
-    // same physical device the XInput backend already owns — enumerating it
-    // here would create a second event stream for every press. Only strong
-    // identity matches are skipped; legacy-only pads keep working.
-    void setXInputClassIdentities(const QStringList& identities);
-
 private:
-    bool isXInputBacked(quint32 vendorId, quint32 productId) const;
-
     void poll();
     void disconnectActive();
     void emitEdges(quint32 buttons);
@@ -56,5 +42,4 @@ private:
     UINT m_activeId = UINT_MAX;
     quint32 m_vendorId = 0;
     quint32 m_productId = 0;
-    QSet<QString> m_xinputClassIdentities;
 };
