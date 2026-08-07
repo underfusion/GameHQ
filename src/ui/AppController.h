@@ -124,6 +124,10 @@ public:
     Q_INVOKABLE QString resetCaptureRoot(const QString& kind);
     Q_INVOKABLE void openDataFolder();
     Q_INVOKABLE void openLogsFolder();
+    // A QML top-level child (the desktop lightbox) has closed. Ask App to
+    // restore the native foreground to the desktop window; requestActivate()
+    // alone is not reliable under the Windows foreground lock.
+    Q_INVOKABLE void requestDesktopFocus();
     Q_INVOKABLE QString beginPortableImport(const QUrl& folderUrl);
     Q_INVOKABLE void quitApplication();
     // Copies version/mode/paths to the clipboard for bug reports (Advanced page).
@@ -172,6 +176,7 @@ signals:
     void hdrStatusChanged();
     // Emitted only after a previously-probed display changes HDR/topology state.
     void hdrDisplayConfigurationChanged();
+    void desktopFocusRequested();
 
 private:
     void pollHdrStatus();

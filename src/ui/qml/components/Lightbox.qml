@@ -19,6 +19,10 @@ Window {
 
     property var galleryModel
     property var parentWindow
+    // Keep a real native owner relationship. Besides stacking the viewer over
+    // GameHQ, Windows can then return activation to the desktop window when
+    // this top-level child disappears.
+    transientParent: root.parentWindow
     property int index: -1
     // Tracks which input source last navigated the gallery so the side
     // hint pills can render the matching label (L1/R1 for gamepad,

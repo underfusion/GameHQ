@@ -130,6 +130,7 @@ Rules: big numbers/headers are Light, never Bold. No ALL-CAPS except tiny group 
 - Focused gallery tiles **scale to 1.04** (220 ms OutCubic) — the PS5 tile zoom. Neighbors do not move (scale within own bounds).
 - Focus is never trapped; D-pad/arrow order is always predictable (left↔right within a row, up↓down across rows/sections).
 - Mouse hover mirrors focus styling at ~60 % intensity; hover never reveals actions that focus can't reach. In the main-app gallery, hovering a tile also moves the keyboard cursor to it (`grid.currentIndex` follows the mouse), so the accent frame + focus zoom appear on hover exactly as on keyboard navigation (dev.69).
+- Closing a top-level preview uses the verified native foreground-acquisition path and restores QML focus only after the desktop window is active again. Shared dialog exits must return to the visible surface (including the active Settings panel), never a hidden gallery target.
 
 ## 5. Motion
 

@@ -32,6 +32,15 @@ Item {
         if (categoryRepeater.itemAt(currentCategory))
             categoryRepeater.itemAt(currentCategory).forceActiveFocus()
     }
+    function restoreFocus() {
+        // Restore the panel the controller was using without playing a nav
+        // sound. If its options page has no usable control, fall back to the
+        // selected category so focus is always visible.
+        if (activePanel === panelOptions && focusOptions())
+            return
+        activePanel = panelCategories
+        activate()
+    }
     // ───────────────── Pad navigation ─────────────────
     // Settings is three panels: the app sidebar (owned by Main.qml), the
     // category list, and the options for the selected category. Left/Right

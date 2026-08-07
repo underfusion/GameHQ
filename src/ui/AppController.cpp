@@ -97,6 +97,11 @@ AppController::AppController(CaptureDatabase* db, CaptureScanner* scanner,
 
 AppController::~AppController() = default;
 
+void AppController::requestDesktopFocus()
+{
+    emit desktopFocusRequested();
+}
+
 QStringList AppController::watchedFolders() const
 {
     return m_db->watchedFolders();

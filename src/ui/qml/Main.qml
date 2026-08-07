@@ -154,6 +154,11 @@ ApplicationWindow {
     // render matching labels (keyboard glyphs vs DualSense button names).
     // Flipped to true on any pad input, false on any key press.
     property bool usingGamepad: false
+    // A separate top-level window (currently the desktop lightbox) can emit
+    // its close signal before Windows has activated this window again. Keep
+    // the restore request alive until activation so QML focus is not assigned
+    // to an inactive window and silently lost.
+    property bool controllerFocusRestorePending: false
     // Sidebar focus region: when true the "cursor" has left the grid (L1 from
     // the pad — the only entry path) and now lives in the sidebar. UP/DOWN
     // walks the flat sidebar list (categories → games → Settings → Help → About),
@@ -226,8 +231,10 @@ ApplicationWindow {
 
     onActiveChanged: {
         input.setDesktopFocused(window.active || lightbox.active)
-        if (window.active)
+        if (window.active) {
+            Qt.callLater(window.finishControllerFocusRestore)
             Qt.callLater(window.maybeShowPostUpdateGreeting)
+        }
     }
     // OS-level minimize (title bar button or taskbar): when enabled, drop
     // straight to the tray instead of leaving a taskbar entry. showWindow()
@@ -380,12 +387,20 @@ ApplicationWindow {
     }
 
     function focusGalleryOrSidebar() {
+        if (aboutDialog.visible || helpDialog.visible || lightbox.visible)
+            return
+        // Settings replaces the gallery surface. Focusing the hidden grid here
+        // wins the same callLater race as SettingsView.activate() and leaves no
+        // visible controller cursor after opening or closing a modal.
+        if (window.settingsOpen) {
+            window.sidebarFocused = false
+            settingsView.restoreFocus()
+            return
+        }
         // An empty gallery has nothing meaningful to focus on. Keep the real
         // key target on the grid (it owns the desktop key handlers), but put
         // the visible controller cursor in the sidebar so the first D-pad
         // movement gives immediate feedback.
-        if (aboutDialog.visible || helpDialog.visible || lightbox.visible)
-            return
         if (!window.settingsOpen && !window.helpOpen && grid.count === 0) {
             window.sidebarFocused = true
             window.refreshSidebarHoverIndex()
@@ -393,6 +408,19 @@ ApplicationWindow {
             window.sidebarFocused = false
         }
         grid.forceActiveFocus()
+    }
+
+    function requestControllerFocusRestore() {
+        window.controllerFocusRestorePending = true
+        app.requestDesktopFocus()
+        Qt.callLater(window.finishControllerFocusRestore)
+    }
+
+    function finishControllerFocusRestore() {
+        if (!window.controllerFocusRestorePending || !window.active)
+            return
+        window.controllerFocusRestorePending = false
+        window.focusGalleryOrSidebar()
     }
 
     function activateSidebarRow(i) {
@@ -974,7 +1002,7 @@ ApplicationWindow {
         id: lightbox
         parentWindow: window
         galleryModel: app.gallery
-        onClosed: window.focusGalleryOrSidebar()
+        onClosed: window.requestControllerFocusRestore()
     }
 
     // ───────────────────────── Delete confirmation ─────────────────────────
