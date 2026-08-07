@@ -30,6 +30,11 @@ bool GameInputWrapper::start(QString& error)
     if (!m_api || !m_api->initialize(error))
         return false;
 
+    // Focus policy must be in place before the first callback registration —
+    // otherwise the runtime may withhold background Share/Guide edges that
+    // arrive while the game (not GameHQ) holds focus.
+    m_api->applyBackgroundFocusPolicy();
+
     // A previous shutdown() permanently stops the old queue so late callbacks
     // stay harmless. A restart (Auto → Off → Auto) therefore needs a fresh
     // queue; stale callbacks still hold only the old, stopped instance.

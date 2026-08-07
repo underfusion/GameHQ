@@ -399,7 +399,7 @@ void FramePumpWorker::attachRecorder(Pipeline* pipe, unsigned long pid, int srcW
 //
 // t24 experimental HDR gate: format selection ONLY happens here, and only
 // when hdrExperimentalEnabled is true (ConfigKeys::InternalCaptureExperimentalHdr,
-// hidden/default-off). All three of these must hold before FP16 is even
+// hidden/default-on). All three of these must hold before FP16 is even
 // attempted: the config flag, HdrCapabilities reporting the target display
 // as HDR-active, and the GPU tone-mapper initializing successfully. Any
 // failure anywhere in that chain falls straight back to the original
@@ -1189,9 +1189,11 @@ void FramePumpService::startBuffer()
     const bool audioRequested = m_config
         ? m_config->value(ConfigKeys::AudioEnabled, false).toBool() : false;
     const bool audioOn = audioRequested;
-    // t24: hidden, default-off — see ConfigKeys::InternalCaptureExperimentalHdr.
+    // t24: hidden, default-on — see ConfigKeys::InternalCaptureExperimentalHdr.
     const bool hdrExperimentalEnabled = m_config
-        ? m_config->value(ConfigKeys::InternalCaptureExperimentalHdr, false).toBool() : false;
+        ? m_config->value(ConfigKeys::InternalCaptureExperimentalHdr,
+                          ConfigKeys::InternalCaptureExperimentalHdrDefault).toBool()
+        : ConfigKeys::InternalCaptureExperimentalHdrDefault;
     const QString gameName = g.gameName.isEmpty() ? QStringLiteral("Unknown Game") : g.gameName;
     const QString executablePath = g.executablePath;
     qInfo() << "FramePump: armed on" << gameName << "(audio:" << (audioOn ? "on" : "off")

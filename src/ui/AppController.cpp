@@ -213,7 +213,8 @@ void AppController::copyDiagnosticSummary() const
 void AppController::refreshHdrStatus()
 {
     const bool experimentalHdrEnabled =
-        m_config->value(ConfigKeys::InternalCaptureExperimentalHdr, false).toBool();
+        m_config->value(ConfigKeys::InternalCaptureExperimentalHdr,
+                        ConfigKeys::InternalCaptureExperimentalHdrDefault).toBool();
     const capture::HdrReport refreshed =
         capture::HdrCapabilities::query(experimentalHdrEnabled);
     const bool displayChanged =
@@ -232,7 +233,8 @@ void AppController::pollHdrStatus()
         return;
 
     const bool experimentalHdrEnabled =
-        m_config->value(ConfigKeys::InternalCaptureExperimentalHdr, false).toBool();
+        m_config->value(ConfigKeys::InternalCaptureExperimentalHdr,
+                        ConfigKeys::InternalCaptureExperimentalHdrDefault).toBool();
     capture::HdrReport refreshed =
         capture::HdrCapabilities::refreshDisplayState(m_hdr, experimentalHdrEnabled);
     if (capture::HdrCapabilities::sameDisplayState(m_hdr, refreshed))

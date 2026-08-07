@@ -2,6 +2,8 @@
 
 #include "input/ControllerArbitration.h"
 
+#include <limits>
+
 // The takeover contract: the active backend keeps the role while it is alive;
 // close-in-time events from another backend are suspect mirrors regardless of
 // control id; only real silence — or a higher-priority path to the same
@@ -123,6 +125,35 @@ private slots:
         QVERIFY(!ControllerArbitration::heldPressSurvives(pressed, pressed, 1351));
     }
 
+    void trailingMirrorOfASingleTapNeverSurvives()
+    {
+        // The 0.7.4 regression pin (field-reported: "press once, the list
+        // jumps two rows"). A mirror trails the original: XInput delivered
+        // the tap at 1000, the WinMM view of the same pad re-reported it at
+        // 1004, and the user pressed nothing else. The active backend spoke
+        // BEFORE the candidate press — the answers-after check cannot catch
+        // it — so the born-inside-the-mirror-window check must.
+        QVERIFY(!ControllerArbitration::heldPressSurvives(1004, 1000, 1254));
+        // Inclusive up to the window edge, matching backendMayTakeOver.
+        QVERIFY(!ControllerArbitration::heldPressSurvives(
+            1000 + ControllerArbitration::BackendDuplicateWindowMs, 1000, 1400));
+        // One ms past the window is the genuine-failover territory the
+        // oneShortPressOnASilentBackendIsNotLost case protects.
+        QVERIFY(ControllerArbitration::heldPressSurvives(
+            1001 + ControllerArbitration::BackendDuplicateWindowMs, 1000,
+            1001 + ControllerArbitration::BackendDuplicateWindowMs
+                + ControllerArbitration::BackendCandidateConfirmMs));
+    }
+
+    void heldPressSurvivesWhenTheActiveBackendNeverSpoke()
+    {
+        // The "active never reported a control" sentinel is qint64 min; the
+        // mirror-window guard must not overflow when subtracting across it.
+        QVERIFY(ControllerArbitration::heldPressSurvives(
+            1101, std::numeric_limits<qint64>::min(),
+            1101 + ControllerArbitration::BackendCandidateConfirmMs));
+    }
+
     void heldPressIsNotDeliveredBeforeTheWindowCloses()
     {
         // Bounded wait: the press is delivered when the window has elapsed,
@@ -135,6 +166,48 @@ private slots:
         // And the wait really is bounded — a quarter second, not a second.
         QVERIFY(ControllerArbitration::BackendCandidateConfirmMs
                 < ControllerArbitration::BackendTakeoverSilenceMs);
+    }
+
+    // The two field-reported scenarios walked through the EXACT decision
+    // sequence of InputEngine::onControlPressed → resolvePendingCandidate,
+    // branch for branch. (A full InputEngine instance would need half the app
+    // — config, database, hotkeys, every device backend — which is what this
+    // pure-logic test target deliberately excludes; the branch order below is
+    // the complete decision surface those code paths consult.)
+    void productionSequenceSingleTapWithWinMMMirrorActsOnce()
+    {
+        // t=1000: the active XInput backend delivers the tap — one action.
+        const qint64 activeLast = 1000;
+        // t=1004: the WinMM view of the same pad re-reports the press.
+        const qint64 mirror = 1004;
+        // Branch 1: not the active backend, takeover refused (mirror window).
+        QVERIFY(!ControllerArbitration::backendMayTakeOver(true, activeLast, mirror));
+        // Branch 2: born inside the duplicate window → dropped at birth,
+        // NEVER buffered as a pending candidate (the 0.7.3 replay bug).
+        QVERIFY(mirror - activeLast <= ControllerArbitration::BackendDuplicateWindowMs);
+        // Defense in depth: even if a future caller buffered it anyway, the
+        // resolve pass at t=1254 must refuse to replay it...
+        QVERIFY(!ControllerArbitration::heldPressSurvives(mirror, activeLast, 1254));
+        // ...and WinMM must not be promoted while the active backend is only
+        // a quarter second quiet. Net result: exactly one action, no replay,
+        // no backend flip.
+        QVERIFY(!ControllerArbitration::backendMayTakeOver(true, activeLast, 1254));
+    }
+
+    void productionSequenceGenuineFailoverStillDeliversTheFirstTap()
+    {
+        // The active backend went silent after t=1000; a genuinely new
+        // backend taps once at t=1101 — outside the mirror window.
+        const qint64 activeLast = 1000;
+        const qint64 press = 1101;
+        QVERIFY(!ControllerArbitration::backendMayTakeOver(true, activeLast, press));
+        QVERIFY(press - activeLast > ControllerArbitration::BackendDuplicateWindowMs);
+        // Not confirmable from one event → the press is held, not dropped.
+        QVERIFY(!ControllerArbitration::candidateMayConfirm(press, press, activeLast));
+        // The active backend stays silent, so the resolve pass replays the
+        // held tap exactly once and promotes the new backend.
+        QVERIFY(ControllerArbitration::heldPressSurvives(
+            press, activeLast, press + ControllerArbitration::BackendCandidateConfirmMs));
     }
 
     void physicalSonyPadWinsImmediately()

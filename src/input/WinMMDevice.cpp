@@ -138,10 +138,6 @@ void WinMMDevice::rescan()
         if (joyGetPosEx(id, &info) != JOYERR_NOERROR)
             continue;
 
-        m_activeId = id;
-        m_connected = true;
-        m_prevButtons = 0;
-
         // The button ORDER depends on the pad family: Sony pads (and DSX's
         // virtual Sony pads) put Share at button 8 and PS at button 12,
         // Xbox-style pads put Back/Start at 6/7. joyGetDevCaps exposes the
@@ -152,6 +148,18 @@ void WinMMDevice::rescan()
             mid = caps.wMid;
             pid = caps.wPid;
         }
+
+        // The WinMM view of an XInput pad is NOT filtered out here: VID:PID
+        // names a model, not a physical endpoint, so suppressing on it could
+        // hide a legacy-only pad that shares its model with an XInput one.
+        // The mirrored event stream is harmless — backend arbitration drops
+        // cross-backend presses inside the duplicate window at birth
+        // (InputEngine::onControlPressed + heldPressSurvives).
+
+        m_activeId = id;
+        m_connected = true;
+        m_prevButtons = 0;
+
         m_ds4Layout = (mid == 0x054C)
             || (mid == 0x11FF && pid == 0x0847)
             || (mid == 0x3670 && pid == 0x0902);

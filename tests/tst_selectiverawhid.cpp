@@ -48,12 +48,28 @@ private slots:
         QVERIFY(summary.contains(QStringLiteral("Keyboard macro: Print Screen")));
     }
 
+    void keyboardOnlyProbeSteersTowardAKeyboardBinding()
+    {
+        // A GameSir-style Share button whose only trace is a keyboard macro:
+        // the summary points at the Keyboard section (with the remap-to-F13
+        // escape hatch) — phrased as "may be a keyboard macro", because the
+        // probe cannot prove the key press came from the pad.
+        auto& fallback = SelectiveRawHidFallback::instance();
+        fallback.beginProbe();
+        fallback.observeKeyboard(QStringLiteral("Print Screen"));
+        const QString summary = fallback.probeSummary();
+        QVERIFY(summary.contains(QStringLiteral("Keyboard macro: Print Screen")));
+        QVERIFY(summary.contains(QStringLiteral("may be configured as a keyboard macro")));
+        QVERIFY(summary.contains(QStringLiteral("F13")));
+    }
+
     void emptyProbeIsHonest()
     {
         auto& fallback = SelectiveRawHidFallback::instance();
         fallback.beginProbe();
         const QString summary = fallback.probeSummary();
         QVERIFY(summary.contains(QStringLiteral("No event was received")));
+        QVERIFY(summary.contains(QStringLiteral("firmware mode may disable")));
         QVERIFY(summary.contains(QStringLiteral("another controller mode")));
     }
 };

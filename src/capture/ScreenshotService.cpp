@@ -72,7 +72,8 @@ void ScreenshotService::capture()
     }
 
     const bool hdrExperimentalEnabled = m_config
-        && m_config->value(ConfigKeys::InternalCaptureExperimentalHdr, false).toBool();
+        && m_config->value(ConfigKeys::InternalCaptureExperimentalHdr,
+                           ConfigKeys::InternalCaptureExperimentalHdrDefault).toBool();
     if (hdrExperimentalEnabled) {
         const capture::HdrOutputInfo output =
             capture::HdrCapabilities::forWindow(static_cast<HWND>(g.hwnd));

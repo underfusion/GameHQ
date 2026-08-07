@@ -4,6 +4,45 @@ All notable public releases of GameHQ are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+## [0.7.4] - 2026-08-07
+
+### Fixed
+
+- HDR screenshots now use the FP16 capture and GPU tone-mapping path by
+  default (0.7.4). The implementation was present in earlier public builds,
+  but its hidden rollout flag still defaulted to off, forcing HDR games
+  through the overexposed 8-bit SDR capture path.
+- One controller tap no longer moves UI selection twice (0.7.4). Windows
+  mirrors every XInput pad through the legacy WinMM joystick API; the mirrored
+  press trailed the real one by a few milliseconds, survived the arbitration
+  hold, and was replayed ~250 ms later as a second action. Mirrored presses
+  born inside the duplicate window are now dropped outright and
+  `heldPressSurvives` rejects them defensively.
+- The WinMM VID:PID skip introduced alongside the mirror fix is removed again
+  (0.7.4): VID:PID names a controller *model*, not a physical endpoint, so the
+  filter could hide a legacy-only pad sharing its model with an XInput one and
+  re-logged the skip on every two-second rescan. Arbitration's duplicate-window
+  drop is the sole — and sufficient — mirror defense; a production-sequence
+  regression test pins both the mirror and the genuine-failover path.
+- GameInput now requests non-exclusive background delivery while a game holds
+  focus (0.7.4), including Guide/Share delivery where the controller and
+  firmware expose those buttons. Share/Capture remains hardware-dependent and
+  the GameSir G7 Pro is still unverified.
+
+### Changed
+
+- The button-identification probe now explains keyboard-macro buttons (0.7.4).
+  If a controller button only produces a keyboard event (GameSir-style Share
+  buttons emit the Windows screenshot shortcut), the probe says so and points
+  at the Keyboard bindings section or a vendor remap to an unused key such as
+  F13; the no-event message notes that the current firmware mode may disable
+  the button entirely.
+- The keyboard-macro probe message is phrased as a possibility, not a verdict
+  (0.7.4): the probe can only observe that keyboard input arrived while no
+  controller input did — it cannot prove the key came from the pad.
+
 ## [0.7.3] - 2026-08-05
 
 ### Highlights

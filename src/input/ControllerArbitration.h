@@ -97,6 +97,17 @@ inline bool heldPressSurvives(qint64 pressedMs, qint64 activeLastControlMs,
 {
     if (activeLastControlMs >= pressedMs)
         return false;
+    // A mirror trails the original: the remapper (or the WinMM compatibility
+    // view of an XInput pad) re-reports the press a few milliseconds AFTER
+    // the active backend already delivered it, so the active backend spoke
+    // before the candidate press — never after — and the check above cannot
+    // catch it. A press born inside the mirror window of the active backend's
+    // last control is that trailing mirror and must die here too; replaying
+    // it was the 0.7.3 "one tap moves two rows" bug. Compared on the pressed
+    // side so the caller's "active never spoke" sentinel (qint64 min) cannot
+    // overflow a subtraction.
+    if (activeLastControlMs >= pressedMs - BackendDuplicateWindowMs)
+        return false;
     return resolveMs - pressedMs >= BackendCandidateConfirmMs;
 }
 

@@ -1,4 +1,5 @@
 #include "capture/HdrCapabilities.h"
+#include "config/ConfigKeys.h"
 
 #include <QTest>
 
@@ -11,7 +12,8 @@ class TestHdrCapabilities : public QObject
 private slots:
     void reportsCurrentDisplayState()
     {
-        const capture::HdrReport report = capture::HdrCapabilities::query();
+        const capture::HdrReport report = capture::HdrCapabilities::query(
+            ConfigKeys::InternalCaptureExperimentalHdrDefault);
         for (const QString& line : report.summaryLines())
             qInfo().noquote() << line;
         if (report.outputs.isEmpty())
@@ -22,9 +24,11 @@ private slots:
                             }));
     }
 
-    void experimentalPolicyDescribesToneMappedOutputs()
+    void publicDefaultDescribesToneMappedOutputs()
     {
-        const capture::HdrReport report = capture::HdrCapabilities::query(true);
+        QVERIFY(ConfigKeys::InternalCaptureExperimentalHdrDefault);
+        const capture::HdrReport report = capture::HdrCapabilities::query(
+            ConfigKeys::InternalCaptureExperimentalHdrDefault);
         QVERIFY(report.captureFormat.contains(QStringLiteral("FP16")));
         QVERIFY(report.screenshotSupport.contains(QStringLiteral("Tone-mapped")));
         QVERIFY(report.activeFallback.contains(QStringLiteral("tone-mapped"),
