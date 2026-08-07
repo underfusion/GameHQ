@@ -16,11 +16,16 @@ public:
     // survive this boundary.
     static QVariantList blocksFromMarkdown(const QString& markdown);
 
-    bool isValid() const { return !m_version.isEmpty() && !m_sections.isEmpty(); }
+    bool isValid() const
+    {
+        return !m_version.isEmpty() && !m_sections.isEmpty() && !m_releases.isEmpty();
+    }
     QString version() const { return m_version; }
     QVariantList sections() const { return m_sections; }
+    QVariantList releases() const { return m_releases; }
 
 private:
     QString m_version;
     QVariantList m_sections;
+    QVariantList m_releases;
 };

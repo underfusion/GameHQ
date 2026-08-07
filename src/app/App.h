@@ -41,6 +41,7 @@ public:
 
 private:
     void showWindow();
+    void focusDesktopWindow();
     void openGallery();
     void toggleDesktopWindow();
 

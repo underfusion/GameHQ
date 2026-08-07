@@ -369,6 +369,45 @@ private slots:
         QCOMPARE(spy.takeFirst().at(0).toString(), QStringLiteral("playback.frame_grab"));
     }
 
+    void playbackCrossOwnsTheWholePressCycle()
+    {
+        // Playback binds Cross as an immediate Play/Pause press. Desktop also
+        // binds the same physical trigger as Confirm tap and Bulk Select hold.
+        // The primary scope must own the trigger across gesture kinds so one
+        // press cannot pause and then resume on release, or enter bulk mode
+        // when held behind the lightbox.
+        m_runtime->setDefaultHoldMs(250);
+        m_runtime->reload();
+        QSignalSpy spy(m_runtime, &BindingRuntime::actionTriggered);
+
+        QVERIFY(m_runtime->press(QStringLiteral("controller"), {}, ControlId::FaceSouth,
+                                 ActionCatalog::Scope::Playback,
+                                 ActionCatalog::Scope::Desktop));
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.takeFirst().at(0).toString(),
+                 QStringLiteral("playback.play_pause"));
+        // A press-only pattern has already completed and reset, so its release
+        // is deliberately unhandled. What matters is that no fallback tap was
+        // armed to act on that edge.
+        QVERIFY(!m_runtime->release(QStringLiteral("controller"), {},
+                                    ControlId::FaceSouth));
+        QTest::qWait(350);
+        QCOMPARE(spy.count(), 0);
+
+        QVERIFY(m_runtime->press(QStringLiteral("controller"), {}, ControlId::FaceSouth,
+                                 ActionCatalog::Scope::Playback,
+                                 ActionCatalog::Scope::Desktop));
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.takeFirst().at(0).toString(),
+                 QStringLiteral("playback.play_pause"));
+        QTest::qWait(1100);
+        QCOMPARE(spy.count(), 0);
+        QVERIFY(!m_runtime->release(QStringLiteral("controller"), {},
+                                    ControlId::FaceSouth));
+        QTest::qWait(350);
+        QCOMPARE(spy.count(), 0);
+    }
+
     // The replay half of the held-press rule (InputEngine::replayPendingPress):
     // a press buffered while a candidate backend was being confirmed is
     // delivered late, with its release immediately behind it. The runtime must

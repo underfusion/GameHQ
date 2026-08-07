@@ -54,26 +54,32 @@ void BindingResolver::setDefaultHoldMs(int milliseconds)
     m_defaultHoldMs = qBound(250, milliseconds, 10000);
 }
 
-void BindingResolver::setProfileAlias(const QString& profile, const QString& legacyProfile)
+bool BindingResolver::setProfileAlias(const QString& profile, const QString& legacyProfile)
 {
-    setProfileAliases(profile, legacyProfile.isEmpty() ? QStringList{}
-                                                        : QStringList{legacyProfile});
+    return setProfileAliases(profile, legacyProfile.isEmpty() ? QStringList{}
+                                                              : QStringList{legacyProfile});
 }
 
-void BindingResolver::setProfileAliases(const QString& profile,
+bool BindingResolver::setProfileAliases(const QString& profile,
                                         const QStringList& legacyProfiles)
 {
     if (profile.isEmpty())
-        return;
+        return false;
     QStringList aliases;
     for (const QString& alias : legacyProfiles) {
         if (!alias.isEmpty() && alias != profile && !aliases.contains(alias))
             aliases.append(alias);
     }
+    // Report whether the effective view actually moved: callers re-observe the
+    // same attachment on every press, and pretending that changed anything
+    // would let them invalidate in-flight gestures on each mirrored event.
+    if (m_profileAliases.value(profile) == aliases)
+        return false;
     if (aliases.isEmpty())
         m_profileAliases.remove(profile);
     else
         m_profileAliases.insert(profile, aliases);
+    return true;
 }
 
 void BindingResolver::reload()
@@ -378,16 +384,27 @@ QVector<BindingResolver::Binding> BindingResolver::matching(
     QVector<Binding> globals;
     QVector<Binding> primary;
     QVector<Binding> fallback;
+    bool primaryOwnsTrigger = false;
     for (const Binding& binding : effectiveBindings(deviceGroup, deviceProfile)) {
+        if (binding.triggerCode != triggerCode)
+            continue;
+        const ActionCatalog::Action* action = ActionCatalog::find(binding.actionId);
+        if (!action)
+            continue;
+
+        // Context priority belongs to the physical trigger, not to each
+        // gesture independently. Otherwise a Playback press on Cross can fire
+        // first, then fall through to Desktop's tap on release (and its hold
+        // after one second), producing two actions from one press cycle.
+        if (action->scope == primaryScope
+            && action->scope != ActionCatalog::Scope::Global)
+            primaryOwnsTrigger = true;
+
         // Kind AND tap count: "tap" alone would let a double-tap binding answer
         // a single tap. Hold durations are deliberately not compared — the
         // runtime decides which hold is due from elapsed time.
         const GestureSpec candidate = binding.gesture();
-        if (binding.triggerCode != triggerCode || candidate.kind != gesture.kind
-            || candidate.tapCount != gesture.tapCount)
-            continue;
-        const ActionCatalog::Action* action = ActionCatalog::find(binding.actionId);
-        if (!action)
+        if (candidate.kind != gesture.kind || candidate.tapCount != gesture.tapCount)
             continue;
         if (action->scope == ActionCatalog::Scope::Global)
             globals.append(binding);
@@ -396,7 +413,7 @@ QVector<BindingResolver::Binding> BindingResolver::matching(
         else if (action->scope == fallbackScope)
             fallback.append(binding);
     }
-    const QVector<Binding>& contextual = primary.isEmpty() ? fallback : primary;
+    const QVector<Binding>& contextual = primaryOwnsTrigger ? primary : fallback;
 
     // Global bindings normally fire alongside the contextual ones, so a Guide
     // press still toggles the overlay while a clip is focused. Drop only the

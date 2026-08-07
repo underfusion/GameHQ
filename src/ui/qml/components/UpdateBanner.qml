@@ -2,16 +2,14 @@ import QtQuick
 import QtQuick.Layouts
 import GameHQ
 
-// Non-modal notice shown in the desktop gallery window when a newer stable
-// release exists (docs/updater.md "Discovery"). This component only ever
-// lives in Main.qml — a different window than OverlayWindow.qml — so it can
-// never appear over a running game or the pad overlay. Release notes render
-// as plain text only (Text.PlainText) — no Markdown/HTML interpretation.
+// Compact desktop-only notice. AboutWhatsNewDialog owns release summaries,
+// full notes, and update choices so the app never maintains two changelog UIs.
 Rectangle {
     id: root
 
     property bool dismissed: false
-    // A newer release (or the user un-skipping via a fresh check) re-arms it.
+    signal detailsRequested()
+
     onVisibleChanged: if (visible) root.dismissed = false
 
     visible: updates.latestVersion !== ""
@@ -19,7 +17,7 @@ Rectangle {
                  "Quiescent", "Installing", "Failed"].includes(updates.stateName)
              && !root.dismissed
     height: visible ? implicitHeight : 0
-    implicitHeight: content.implicitHeight + Theme.s16 * 2
+    implicitHeight: content.implicitHeight + Theme.s12 * 2
     color: Theme.surface
     radius: Theme.radiusM
     border.width: 1
@@ -38,107 +36,96 @@ Rectangle {
         return bytes + " B"
     }
 
+    function titleText() {
+        switch (updates.stateName) {
+        case "Downloading": return "Downloading " + Brand.name + " " + updates.latestVersion
+        case "ReadyToInstall": return Brand.name + " " + updates.latestVersion + " is ready"
+        case "PreparingForUpdate":
+        case "Quiescent": return "Preparing " + Brand.name + " " + updates.latestVersion
+        case "Installing": return "Installing " + Brand.name + " " + updates.latestVersion
+        case "Failed": return "The update needs attention"
+        default: return Brand.name + " " + updates.latestVersion + " is available"
+        }
+    }
+
+    function detailText() {
+        switch (updates.stateName) {
+        case "Downloading": return updates.progress + "% complete"
+        case "ReadyToInstall": return "Download verified and ready to install."
+        case "PreparingForUpdate":
+        case "Quiescent": return "Waiting for capture work to finish safely."
+        case "Installing": return "GameHQ will restart when installation finishes."
+        case "Failed": return updates.errorText !== "" ? updates.errorText
+                                                         : "Open the update details to continue."
+        default:
+            return [Qt.formatDate(updates.publishedAt, "d MMM yyyy"),
+                    updates.size > 0 ? root.formattedSize(updates.size) : ""]
+                   .filter(value => value !== "").join(" \u00b7 ")
+        }
+    }
+
     RowLayout {
         id: content
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        anchors.margins: Theme.s16
-        spacing: Theme.s16
+        anchors.margins: Theme.s12
+        spacing: Theme.s12
+
+        Rectangle {
+            Layout.preferredWidth: 40
+            Layout.preferredHeight: 40
+            radius: Theme.radiusM
+            color: Theme.hoverTint
+
+            Image {
+                anchors.centerIn: parent
+                width: 26
+                height: 26
+                source: "qrc:/icons/gamehq.svg"
+                sourceSize.width: 26
+                sourceSize.height: 26
+            }
+        }
 
         ColumnLayout {
             Layout.fillWidth: true
             spacing: Theme.s4
 
             Text {
-                text: {
-                    switch (updates.stateName) {
-                    case "Downloading":
-                        return "Downloading " + Brand.name + " " + updates.latestVersion + "... " + updates.progress + "%"
-                    case "ReadyToInstall":
-                        return Brand.name + " " + updates.latestVersion + " downloaded and verified"
-                    case "PreparingForUpdate":
-                    case "Quiescent":
-                        return "Getting ready to install " + Brand.name + " " + updates.latestVersion + "..."
-                    case "Installing":
-                        return "Installing " + Brand.name + " " + updates.latestVersion + "..."
-                    default:
-                        return Brand.name + " " + updates.latestVersion + " is available"
-                    }
-                }
+                Layout.fillWidth: true
+                text: root.titleText()
+                textFormat: Text.PlainText
                 color: Theme.text
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontTitle
+                font.pixelSize: Theme.fontH3
                 font.weight: Font.DemiBold
-            }
-            Text {
-                text: [Qt.formatDate(updates.publishedAt, "d MMM yyyy"),
-                       updates.size > 0 ? root.formattedSize(updates.size) : ""]
-                      .filter(s => s !== "").join(" · ")
-                color: Theme.textMuted
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontCaption
-            }
-            Text {
-                Layout.fillWidth: true
-                visible: text !== ""
-                text: updates.stateName === "Failed" ? updates.errorText : updates.notes
-                textFormat: Text.PlainText
-                color: Theme.textMuted
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontBody
-                wrapMode: Text.WordWrap
-                maximumLineCount: 3
                 elide: Text.ElideRight
             }
             Text {
                 Layout.fillWidth: true
-                text: "Beta security: SHA-256 detects corruption, but not a compromised GitHub account."
-                color: Theme.textMuted
+                text: root.detailText()
+                textFormat: Text.PlainText
+                color: updates.stateName === "Failed" ? Theme.danger : Theme.textMuted
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontCaption
-                wrapMode: Text.WordWrap
+                elide: Text.ElideRight
             }
         }
 
         AccentButton {
-            visible: updates.stateName === "UpdateAvailable"
-            label: "Download update (Beta)"
-            primary: true
-            onClicked: updates.downloadUpdate()
+            visible: ["UpdateAvailable", "Downloading", "ReadyToInstall", "Failed"]
+                     .includes(updates.stateName)
+            label: updates.stateName === "UpdateAvailable" ? "See what's new" : "View update"
+            primary: updates.stateName === "UpdateAvailable"
+            onClicked: root.detailsRequested()
         }
         AccentButton {
-            visible: updates.stateName === "Downloading"
-            label: "Cancel"
-            onClicked: updates.cancelDownload()
-        }
-        AccentButton {
-            visible: updates.stateName === "ReadyToInstall"
-            label: "Install and restart"
-            primary: true
-            onClicked: updates.installAndRestart()
-        }
-        AccentButton {
-            visible: updates.stateName === "Failed" && updates.failedDuringCheck
-            label: "Check again"
-            primary: true
-            onClicked: updates.checkNow()
-        }
-        AccentButton {
-            visible: updates.stateName === "Failed" && !updates.failedDuringCheck
-            label: "Retry download"
-            primary: true
-            onClicked: updates.downloadUpdate()
-        }
-        AccentButton {
-            visible: !["PreparingForUpdate", "Quiescent", "Installing"].includes(updates.stateName)
-            label: "View on GitHub"
-            onClicked: updates.openReleasePage()
-        }
-        AccentButton {
-            visible: updates.stateName === "UpdateAvailable"
-            label: "Skip this version"
-            onClicked: updates.skipVersion()
+            visible: updates.stateName === "Downloading" || updates.stateName === "ReadyToInstall"
+            label: updates.stateName === "Downloading" ? "Cancel" : "Install and restart"
+            primary: updates.stateName === "ReadyToInstall"
+            onClicked: updates.stateName === "Downloading"
+                       ? updates.cancelDownload() : updates.installAndRestart()
         }
         AccentButton {
             visible: updates.stateName === "UpdateAvailable" || updates.stateName === "Failed"

@@ -86,12 +86,15 @@ identical after any update, successful or rolled back.
    lets the user turn automatic checks off entirely; `updates.skipped_version`
    suppresses the banner for a release the user dismissed with "Skip this
    version" until a newer one ships. Manual "Check now" (Settings → About)
-   always bypasses the 24h cache and surfaces real errors. The banner itself
-   lives only in the desktop gallery window
-   (`Main.qml`), never in `OverlayWindow.qml`, so it can never appear over a
-   running game or the pad overlay. The compact About / What's New modal exposes
-   the same state and primary action without duplicating the detailed controls
-   on Settings -> About.
+   always bypasses the 24h cache and surfaces real errors. A compact banner
+   lives only in the desktop gallery window (`Main.qml`), never in
+   `OverlayWindow.qml`, so it cannot appear over a running game or the pad
+   overlay. Its details action opens the update-aware About / What's New modal
+   directly on the complete changelog. Update, Remind me later and Skip version
+   actions sit above links for the available, installed and recent releases.
+   The compact About card shows Skip version only while the update service is
+   in `UpdateAvailable`; progress and failure states keep that action hidden.
+   The banner keeps only concise progress, cancel, install and dismissal controls.
    Discovery only locates candidate URLs; it never establishes trust. A release
    that does not publish both `gamehq-release.json` and `gamehq-release.sig`
    is skipped, because nothing could authorise it.

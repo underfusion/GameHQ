@@ -7,6 +7,9 @@ Item {
 
     property string label
     property string suffix: ""
+    property color suffixColor: Theme.accent
+    property int suffixFontSize: Theme.fontBody
+    property bool selected: false
     signal clicked()
 
     implicitWidth: linkRow.implicitWidth
@@ -25,23 +28,24 @@ Item {
 
         Text {
             text: root.label
-            color: mouse.containsMouse || root.activeFocus ? Theme.accent : Theme.textMuted
+            color: root.selected || mouse.containsMouse || root.activeFocus
+                   ? Theme.accent : Theme.textMuted
             font.family: Theme.fontFamily
             font.pixelSize: Theme.fontBody
-            font.underline: mouse.containsMouse
+            font.underline: root.selected || mouse.containsMouse
         }
 
         Text {
             visible: root.suffix !== ""
             text: root.suffix
-            color: Theme.accent
+            color: root.suffixColor
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontBody
+            font.pixelSize: root.suffixFontSize
         }
     }
 
     Rectangle {
-        visible: root.activeFocus
+        visible: root.activeFocus || root.selected
         anchors.left: linkRow.left
         anchors.right: linkRow.right
         anchors.bottom: parent.bottom

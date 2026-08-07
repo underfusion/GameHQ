@@ -8,9 +8,12 @@ FocusScope {
 
     property bool postUpdateGreeting: false
     property bool showFullNotes: false
+    property bool updateReleaseSelected: false
     property int padIndex: 0
+    property int bundledReleaseIndex: 0
     signal closed(bool wasPostUpdateGreeting)
     signal updateSettingsRequested()
+    signal updateDeferred()
 
     visible: false
     opacity: 0
@@ -22,8 +25,99 @@ FocusScope {
                 "Quiescent", "Installing", "Failed"].includes(updates.stateName)
     }
 
+    function updateVersion() {
+        return updates.latestVersion
+    }
+
+    function releaseEntries() {
+        const entries = []
+        if (hasUpdateRelease())
+            entries.push({ version: updateVersion(), suffix: "(Available)",
+                           isUpdate: true, bundledIndex: -1 })
+        const releases = bundledReleases()
+        for (let index = 0; index < releases.length; ++index) {
+            entries.push({ version: releases[index].version,
+                           suffix: index === 0 ? "(Current)" : "",
+                           isUpdate: false, bundledIndex: index })
+        }
+        return entries
+    }
+
+    function selectedUsesRemoteNotes() {
+        return updateReleaseSelected && hasUpdateRelease()
+    }
+
+    function selectedStructuredSections() {
+        return selectedBundledRelease().sections || []
+    }
+
     function displayedVersion() {
-        return hasUpdateRelease() ? updates.latestVersion : app.version
+        if (hasUpdateRelease() && updateReleaseSelected)
+            return updateVersion()
+        if (!showFullNotes)
+            return app.version
+        return selectedBundledRelease().version || app.version
+    }
+
+    function bundledReleases() {
+        return app.releaseNotesReleases || []
+    }
+
+    function selectedBundledRelease() {
+        const releases = bundledReleases()
+        if (releases.length === 0)
+            return { version: app.version, date: "", sections: app.releaseNotesSections || [] }
+        const index = Math.max(0, Math.min(releases.length - 1, bundledReleaseIndex))
+        return releases[index]
+    }
+
+    function selectBundledRelease(index) {
+        const releases = bundledReleases()
+        if (index < 0 || index >= releases.length)
+            return
+        updateReleaseSelected = false
+        bundledReleaseIndex = index
+        fullNotesFlick.contentY = 0
+        Qt.callLater(focusPadIndex)
+    }
+
+    function selectReleaseEntry(entry) {
+        if (entry.isUpdate) {
+            updateReleaseSelected = true
+            fullNotesFlick.contentY = 0
+            Qt.callLater(focusPadIndex)
+            return
+        }
+        selectBundledRelease(entry.bundledIndex)
+    }
+
+    function releaseVersionControls() {
+        const controls = []
+        for (const child of releaseVersionLinks.children) {
+            if (child.releaseVersionControl === true)
+                controls.push(child)
+        }
+        return controls
+    }
+
+    function releaseBadgeText() {
+        if (hasUpdateRelease() && updateReleaseSelected)
+            return "Available"
+        return bundledReleaseIndex === 0 ? "Current" : "Previous"
+    }
+
+    function releaseBadgeColor() {
+        if (hasUpdateRelease() && updateReleaseSelected)
+            return Theme.warning
+        return bundledReleaseIndex === 0 ? statusColor() : Theme.textMuted
+    }
+
+    function selectedReleaseFooter() {
+        if (updateReleaseSelected && hasUpdateRelease()
+                && updates.publishedAt.getTime() > 0)
+            return "Published " + Qt.formatDate(updates.publishedAt, "d MMM yyyy")
+        const release = selectedBundledRelease()
+        return release.date ? "Released " + release.date : "Bundled with GameHQ " + app.version
     }
 
     function statusText() {
@@ -132,9 +226,17 @@ FocusScope {
     }
 
     function focusableControls() {
-        if (showFullNotes)
-            return [backLink]
-        return [releaseNotesLink, primaryAction, settingsButton, githubLink,
+        if (showFullNotes) {
+            const controls = []
+            if (!hasUpdateRelease())
+                controls.push(backLink)
+            if (hasUpdateRelease())
+                controls.push(updateNowAction, remindLaterAction, skipUpdateAction)
+            if (releaseEntries().length > 1)
+                controls.push(...releaseVersionControls())
+            return controls.filter(control => control.visible && control.enabled)
+        }
+        return [releaseNotesLink, primaryAction, settingsButton, skipVersionLink, githubLink,
                 issueLink, licenseLink, securityLink, starButton]
             .filter(control => control.visible && control.enabled)
     }
@@ -178,12 +280,18 @@ FocusScope {
 
     function openReleaseNotes() {
         showFullNotes = true
+        updateReleaseSelected = hasUpdateRelease()
+        bundledReleaseIndex = 0
         fullNotesFlick.contentY = 0
         padIndex = 0
         Qt.callLater(focusPadIndex)
     }
 
     function closeReleaseNotes() {
+        if (hasUpdateRelease()) {
+            root.close()
+            return
+        }
         showFullNotes = false
         aboutFlick.contentY = 0
         padIndex = 0
@@ -192,10 +300,13 @@ FocusScope {
 
     function open(asPostUpdateGreeting) {
         postUpdateGreeting = !!asPostUpdateGreeting
-        showFullNotes = false
+        showFullNotes = hasUpdateRelease()
+        updateReleaseSelected = hasUpdateRelease()
+        bundledReleaseIndex = 0
         visible = true
         root.forceActiveFocus()
         aboutFlick.contentY = 0
+        fullNotesFlick.contentY = 0
         padIndex = 0
         Qt.callLater(focusPadIndex)
     }
@@ -207,6 +318,7 @@ FocusScope {
         visible = false
         showFullNotes = false
         postUpdateGreeting = false
+        updateReleaseSelected = false
         closed(wasPostUpdate)
     }
 
@@ -369,12 +481,13 @@ FocusScope {
 
                 TextLink {
                     id: backLink
+                    visible: !root.hasUpdateRelease()
                     label: "‹  Back"
                     onClicked: root.closeReleaseNotes()
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: "Release notes"
+                    text: root.hasUpdateRelease() ? "New version available" : "Release notes"
                     horizontalAlignment: Text.AlignHCenter
                     color: Theme.text
                     font.family: Theme.fontFamily
@@ -515,6 +628,17 @@ FocusScope {
                                     }
                                 }
 
+                                TextLink {
+                                    id: skipVersionLink
+                                    visible: root.hasUpdateRelease()
+                                             && updates.stateName === "UpdateAvailable"
+                                    label: "Skip version " + root.updateVersion()
+                                    onClicked: {
+                                        updates.skipVersion()
+                                        root.close()
+                                    }
+                                }
+
                                 Text {
                                     visible: updates.stateName === "Failed" && updates.errorText !== ""
                                     Layout.fillWidth: true
@@ -639,20 +763,123 @@ FocusScope {
                                 radius: Theme.radiusPill
                                 color: Theme.hoverTint
                                 border.width: 1
-                                border.color: root.statusColor()
+                                border.color: root.releaseBadgeColor()
                                 Text {
                                     id: latestText
                                     anchors.centerIn: parent
-                                    text: root.hasUpdateRelease() ? "Available" : "Current"
-                                    color: root.statusColor()
+                                    text: root.releaseBadgeText()
+                                    color: root.releaseBadgeColor()
                                     font.family: Theme.fontFamily
                                     font.pixelSize: Theme.fontCaption
                                 }
                             }
                         }
 
+                        Rectangle {
+                            visible: root.hasUpdateRelease()
+                            Layout.fillWidth: true
+                            implicitHeight: updateActionColumn.implicitHeight + Theme.s16 * 2
+                            radius: Theme.radiusM
+                            color: Theme.surfaceAlt
+                            border.width: Theme.borderWidth
+                            border.color: Theme.stroke
+
+                            ColumnLayout {
+                                id: updateActionColumn
+                                anchors.fill: parent
+                                anchors.margins: Theme.s16
+                                spacing: Theme.s8
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "Choose when to install " + Brand.name + " " + root.updateVersion() + "."
+                                    color: Theme.textMuted
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.fontCaption
+                                    wrapMode: Text.WordWrap
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.s8
+
+                                    AccentButton {
+                                        id: updateNowAction
+                                        Layout.fillWidth: true
+                                        label: root.primaryLabel()
+                                        primary: true
+                                        enabled: root.primaryEnabled()
+                                        onClicked: root.runPrimaryAction()
+                                    }
+
+                                    AccentButton {
+                                        id: remindLaterAction
+                                        Layout.fillWidth: true
+                                        label: "Remind me later"
+                                        visible: updates.stateName === "UpdateAvailable"
+                                                 || updates.stateName === "Failed"
+                                        onClicked: {
+                                            root.updateDeferred()
+                                            root.close()
+                                        }
+                                    }
+
+                                    AccentButton {
+                                        id: skipUpdateAction
+                                        Layout.fillWidth: true
+                                        visible: updates.stateName === "UpdateAvailable"
+                                        label: "Skip this version"
+                                        onClicked: {
+                                            updates.skipVersion()
+                                            root.close()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        ColumnLayout {
+                            visible: root.releaseEntries().length > 1
+                            Layout.fillWidth: true
+                            spacing: Theme.s8
+
+                            Text {
+                                text: "VERSIONS"
+                                color: Theme.textFaint
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontCaption
+                                font.letterSpacing: Theme.letterSpacingWide
+                            }
+
+                            Flow {
+                                id: releaseVersionLinks
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: childrenRect.height
+                                spacing: Theme.s16
+
+                                Repeater {
+                                    model: root.releaseEntries()
+                                    delegate: TextLink {
+                                        required property int index
+                                        required property var modelData
+                                        property bool releaseVersionControl: true
+                                        label: modelData.version
+                                        selected: modelData.isUpdate
+                                                  ? root.updateReleaseSelected
+                                                  : !root.updateReleaseSelected
+                                                    && modelData.bundledIndex === root.bundledReleaseIndex
+                                        suffix: modelData.suffix
+                                        suffixColor: modelData.isUpdate
+                                                     ? Theme.success : Theme.textFaint
+                                        suffixFontSize: Theme.fontCaption
+                                        onClicked: root.selectReleaseEntry(modelData)
+                                    }
+                                }
+                            }
+                        }
+
                         Repeater {
-                            model: root.hasUpdateRelease() ? updates.noteBlocks : []
+                            model: root.selectedUsesRemoteNotes() ? updates.noteBlocks : []
                             delegate: ColumnLayout {
                                 required property var modelData
                                 Layout.fillWidth: true
@@ -706,7 +933,8 @@ FocusScope {
                         }
 
                         Repeater {
-                            model: root.hasUpdateRelease() ? [] : app.releaseNotesSections
+                            model: root.selectedUsesRemoteNotes() ? []
+                                                                  : root.selectedStructuredSections()
                             delegate: ColumnLayout {
                                 required property var modelData
                                 Layout.fillWidth: true
@@ -754,9 +982,7 @@ FocusScope {
 
                         Text {
                             Layout.fillWidth: true
-                            text: root.hasUpdateRelease() && updates.publishedAt.getTime() > 0
-                                  ? "Published " + Qt.formatDate(updates.publishedAt, "d MMM yyyy")
-                                  : "Bundled with GameHQ " + app.version
+                            text: root.selectedReleaseFooter()
                             color: Theme.textFaint
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontCaption
@@ -764,6 +990,7 @@ FocusScope {
                     }
                 }
             }
+
         }
     }
 }

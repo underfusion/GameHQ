@@ -27,6 +27,7 @@ class AppController : public QObject
     Q_PROPERTY(QString version READ version CONSTANT)
     Q_PROPERTY(QString releaseNotesVersion READ releaseNotesVersion CONSTANT)
     Q_PROPERTY(QVariantList releaseNotesSections READ releaseNotesSections CONSTANT)
+    Q_PROPERTY(QVariantList releaseNotesReleases READ releaseNotesReleases CONSTANT)
     Q_PROPERTY(QVariantList games READ games NOTIFY gamesChanged)
     Q_PROPERTY(QString category READ category NOTIFY filterChanged)
     Q_PROPERTY(int gameId READ gameId NOTIFY filterChanged)
@@ -62,6 +63,7 @@ public:
     QString version() const;
     QString releaseNotesVersion() const { return m_releaseNotes.version(); }
     QVariantList releaseNotesSections() const { return m_releaseNotes.sections(); }
+    QVariantList releaseNotesReleases() const { return m_releaseNotes.releases(); }
     QVariantList games() const;
     QString category() const { return m_category; }
     int gameId() const { return m_gameId; }
@@ -122,6 +124,10 @@ public:
     Q_INVOKABLE QString resetCaptureRoot(const QString& kind);
     Q_INVOKABLE void openDataFolder();
     Q_INVOKABLE void openLogsFolder();
+    // A QML top-level child (the desktop lightbox) has closed. Ask App to
+    // restore the native foreground to the desktop window; requestActivate()
+    // alone is not reliable under the Windows foreground lock.
+    Q_INVOKABLE void requestDesktopFocus();
     Q_INVOKABLE QString beginPortableImport(const QUrl& folderUrl);
     Q_INVOKABLE void quitApplication();
     // Copies version/mode/paths to the clipboard for bug reports (Advanced page).
@@ -170,6 +176,7 @@ signals:
     void hdrStatusChanged();
     // Emitted only after a previously-probed display changes HDR/topology state.
     void hdrDisplayConfigurationChanged();
+    void desktopFocusRequested();
 
 private:
     void pollHdrStatus();

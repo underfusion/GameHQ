@@ -8,8 +8,10 @@ class ReleaseNotesTest : public QObject
 
 private slots:
     void parsesStructuredPlainText();
+    void parsesHistoricalReleases();
     void rejectsNonStringItems();
     void rejectsInvalidVersion();
+    void rejectsDuplicateReleaseVersions();
     void rejectsOversizedDocuments();
     void structuresGitHubMarkdownWithoutActiveContent();
 };
@@ -24,9 +26,31 @@ void ReleaseNotesTest::parsesStructuredPlainText()
     QVERIFY(notes.isValid());
     QCOMPARE(notes.version(), QStringLiteral("1.2.3"));
     QCOMPARE(notes.sections().size(), 1);
+    QCOMPARE(notes.releases().size(), 1);
     const QVariantMap section = notes.sections().first().toMap();
     QCOMPARE(section.value(QStringLiteral("title")).toString(), QStringLiteral("Added"));
     QCOMPARE(section.value(QStringLiteral("items")).toStringList().size(), 2);
+}
+
+void ReleaseNotesTest::parsesHistoricalReleases()
+{
+    const ReleaseNotes notes = ReleaseNotes::fromJson(R"({
+        "version":"1.2.3",
+        "date":"2026-08-07",
+        "sections":[{"title":"Fixed","items":["Current item"]}],
+        "history":[{
+            "version":"1.2.2",
+            "date":"2026-08-05",
+            "sections":[{"title":"Added","items":["Earlier item"]}]
+        }]
+    })");
+
+    QVERIFY(notes.isValid());
+    QCOMPARE(notes.releases().size(), 2);
+    const QVariantMap earlier = notes.releases().at(1).toMap();
+    QCOMPARE(earlier.value(QStringLiteral("version")).toString(), QStringLiteral("1.2.2"));
+    QCOMPARE(earlier.value(QStringLiteral("date")).toString(), QStringLiteral("5 Aug 2026"));
+    QCOMPARE(earlier.value(QStringLiteral("sections")).toList().size(), 1);
 }
 
 void ReleaseNotesTest::rejectsNonStringItems()
@@ -43,6 +67,19 @@ void ReleaseNotesTest::rejectsInvalidVersion()
     const ReleaseNotes notes = ReleaseNotes::fromJson(R"({
         "version":"v1.2.3-beta",
         "sections":[{"title":"Added","items":["Item"]}]
+    })");
+    QVERIFY(!notes.isValid());
+}
+
+void ReleaseNotesTest::rejectsDuplicateReleaseVersions()
+{
+    const ReleaseNotes notes = ReleaseNotes::fromJson(R"({
+        "version":"1.2.3",
+        "sections":[{"title":"Fixed","items":["Current item"]}],
+        "history":[{
+            "version":"1.2.3",
+            "sections":[{"title":"Fixed","items":["Duplicate item"]}]
+        }]
     })");
     QVERIFY(!notes.isValid());
 }

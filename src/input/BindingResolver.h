@@ -80,8 +80,10 @@ public:
     // for `profile` itself. Existing overrides survive the upgrade unchanged;
     // they are never silently rewritten or broadened — promotion to the
     // stable identity is the user's explicit copy action in Settings.
-    void setProfileAlias(const QString& profile, const QString& legacyProfile);
-    void setProfileAliases(const QString& profile, const QStringList& legacyProfiles);
+    // Return true only when the stored alias view for `profile` actually
+    // changed — repeated identical observations must be recognizable as no-ops.
+    bool setProfileAlias(const QString& profile, const QString& legacyProfile);
+    bool setProfileAliases(const QString& profile, const QStringList& legacyProfiles);
 
     QVector<Binding> effectiveBindings(const QString& deviceGroup,
                                        const QString& deviceProfile = {}) const;

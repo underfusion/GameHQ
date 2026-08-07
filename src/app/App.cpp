@@ -401,6 +401,8 @@ bool App::init()
     // Hold PS (2 s): summon/dismiss the desktop window with real OS focus.
     m_foregroundApi.reset(ForegroundApi::createSystem());
     m_desktopFocus = new ForegroundAcquirer(this);
+    connect(m_controller.get(), &AppController::desktopFocusRequested,
+            this, &App::focusDesktopWindow);
     connect(m_input.get(), &InputEngine::desktopWindowToggleRequested,
             this, &App::toggleDesktopWindow);
     // overlayHideRequested (Circle) is now consumed in OverlayWindow.qml: it
@@ -481,6 +483,21 @@ void App::showWindow()
         window->raise();
         window->requestActivate();
     }
+}
+
+void App::focusDesktopWindow()
+{
+    if (m_engine.rootObjects().isEmpty() || !m_desktopFocus)
+        return;
+    auto* window = qobject_cast<QQuickWindow*>(m_engine.rootObjects().first());
+    if (!window)
+        return;
+
+    window->show();
+    window->raise();
+    window->requestActivate();
+    m_desktopFocus->acquire(reinterpret_cast<void*>(window->winId()),
+                            QStringLiteral("desktop lightbox close"));
 }
 
 // Hold PS (2 s): bring the desktop window over the game with real OS focus;
