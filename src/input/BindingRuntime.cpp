@@ -156,7 +156,8 @@ InputPatternRecognizer::TriggerFacts BindingRuntime::factsFor(
         // Once the active contextual scope binds an exact trigger, fallback
         // gestures on that trigger are behind the focused UI and must not arm.
         // Globals remain live by design.
-        if (isFallback && !isPrimary && primaryTriggers.contains(binding.triggerCode))
+        if (isFallback && !isGlobal && !isPrimary
+            && primaryTriggers.contains(binding.triggerCode))
             continue;
 
         const TriggerSpec trigger = binding.trigger();

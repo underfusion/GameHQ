@@ -10,6 +10,10 @@ All notable public releases of GameHQ are documented here. The format follows
 
 ### Fixed
 
+- Custom Global controller gestures remain active when a Desktop or Overlay
+  binding uses the same button (0.7.5). Primary-scope trigger ownership now
+  suppresses only contextual fallbacks, never Global tap, hold or multi-tap
+  actions when the engine represents the fallback scope as Global.
 - Pressing Cross during video playback now toggles Play/Pause exactly once
   (0.7.5). Playback now owns the button for its entire press cycle, so the
   Desktop Confirm tap can no longer resume the clip on release and holding the
