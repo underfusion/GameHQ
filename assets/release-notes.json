@@ -1,25 +1,16 @@
 {
-  "version": "0.7.4",
+  "version": "0.7.5",
   "sections": [
     {
       "title": "Fixed",
       "items": [
-        "HDR screenshots now use GameHQ's FP16 capture and GPU tone mapping by default instead of falling back to an overexposed 8-bit SDR capture.",
-        "One controller tap no longer moves the selection two rows: the duplicate press mirrored through the legacy Windows joystick API is now recognized and dropped instead of being replayed a quarter second later.",
-        "Improved non-exclusive background controller input delivery while games have focus, including Guide/Share delivery where the controller and firmware expose those buttons. Share/Capture remains hardware-dependent and is still unverified on GameSir G7 Pro."
-      ]
-    },
-    {
-      "title": "Improved",
-      "items": [
-        "Identify a controller button now flags likely keyboard-macro buttons: if a button only produces a keyboard event (as some GameSir Share buttons do), the probe says the button may be configured as a keyboard macro and suggests binding it in the Keyboard section or remapping it to an unused key such as F13.",
-        "When the probe sees no event at all, it notes that the current controller firmware mode may disable the button entirely."
+        "DualSense Share and PS buttons no longer stop responding after the first press. A held button could get stuck internally when two input paths reported the same press, which then silently swallowed every following press. Each physical press now runs as one owned press cycle, so repeated Share/PS taps keep working."
       ]
     },
     {
       "title": "Notes",
       "items": [
-        "When using JoyXoff or another controller-to-mouse/keyboard mapper, add GameHQ to its ignored applications; otherwise GameHQ receives both native controller input and the generated keyboard or mouse input.",
+        "This is a focused hotfix on top of 0.7.4; the HDR capture improvements from 0.7.4 are unchanged.",
         "Individual controller-model compatibility remains unverified until confirmed on the relevant hardware."
       ]
     }

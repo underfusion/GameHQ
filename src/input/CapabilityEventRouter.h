@@ -3,6 +3,7 @@
 #include "input/PhysicalControllerRegistry.h"
 
 #include <QHash>
+#include <QSet>
 #include <QStringList>
 
 namespace ModernInput {
@@ -43,12 +44,16 @@ public:
 private:
     static QString controlKey(const QString& logicalId, const QString& controlId);
 
-    struct LastEdge { bool pressed = false; quint64 timestamp = 0; ControllerProvider provider; };
-    struct HeldEdge { ControllerProvider provider; ControllerCapability capability; };
+    // One open physical press cycle. The first accepted press owns the cycle;
+    // every correlated provider whose mirrored press arrives while the cycle
+    // is open is recorded as a participant so its release may close the cycle.
+    struct HeldEdge {
+        ControllerProvider provider;
+        ControllerCapability capability;
+        QSet<ControllerProvider> downProviders;
+    };
 
     const PhysicalControllerRegistry* m_registry = nullptr;
-    QHash<QString, ControllerProvider> m_selectedProviders;
-    QHash<QString, LastEdge> m_lastEdges;
     QHash<QString, HeldEdge> m_held;
     QHash<QString, quint64> m_generations;
 };

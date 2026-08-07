@@ -6,6 +6,24 @@ All notable public releases of GameHQ are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.5] - 2026-08-07
+
+### Fixed
+
+- DualSense Share and PS buttons no longer stop responding after the first
+  press (0.7.5). When Sony Raw Input delivered a press and the preferred
+  GameInput mirror arrived while the button was held, the capability router
+  silently transferred ownership of the held control to GameInput; the Sony
+  release was then rejected, the control stayed logically held forever, and
+  every later press — including standard buttons routed the same way — was
+  swallowed as a duplicate. The router now uses press-cycle ownership: the
+  first accepted press owns the cycle, mirrored presses only join it as
+  participants (never a second action, never an ownership transfer), any
+  participant's release closes the cycle exactly once, and a release with no
+  open cycle is explicitly ignored. Dead-owner safe releases and lifecycle
+  resets are preserved. Regression tests cover repeated Share/PS handoff
+  cycles for both Capture and Guide at router and provider-integration level.
+
 ## [0.7.4] - 2026-08-07
 
 ### Fixed

@@ -169,6 +169,48 @@ private slots:
              ControlId::Capture, false, 300}).accepted);
     }
 
+    // The exact 0.7.4 field report: repeated Share/PS taps on a merged
+    // DualSense. Each physical cycle is Sony press → GameInput mirror press →
+    // Sony release → late GameInput mirror release. Every cycle must fire
+    // exactly one press and one release; 0.7.4 stranded the first cycle held
+    // and swallowed every later press as a duplicate.
+    void repeatedShareAndGuideCyclesSurviveProviderHandoff()
+    {
+        ProviderIntegration integration;
+        integration.observeLegacy(ControllerProvider::SonyRaw,
+                                  QStringLiteral("054c:0ce6"), QStringLiteral("054c:0ce6"),
+                                  QStringLiteral("DualSense"), sonyCapabilities(), nullptr,
+                                  {}, {}, QStringLiteral("pnp.root.repeat"));
+        const QString logicalId = integration.registry().observe(
+            gameInputObservation(QStringLiteral("gi-repeat"), 0x054C, 0x0CE6,
+                                 QStringLiteral("pnp.root.repeat")));
+
+        for (const QString& control : {ControlId::Capture, ControlId::Guide}) {
+            const ControllerCapability capability = control == ControlId::Capture
+                ? ControllerCapability::SystemShare : ControllerCapability::Guide;
+            quint64 t = 1000;
+            for (int cycle = 0; cycle < 20; ++cycle) {
+                QVERIFY(integration.routeLegacySystemEdge(
+                    ControllerProvider::SonyRaw, QStringLiteral("054c:0ce6"),
+                    control, true, t).accepted);
+                QVERIFY(!integration.capabilityRouter().route(
+                    {logicalId, ControllerProvider::GameInput, capability,
+                     control, true, t + 6}).accepted);
+                QVERIFY2(integration.routeLegacySystemEdge(
+                    ControllerProvider::SonyRaw, QStringLiteral("054c:0ce6"),
+                    control, false, t + 90).accepted,
+                    qPrintable(QStringLiteral("%1 cycle %2 release rejected")
+                                   .arg(control).arg(cycle)));
+                const auto lateMirror = integration.capabilityRouter().route(
+                    {logicalId, ControllerProvider::GameInput, capability,
+                     control, false, t + 96});
+                QVERIFY(!lateMirror.accepted);
+                QVERIFY(lateMirror.safeReleases.isEmpty());
+                t += 400;
+            }
+        }
+    }
+
     void legacyOwnsShareOnceGameInputDetaches()
     {
         ProviderIntegration integration;
