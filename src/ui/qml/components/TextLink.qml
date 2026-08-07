@@ -7,6 +7,8 @@ Item {
 
     property string label
     property string suffix: ""
+    property color suffixColor: Theme.accent
+    property int suffixFontSize: Theme.fontBody
     property bool selected: false
     signal clicked()
 
@@ -36,9 +38,9 @@ Item {
         Text {
             visible: root.suffix !== ""
             text: root.suffix
-            color: Theme.accent
+            color: root.suffixColor
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontBody
+            font.pixelSize: root.suffixFontSize
         }
     }
 

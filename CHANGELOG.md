@@ -14,6 +14,10 @@ All notable public releases of GameHQ are documented here. The format follows
   top, with the newest selected by default (0.7.5). The current-version summary
   stays compact, while users who skipped 0.7.3 or 0.7.4 can read those changes
   offline without leaving GameHQ.
+- The desktop update banner is now a compact notification that opens the
+  update-aware release dialog (0.7.5). Available updates open directly on the
+  complete changelog with Update, Remind me later and Skip version actions at
+  the top, plus version links for the new, current and recent releases.
 
 ### Fixed
 

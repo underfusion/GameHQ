@@ -954,11 +954,13 @@ ApplicationWindow {
     // ever shown here (the desktop gallery window) — never above the pad
     // overlay or a running game.
     UpdateBanner {
+        id: updateBanner
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.margins: Theme.s16
         z: 50
+        onDetailsRequested: window.openAbout(false)
     }
 
     FolderDialog {
@@ -1013,6 +1015,7 @@ ApplicationWindow {
         z: 500
         onClosed: window.finishAbout()
         onUpdateSettingsRequested: window.openAboutSettings()
+        onUpdateDeferred: updateBanner.dismissed = true
     }
 
     HelpDialog {
