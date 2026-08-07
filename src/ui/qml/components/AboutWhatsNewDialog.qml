@@ -630,7 +630,7 @@ FocusScope {
 
                                 TextLink {
                                     id: skipVersionLink
-                                    visible: root.hasRealUpdateRelease()
+                                    visible: root.hasUpdateRelease()
                                              && updates.stateName === "UpdateAvailable"
                                     label: "Skip version " + root.updateVersion()
                                     onClicked: {

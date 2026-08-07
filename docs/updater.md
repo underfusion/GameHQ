@@ -92,6 +92,8 @@ identical after any update, successful or rolled back.
    overlay. Its details action opens the update-aware About / What's New modal
    directly on the complete changelog. Update, Remind me later and Skip version
    actions sit above links for the available, installed and recent releases.
+   The compact About card shows Skip version only while the update service is
+   in `UpdateAvailable`; progress and failure states keep that action hidden.
    The banner keeps only concise progress, cancel, install and dismissal controls.
    Discovery only locates candidate URLs; it never establishes trust. A release
    that does not publish both `gamehq-release.json` and `gamehq-release.sig`

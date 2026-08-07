@@ -21,6 +21,9 @@ All notable public releases of GameHQ are documented here. The format follows
 
 ### Fixed
 
+- The compact About view now shows "Skip version" for a real available update
+  without evaluating a removed preview-only helper (0.7.5), preventing a QML
+  runtime warning and restoring the intended skip action.
 - Closing a gallery video or another desktop dialog no longer leaves
   controller navigation without a visible focus indicator (0.7.5). Focus is
   restored through the verified native foreground path, waits until the main

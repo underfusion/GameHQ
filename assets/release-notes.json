@@ -12,6 +12,7 @@
                      {
                          "title":  "Fixed",
                          "items":  [
+                                       "The compact About view now shows Skip version for a real available update without evaluating a removed preview-only helper (0.7.5), preventing a QML runtime warning and restoring the intended skip action.",
                                        "Closing a gallery video or another desktop dialog no longer leaves controller navigation without a visible focus indicator (0.7.5). Focus returns through GameHQ's verified native foreground path, waits until the main window is active, and targets the active Settings panel instead of the hidden gallery grid.",
                                        "Custom Global controller gestures remain active when a Desktop or Overlay binding uses the same button (0.7.5). Primary-scope trigger ownership now suppresses only contextual fallbacks, never Global tap, hold or multi-tap actions when the engine represents the fallback scope as Global.",
                                        "Pressing Cross during video playback now toggles Play/Pause exactly once (0.7.5). Playback now owns the button for its entire press cycle, so the Desktop Confirm tap can no longer resume the clip on release and holding the button cannot enter Bulk Select behind the lightbox.",
