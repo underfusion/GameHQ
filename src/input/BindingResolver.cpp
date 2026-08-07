@@ -384,16 +384,27 @@ QVector<BindingResolver::Binding> BindingResolver::matching(
     QVector<Binding> globals;
     QVector<Binding> primary;
     QVector<Binding> fallback;
+    bool primaryOwnsTrigger = false;
     for (const Binding& binding : effectiveBindings(deviceGroup, deviceProfile)) {
+        if (binding.triggerCode != triggerCode)
+            continue;
+        const ActionCatalog::Action* action = ActionCatalog::find(binding.actionId);
+        if (!action)
+            continue;
+
+        // Context priority belongs to the physical trigger, not to each
+        // gesture independently. Otherwise a Playback press on Cross can fire
+        // first, then fall through to Desktop's tap on release (and its hold
+        // after one second), producing two actions from one press cycle.
+        if (action->scope == primaryScope
+            && action->scope != ActionCatalog::Scope::Global)
+            primaryOwnsTrigger = true;
+
         // Kind AND tap count: "tap" alone would let a double-tap binding answer
         // a single tap. Hold durations are deliberately not compared — the
         // runtime decides which hold is due from elapsed time.
         const GestureSpec candidate = binding.gesture();
-        if (binding.triggerCode != triggerCode || candidate.kind != gesture.kind
-            || candidate.tapCount != gesture.tapCount)
-            continue;
-        const ActionCatalog::Action* action = ActionCatalog::find(binding.actionId);
-        if (!action)
+        if (candidate.kind != gesture.kind || candidate.tapCount != gesture.tapCount)
             continue;
         if (action->scope == ActionCatalog::Scope::Global)
             globals.append(binding);
@@ -402,7 +413,7 @@ QVector<BindingResolver::Binding> BindingResolver::matching(
         else if (action->scope == fallbackScope)
             fallback.append(binding);
     }
-    const QVector<Binding>& contextual = primary.isEmpty() ? fallback : primary;
+    const QVector<Binding>& contextual = primaryOwnsTrigger ? primary : fallback;
 
     // Global bindings normally fire alongside the contextual ones, so a Guide
     // press still toggles the overlay while a clip is focused. Drop only the

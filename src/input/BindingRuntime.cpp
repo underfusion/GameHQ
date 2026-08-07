@@ -133,15 +133,30 @@ InputPatternRecognizer::TriggerFacts BindingRuntime::factsFor(
 {
     InputPatternRecognizer::TriggerFacts facts;
     QSet<int> thresholds;
-    for (const auto& binding : m_resolver.effectiveBindings(context.deviceGroup,
-                                                            context.deviceProfile)) {
+    const auto bindings = m_resolver.effectiveBindings(context.deviceGroup,
+                                                        context.deviceProfile);
+    QSet<QString> primaryTriggers;
+    for (const auto& binding : bindings) {
+        const ActionCatalog::Action* action = ActionCatalog::find(binding.actionId);
+        if (action && action->scope == context.primaryScope
+            && action->scope != ActionCatalog::Scope::Global)
+            primaryTriggers.insert(binding.triggerCode);
+    }
+
+    for (const auto& binding : bindings) {
         const ActionCatalog::Action* action = ActionCatalog::find(binding.actionId);
         if (!action)
             continue;
-        const bool inContext = action->scope == ActionCatalog::Scope::Global
-                            || action->scope == context.primaryScope
-                            || action->scope == context.fallbackScope;
+        const bool isGlobal = action->scope == ActionCatalog::Scope::Global;
+        const bool isPrimary = action->scope == context.primaryScope;
+        const bool isFallback = action->scope == context.fallbackScope;
+        const bool inContext = isGlobal || isPrimary || isFallback;
         if (!inContext)
+            continue;
+        // Once the active contextual scope binds an exact trigger, fallback
+        // gestures on that trigger are behind the focused UI and must not arm.
+        // Globals remain live by design.
+        if (isFallback && !isPrimary && primaryTriggers.contains(binding.triggerCode))
             continue;
 
         const TriggerSpec trigger = binding.trigger();

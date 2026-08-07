@@ -135,7 +135,7 @@ The substitution is **declared, not inferred**. `ContextOverrideCatalog` (`src/i
 6. Overlapping scopes with a `press` gesture involved, or the same gesture on different actions → `HardConflict`.
 7. Otherwise → `None`.
 
-**Scope overlap.** Global is always live, so it overlaps everything. Two *different* contextual scopes never overlap: `matching()` takes the primary scope's matches and consults the fallback only when primary produced none, so Playback-over-Desktop and Playback-over-Overlay are priority chains, not collisions. This is why D-pad Left can ship as both `playback.seek_back` and `desktop.navigate_left`.
+**Scope overlap.** Global is always live, so it overlaps everything. Two *different* contextual scopes never overlap: once the primary scope binds an exact trigger, it owns that trigger across press, tap and hold gestures; the fallback is consulted only when the primary has no binding for that trigger. Playback-over-Desktop and Playback-over-Overlay are therefore priority chains, not collisions. This is why D-pad Left can ship as both `playback.seek_back` and `desktop.navigate_left`, while Cross cannot pause a clip and then leak through to Desktop Confirm or Bulk Select.
 
 **Chords and tap counts.** The precondition is *triggers share any control*, not *same trigger code*. Appended rules, in order: the same chord twice is a `HardConflict`; two chords sharing only a first control are `None` (the second control selects); a single-button binding on a chord's **first** control is a `HardConflict` when it acts immediately — a plain press, or an action flagged `repeats` in the catalog such as d-pad navigation or L1/R1 paging — and otherwise `SharedGesture`; a binding on the **second** control is `SharedGesture`.
 

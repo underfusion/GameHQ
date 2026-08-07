@@ -10,6 +10,10 @@ All notable public releases of GameHQ are documented here. The format follows
 
 ### Fixed
 
+- Pressing Cross during video playback now toggles Play/Pause exactly once
+  (0.7.5). Playback now owns the button for its entire press cycle, so the
+  Desktop Confirm tap can no longer resume the clip on release and holding the
+  button cannot enter Bulk Select behind the lightbox.
 - DualSense Share and PS buttons no longer stop responding after the first
   press (0.7.5). When Sony Raw Input delivered a press and the preferred
   GameInput mirror arrived while the button was held, the capability router
