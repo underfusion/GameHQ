@@ -6,16 +6,6 @@ All notable public releases of GameHQ are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.7.6] - 2026-08-07
-
-### Fixed
-
-- Closing a gallery video or another desktop dialog no longer leaves
-  controller navigation without a visible focus indicator (0.7.6). Focus is
-  restored through the verified native foreground path, waits until the main
-  window is active, and returns to the active Settings panel instead of the
-  hidden gallery grid.
-
 ## [0.7.5] - 2026-08-07
 
 ### Added
@@ -31,6 +21,11 @@ All notable public releases of GameHQ are documented here. The format follows
 
 ### Fixed
 
+- Closing a gallery video or another desktop dialog no longer leaves
+  controller navigation without a visible focus indicator (0.7.5). Focus is
+  restored through the verified native foreground path, waits until the main
+  window is active, and returns to the active Settings panel instead of the
+  hidden gallery grid.
 - Custom Global controller gestures remain active when a Desktop or Overlay
   binding uses the same button (0.7.5). Primary-scope trigger ownership now
   suppresses only contextual fallbacks, never Global tap, hold or multi-tap
