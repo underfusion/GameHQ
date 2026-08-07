@@ -8,6 +8,13 @@ All notable public releases of GameHQ are documented here. The format follows
 
 ## [0.7.5] - 2026-08-07
 
+### Added
+
+- The full About release-notes view now lists recent version links across the
+  top, with the newest selected by default (0.7.5). The current-version summary
+  stays compact, while users who skipped 0.7.3 or 0.7.4 can read those changes
+  offline without leaving GameHQ.
+
 ### Fixed
 
 - Custom Global controller gestures remain active when a Desktop or Overlay

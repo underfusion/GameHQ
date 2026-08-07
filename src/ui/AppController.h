@@ -27,6 +27,7 @@ class AppController : public QObject
     Q_PROPERTY(QString version READ version CONSTANT)
     Q_PROPERTY(QString releaseNotesVersion READ releaseNotesVersion CONSTANT)
     Q_PROPERTY(QVariantList releaseNotesSections READ releaseNotesSections CONSTANT)
+    Q_PROPERTY(QVariantList releaseNotesReleases READ releaseNotesReleases CONSTANT)
     Q_PROPERTY(QVariantList games READ games NOTIFY gamesChanged)
     Q_PROPERTY(QString category READ category NOTIFY filterChanged)
     Q_PROPERTY(int gameId READ gameId NOTIFY filterChanged)
@@ -62,6 +63,7 @@ public:
     QString version() const;
     QString releaseNotesVersion() const { return m_releaseNotes.version(); }
     QVariantList releaseNotesSections() const { return m_releaseNotes.sections(); }
+    QVariantList releaseNotesReleases() const { return m_releaseNotes.releases(); }
     QVariantList games() const;
     QString category() const { return m_category; }
     int gameId() const { return m_gameId; }

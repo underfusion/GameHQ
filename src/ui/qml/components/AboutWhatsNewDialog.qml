@@ -9,6 +9,7 @@ FocusScope {
     property bool postUpdateGreeting: false
     property bool showFullNotes: false
     property int padIndex: 0
+    property int bundledReleaseIndex: 0
     signal closed(bool wasPostUpdateGreeting)
     signal updateSettingsRequested()
 
@@ -23,7 +24,59 @@ FocusScope {
     }
 
     function displayedVersion() {
-        return hasUpdateRelease() ? updates.latestVersion : app.version
+        if (hasUpdateRelease())
+            return updates.latestVersion
+        if (!showFullNotes)
+            return app.version
+        return selectedBundledRelease().version || app.version
+    }
+
+    function bundledReleases() {
+        return app.releaseNotesReleases || []
+    }
+
+    function selectedBundledRelease() {
+        const releases = bundledReleases()
+        if (releases.length === 0)
+            return { version: app.version, date: "", sections: app.releaseNotesSections || [] }
+        const index = Math.max(0, Math.min(releases.length - 1, bundledReleaseIndex))
+        return releases[index]
+    }
+
+    function selectBundledRelease(index) {
+        const releases = bundledReleases()
+        if (index < 0 || index >= releases.length)
+            return
+        bundledReleaseIndex = index
+        fullNotesFlick.contentY = 0
+        Qt.callLater(focusPadIndex)
+    }
+
+    function releaseVersionControls() {
+        const controls = []
+        for (const child of releaseVersionLinks.children) {
+            if (child.releaseVersionControl === true)
+                controls.push(child)
+        }
+        return controls
+    }
+
+    function releaseBadgeText() {
+        if (hasUpdateRelease())
+            return "Available"
+        return bundledReleaseIndex === 0 ? "Current" : "Previous"
+    }
+
+    function releaseBadgeColor() {
+        return bundledReleaseIndex === 0 || hasUpdateRelease()
+            ? statusColor() : Theme.textMuted
+    }
+
+    function selectedReleaseFooter() {
+        if (hasUpdateRelease() && updates.publishedAt.getTime() > 0)
+            return "Published " + Qt.formatDate(updates.publishedAt, "d MMM yyyy")
+        const release = selectedBundledRelease()
+        return release.date ? "Released " + release.date : "Bundled with GameHQ " + app.version
     }
 
     function statusText() {
@@ -132,8 +185,12 @@ FocusScope {
     }
 
     function focusableControls() {
-        if (showFullNotes)
-            return [backLink]
+        if (showFullNotes) {
+            const controls = [backLink]
+            if (!hasUpdateRelease() && bundledReleases().length > 1)
+                controls.push(...releaseVersionControls())
+            return controls.filter(control => control.visible && control.enabled)
+        }
         return [releaseNotesLink, primaryAction, settingsButton, githubLink,
                 issueLink, licenseLink, securityLink, starButton]
             .filter(control => control.visible && control.enabled)
@@ -178,6 +235,7 @@ FocusScope {
 
     function openReleaseNotes() {
         showFullNotes = true
+        bundledReleaseIndex = 0
         fullNotesFlick.contentY = 0
         padIndex = 0
         Qt.callLater(focusPadIndex)
@@ -639,14 +697,48 @@ FocusScope {
                                 radius: Theme.radiusPill
                                 color: Theme.hoverTint
                                 border.width: 1
-                                border.color: root.statusColor()
+                                border.color: root.releaseBadgeColor()
                                 Text {
                                     id: latestText
                                     anchors.centerIn: parent
-                                    text: root.hasUpdateRelease() ? "Available" : "Current"
-                                    color: root.statusColor()
+                                    text: root.releaseBadgeText()
+                                    color: root.releaseBadgeColor()
                                     font.family: Theme.fontFamily
                                     font.pixelSize: Theme.fontCaption
+                                }
+                            }
+                        }
+
+                        ColumnLayout {
+                            visible: !root.hasUpdateRelease() && root.bundledReleases().length > 1
+                            Layout.fillWidth: true
+                            spacing: Theme.s8
+
+                            Text {
+                                text: "RECENT VERSIONS"
+                                color: Theme.textFaint
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontCaption
+                                font.letterSpacing: Theme.letterSpacingWide
+                            }
+
+                            Flow {
+                                id: releaseVersionLinks
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: childrenRect.height
+                                spacing: Theme.s16
+
+                                Repeater {
+                                    model: root.bundledReleases()
+                                    delegate: TextLink {
+                                        required property int index
+                                        required property var modelData
+                                        property bool releaseVersionControl: true
+                                        label: modelData.version
+                                        selected: index === root.bundledReleaseIndex
+                                        suffix: index === 0 ? "Current" : ""
+                                        onClicked: root.selectBundledRelease(index)
+                                    }
                                 }
                             }
                         }
@@ -706,7 +798,8 @@ FocusScope {
                         }
 
                         Repeater {
-                            model: root.hasUpdateRelease() ? [] : app.releaseNotesSections
+                            model: root.hasUpdateRelease() ? []
+                                                           : root.selectedBundledRelease().sections || []
                             delegate: ColumnLayout {
                                 required property var modelData
                                 Layout.fillWidth: true
@@ -754,9 +847,7 @@ FocusScope {
 
                         Text {
                             Layout.fillWidth: true
-                            text: root.hasUpdateRelease() && updates.publishedAt.getTime() > 0
-                                  ? "Published " + Qt.formatDate(updates.publishedAt, "d MMM yyyy")
-                                  : "Bundled with GameHQ " + app.version
+                            text: root.selectedReleaseFooter()
                             color: Theme.textFaint
                             font.family: Theme.fontFamily
                             font.pixelSize: Theme.fontCaption

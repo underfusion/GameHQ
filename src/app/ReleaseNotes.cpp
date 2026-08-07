@@ -1,17 +1,21 @@
 #include "app/ReleaseNotes.h"
 
+#include <QDate>
 #include <QDebug>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLocale>
 #include <QRegularExpression>
+#include <QSet>
 #include <QVariantMap>
 
 namespace
 {
 constexpr int kMaxSections = 8;
 constexpr int kMaxItemsPerSection = 20;
+constexpr int kMaxHistoricalReleases = 12;
 constexpr int kMaxTitleLength = 80;
 constexpr int kMaxItemLength = 500;
 constexpr int kMaxMarkdownLength = 64 * 1024;
@@ -22,6 +26,95 @@ void setError(QString* error, const QString& value)
 {
     if (error)
         *error = value;
+}
+
+bool parseSections(const QJsonValue& sectionsValue, QVariantList* parsedSections,
+                   QString* error)
+{
+    if (!sectionsValue.isArray()) {
+        setError(error, QStringLiteral("Release notes sections must be an array."));
+        return false;
+    }
+    const QJsonArray sections = sectionsValue.toArray();
+    if (sections.isEmpty() || sections.size() > kMaxSections) {
+        setError(error, QStringLiteral("Release notes contain an invalid section count."));
+        return false;
+    }
+
+    QVariantList result;
+    for (const QJsonValue& sectionValue : sections) {
+        if (!sectionValue.isObject()) {
+            setError(error, QStringLiteral("Every release-notes section must be an object."));
+            return false;
+        }
+        const QJsonObject section = sectionValue.toObject();
+        const QString title = section.value(QStringLiteral("title")).toString().trimmed();
+        const QJsonValue itemsValue = section.value(QStringLiteral("items"));
+        if (title.isEmpty() || title.size() > kMaxTitleLength || !itemsValue.isArray()) {
+            setError(error, QStringLiteral("A release-notes section is malformed."));
+            return false;
+        }
+
+        const QJsonArray items = itemsValue.toArray();
+        if (items.isEmpty() || items.size() > kMaxItemsPerSection) {
+            setError(error, QStringLiteral("A release-notes section has an invalid item count."));
+            return false;
+        }
+        QStringList parsedItems;
+        for (const QJsonValue& itemValue : items) {
+            if (!itemValue.isString()) {
+                setError(error, QStringLiteral("Every release-note item must be plain text."));
+                return false;
+            }
+            const QString item = itemValue.toString().trimmed();
+            if (item.isEmpty() || item.size() > kMaxItemLength) {
+                setError(error, QStringLiteral("A release-note item has an invalid length."));
+                return false;
+            }
+            parsedItems.append(item);
+        }
+
+        result.append(QVariantMap{
+            { QStringLiteral("title"), title },
+            { QStringLiteral("items"), parsedItems },
+        });
+    }
+
+    *parsedSections = result;
+    return true;
+}
+
+bool parseRelease(const QJsonObject& object, QVariantMap* parsedRelease, QString* error)
+{
+    const QString version = object.value(QStringLiteral("version")).toString().trimmed();
+    static const QRegularExpression versionPattern(QStringLiteral(R"(^\d+\.\d+\.\d+$)"));
+    if (!versionPattern.match(version).hasMatch()) {
+        setError(error, QStringLiteral("Release notes contain an invalid version."));
+        return false;
+    }
+
+    QVariantList sections;
+    if (!parseSections(object.value(QStringLiteral("sections")), &sections, error))
+        return false;
+
+    QString displayDate;
+    const QString dateText = object.value(QStringLiteral("date")).toString().trimmed();
+    if (!dateText.isEmpty()) {
+        static const QRegularExpression datePattern(QStringLiteral(R"(^\d{4}-\d{2}-\d{2}$)"));
+        const QDate date = QDate::fromString(dateText, Qt::ISODate);
+        if (!datePattern.match(dateText).hasMatch() || !date.isValid()) {
+            setError(error, QStringLiteral("Release notes contain an invalid date."));
+            return false;
+        }
+        displayDate = QLocale::c().toString(date, QStringLiteral("d MMM yyyy"));
+    }
+
+    *parsedRelease = {
+        { QStringLiteral("version"), version },
+        { QStringLiteral("date"), displayDate },
+        { QStringLiteral("sections"), sections },
+    };
+    return true;
 }
 
 QString plainInlineMarkdown(QString text)
@@ -81,65 +174,41 @@ ReleaseNotes ReleaseNotes::fromJson(const QByteArray& json, QString* error)
     }
 
     const QJsonObject root = document.object();
-    const QString version = root.value(QStringLiteral("version")).toString().trimmed();
-    static const QRegularExpression versionPattern(QStringLiteral(R"(^\d+\.\d+\.\d+$)"));
-    if (!versionPattern.match(version).hasMatch()) {
-        setError(error, QStringLiteral("Release notes contain an invalid version."));
+    QVariantMap currentRelease;
+    if (!parseRelease(root, &currentRelease, error))
         return result;
-    }
 
-    const QJsonValue sectionsValue = root.value(QStringLiteral("sections"));
-    if (!sectionsValue.isArray()) {
-        setError(error, QStringLiteral("Release notes sections must be an array."));
-        return result;
-    }
-    const QJsonArray sections = sectionsValue.toArray();
-    if (sections.isEmpty() || sections.size() > kMaxSections) {
-        setError(error, QStringLiteral("Release notes contain an invalid section count."));
-        return result;
-    }
-
-    QVariantList parsedSections;
-    for (const QJsonValue& sectionValue : sections) {
-        if (!sectionValue.isObject()) {
-            setError(error, QStringLiteral("Every release-notes section must be an object."));
+    QVariantList releases{currentRelease};
+    QSet<QString> versions{currentRelease.value(QStringLiteral("version")).toString()};
+    const QJsonValue historyValue = root.value(QStringLiteral("history"));
+    if (!historyValue.isUndefined()) {
+        if (!historyValue.isArray()
+            || historyValue.toArray().size() > kMaxHistoricalReleases) {
+            setError(error, QStringLiteral("Release notes contain an invalid history."));
             return {};
         }
-        const QJsonObject section = sectionValue.toObject();
-        const QString title = section.value(QStringLiteral("title")).toString().trimmed();
-        const QJsonValue itemsValue = section.value(QStringLiteral("items"));
-        if (title.isEmpty() || title.size() > kMaxTitleLength || !itemsValue.isArray()) {
-            setError(error, QStringLiteral("A release-notes section is malformed."));
-            return {};
-        }
-
-        const QJsonArray items = itemsValue.toArray();
-        if (items.isEmpty() || items.size() > kMaxItemsPerSection) {
-            setError(error, QStringLiteral("A release-notes section has an invalid item count."));
-            return {};
-        }
-        QStringList parsedItems;
-        for (const QJsonValue& itemValue : items) {
-            if (!itemValue.isString()) {
-                setError(error, QStringLiteral("Every release-note item must be plain text."));
+        for (const QJsonValue& historicalValue : historyValue.toArray()) {
+            if (!historicalValue.isObject()) {
+                setError(error, QStringLiteral("Every historical release must be an object."));
                 return {};
             }
-            const QString item = itemValue.toString().trimmed();
-            if (item.isEmpty() || item.size() > kMaxItemLength) {
-                setError(error, QStringLiteral("A release-note item has an invalid length."));
+            QVariantMap historicalRelease;
+            if (!parseRelease(historicalValue.toObject(), &historicalRelease, error))
+                return {};
+            const QString historicalVersion =
+                historicalRelease.value(QStringLiteral("version")).toString();
+            if (versions.contains(historicalVersion)) {
+                setError(error, QStringLiteral("Release-note versions must be unique."));
                 return {};
             }
-            parsedItems.append(item);
+            versions.insert(historicalVersion);
+            releases.append(historicalRelease);
         }
-
-        parsedSections.append(QVariantMap{
-            { QStringLiteral("title"), title },
-            { QStringLiteral("items"), parsedItems },
-        });
     }
 
-    result.m_version = version;
-    result.m_sections = parsedSections;
+    result.m_version = currentRelease.value(QStringLiteral("version")).toString();
+    result.m_sections = currentRelease.value(QStringLiteral("sections")).toList();
+    result.m_releases = releases;
     setError(error, {});
     return result;
 }

@@ -1,9 +1,12 @@
 {
   "version": "0.7.5",
+  "date": "2026-08-07",
   "sections": [
     {
       "title": "Fixed",
       "items": [
+        "Global controller tap, hold, and multi-tap gestures now stay active when Desktop or Overlay uses the same button.",
+        "Cross now owns the complete playback press cycle, so a short press pauses exactly once and a hold cannot trigger Bulk Select behind the video.",
         "DualSense Share and PS buttons no longer stop responding after the first press. A held button could get stuck internally when two input paths reported the same press, which then silently swallowed every following press. Each physical press now runs as one owned press cycle, so repeated Share/PS taps keep working."
       ]
     },
@@ -12,6 +15,44 @@
       "items": [
         "This is a focused hotfix on top of 0.7.4; the HDR capture improvements from 0.7.4 are unchanged.",
         "Individual controller-model compatibility remains unverified until confirmed on the relevant hardware."
+      ]
+    }
+  ],
+  "history": [
+    {
+      "version": "0.7.4",
+      "date": "2026-08-07",
+      "sections": [
+        {
+          "title": "Fixed",
+          "items": [
+            "HDR screenshots now use the FP16 capture and GPU tone-mapping path by default instead of falling back to overexposed SDR capture.",
+            "One controller tap no longer moves the interface twice when Windows mirrors an XInput controller through WinMM.",
+            "GameInput now requests background controller delivery while a game has focus, including Share and PS where the hardware exposes them."
+          ]
+        },
+        {
+          "title": "Changed",
+          "items": [
+            "The button-identification probe now explains keyboard-macro buttons and suggests a keyboard binding or vendor remap when appropriate."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "0.7.3",
+      "date": "2026-08-05",
+      "sections": [
+        {
+          "title": "Highlights",
+          "items": [
+            "Controller bindings gained button combinations, triple taps, configurable gestures, and complete assignment editing.",
+            "The modern controller foundation added GameInput, dedicated Share/Capture identities, extra-button discovery, wireless lifecycle handling, and safe legacy fallback.",
+            "Settings and other scrollable screens gained reliable controller navigation, follow-scroll, right-stick scrolling, and visible scrollbars.",
+            "Holding PS for two seconds can bring GameHQ forward, then hide it and return focus to the previous game or application.",
+            "Input dispatch was hardened against duplicate actions, lost presses, high-polling slowdown, and reentrant crashes."
+          ]
+        }
       ]
     }
   ]
