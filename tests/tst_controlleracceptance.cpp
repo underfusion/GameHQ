@@ -286,6 +286,50 @@ private slots:
         }
         QCOMPARE(screenshots, 3);
     }
+
+    void tapSurvivesRepeatedIdenticalProfileAliasObservation()
+    {
+        RuntimePipeline pipeline(m_database);
+        const QString providerId = QStringLiteral("sony-alias-noop");
+        const QString logicalId = pipeline.providers.observeLegacy(
+            ControllerProvider::SonyRaw, providerId, QStringLiteral("054c:0ce6"),
+            QStringLiteral("DualSense"),
+            ControllerCapability::StandardControls | ControllerCapability::SystemShare
+                | ControllerCapability::Guide,
+            nullptr, QStringLiteral("hid.endpoint.sony-alias-noop"));
+        const QStringList aliases{QStringLiteral("054c:0ce6")};
+        pipeline.runtime.setProfileAliases(logicalId, aliases);
+        QSignalSpy actions(&pipeline.runtime, &BindingRuntime::actionTriggered);
+
+        // Default Guide binding is tap(1) -> global.toggle_overlay: the
+        // action fires on the RELEASE edge, so the armed pattern has to
+        // survive everything that happens while the button is down. The
+        // engine re-observes the controller on every press — including the
+        // mirrored press WinMM/XInput report for the same physical button a
+        // few milliseconds later — which repeats setProfileAliases with
+        // identical aliases mid-gesture. That repeat must be a no-op, not an
+        // invalidation that silently kills every tap and hold (0.7.4
+        // "Share/PS/Cross do nothing" regression).
+        QVERIFY(pipeline.legacy(ControllerProvider::SonyRaw, providerId,
+                                ControlId::Guide, true, 10).accepted);
+        pipeline.runtime.setProfileAliases(logicalId, aliases);
+        pipeline.runtime.setProfileAliases(logicalId, aliases);
+        QVERIFY(pipeline.legacy(ControllerProvider::SonyRaw, providerId,
+                                ControlId::Guide, false, 120).accepted);
+        QCOMPARE(actions.size(), 1);
+        QCOMPARE(actions.first().at(0).toString(),
+                 QStringLiteral("global.toggle_overlay"));
+
+        // A genuinely different alias set mid-press keeps its existing
+        // meaning: the effective view moved, pending patterns die with it.
+        QVERIFY(pipeline.legacy(ControllerProvider::SonyRaw, providerId,
+                                ControlId::Guide, true, 200).accepted);
+        pipeline.runtime.setProfileAliases(
+            logicalId, QStringList{QStringLiteral("xinput.slot0")});
+        QVERIFY(pipeline.legacy(ControllerProvider::SonyRaw, providerId,
+                                ControlId::Guide, false, 300).accepted);
+        QCOMPARE(actions.size(), 1);
+    }
 };
 
 QTEST_GUILESS_MAIN(ControllerAcceptanceTest)

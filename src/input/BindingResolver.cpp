@@ -54,26 +54,32 @@ void BindingResolver::setDefaultHoldMs(int milliseconds)
     m_defaultHoldMs = qBound(250, milliseconds, 10000);
 }
 
-void BindingResolver::setProfileAlias(const QString& profile, const QString& legacyProfile)
+bool BindingResolver::setProfileAlias(const QString& profile, const QString& legacyProfile)
 {
-    setProfileAliases(profile, legacyProfile.isEmpty() ? QStringList{}
-                                                        : QStringList{legacyProfile});
+    return setProfileAliases(profile, legacyProfile.isEmpty() ? QStringList{}
+                                                              : QStringList{legacyProfile});
 }
 
-void BindingResolver::setProfileAliases(const QString& profile,
+bool BindingResolver::setProfileAliases(const QString& profile,
                                         const QStringList& legacyProfiles)
 {
     if (profile.isEmpty())
-        return;
+        return false;
     QStringList aliases;
     for (const QString& alias : legacyProfiles) {
         if (!alias.isEmpty() && alias != profile && !aliases.contains(alias))
             aliases.append(alias);
     }
+    // Report whether the effective view actually moved: callers re-observe the
+    // same attachment on every press, and pretending that changed anything
+    // would let them invalidate in-flight gestures on each mirrored event.
+    if (m_profileAliases.value(profile) == aliases)
+        return false;
     if (aliases.isEmpty())
         m_profileAliases.remove(profile);
     else
         m_profileAliases.insert(profile, aliases);
+    return true;
 }
 
 void BindingResolver::reload()

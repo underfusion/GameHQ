@@ -95,9 +95,14 @@ BindingResolver::Gesture BindingRuntime::inheritedGesture(
 
 void BindingRuntime::setProfileAlias(const QString& profile, const QString& legacyProfile)
 {
-    m_resolver.setProfileAlias(profile, legacyProfile);
     // The alias changes the effective view, so cached pair classifications
-    // for the affected profile are stale.
+    // for the affected profile are stale. An unchanged alias set must NOT
+    // invalidate: the engine re-observes the controller on every press —
+    // including mirrored presses another backend reports for the same
+    // physical button — and invalidating then kills the tap/hold pattern the
+    // real press just armed (0.7.4 "Share/PS/Cross do nothing" regression).
+    if (!m_resolver.setProfileAlias(profile, legacyProfile))
+        return;
     m_relations.clear();
     m_recognizer.invalidate();
 }
@@ -105,7 +110,8 @@ void BindingRuntime::setProfileAlias(const QString& profile, const QString& lega
 void BindingRuntime::setProfileAliases(const QString& profile,
                                        const QStringList& legacyProfiles)
 {
-    m_resolver.setProfileAliases(profile, legacyProfiles);
+    if (!m_resolver.setProfileAliases(profile, legacyProfiles))
+        return;
     m_relations.clear();
     m_recognizer.invalidate();
 }
